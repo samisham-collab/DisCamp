@@ -8,6 +8,12 @@ function format(message: string, context?: Context): unknown[] {
 }
 
 export const log = {
+  /** Expected situations worth a note while developing. Never shown as a warning. */
+  info(message: string, context?: Context) {
+    // This file is the one place allowed to write to the console.
+    // eslint-disable-next-line no-console
+    console.info(...format(message, context));
+  },
   warn(message: string, context?: Context) {
     console.warn(...format(message, context));
   },

@@ -59,16 +59,30 @@ function toCoords(position: Location.LocationObject | null): Coordinates | null 
   return isValidCoordinate(c) ? c : null;
 }
 
+/**
+ * Not getting a fix is normal (indoors, in a canyon, or a simulator with no
+ * location set). The phone reports it as a failure; DisCamp treats it as
+ * "no fix yet", not an error.
+ */
+function noFix(step: string) {
+  return (error: unknown): null => {
+    log.info(`No location fix (${step})`, { error: describeError(error) });
+    return null;
+  };
+}
+
 /** A recent fix if there is one (fast), otherwise a fresh one. Null if none comes. */
 async function currentPosition(): Promise<Coordinates | null> {
   const lastKnown = await orAfter(
-    Location.getLastKnownPositionAsync({ maxAge: LAST_KNOWN_MAX_AGE_MS }),
+    Location.getLastKnownPositionAsync({ maxAge: LAST_KNOWN_MAX_AGE_MS }).catch(noFix('last known')),
     CHECK_TIMEOUT_MS,
     null,
   );
   const recent = toCoords(lastKnown);
   if (recent) return recent;
-  const fresh = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).then(toCoords);
+  const fresh = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+    .then(toCoords)
+    .catch(noFix('current'));
   return orAfter(fresh, POSITION_TIMEOUT_MS, null);
 }
 

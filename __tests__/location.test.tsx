@@ -190,16 +190,38 @@ describe('location', () => {
   });
 
   it('stays quiet when the position is unavailable on launch', async () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const info = jest.spyOn(console, 'info').mockImplementation(() => undefined);
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     jest.mocked(Location.getForegroundPermissionsAsync).mockResolvedValueOnce(permission('granted'));
     jest.mocked(Location.getLastKnownPositionAsync).mockRejectedValueOnce(new Error('Location services are disabled'));
+    jest.mocked(Location.getCurrentPositionAsync).mockRejectedValueOnce(new Error('Location services are disabled'));
     const { result } = await setup();
-    await waitFor(() => expect(warn).toHaveBeenCalled());
+    await waitFor(() => expect(info).toHaveBeenCalledTimes(2));
     // Permission is still granted (the blue dot can show later); just no fix yet.
     expect(result.current.status).toBe('granted');
     expect(result.current.coords).toBeNull();
     expect(alert).not.toHaveBeenCalled();
+  });
+
+  it('treats a failed GPS fix as "no fix", not as an app error', async () => {
+    // What the iPhone Simulator does when no location is set (Features > Location > None).
+    jest.spyOn(console, 'info').mockImplementation(() => undefined);
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    jest
+      .mocked(Location.getCurrentPositionAsync)
+      .mockRejectedValueOnce(
+        new Error("Calling the 'getCurrentPositionAsync' function has failed: kCLErrorDomain error 0"),
+      );
+    const { result } = await setup();
+    await act(async () => {
+      await expect(result.current.locate()).resolves.toBeNull();
+    });
+    // No console.error (the test setup fails on one), just the friendly explanation.
+    expect(alert).toHaveBeenCalledWith(
+      "Couldn't find your location",
+      'Try again in a moment, ideally with a clear view of the sky.',
+    );
+    expect(result.current.locating).toBe(false);
   });
 
   it('keeps a fresh fix over a slower launch lookup', async () => {

@@ -23,8 +23,11 @@ describe('log', () => {
   });
 
   it('prefixes messages and includes context', () => {
+    const info = jest.spyOn(console, 'info').mockImplementation(() => undefined);
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    log.info('Noted', { id: 'z' });
+    expect(info).toHaveBeenCalledWith('[DisCamp] Noted', { id: 'z' });
     log.warn('Careful');
     log.warn('Careful', { id: 'x' });
     log.error('Broke', new Error('boom'), { id: 'y' });

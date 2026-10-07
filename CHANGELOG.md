@@ -2,6 +2,12 @@
 
 All notable changes to DisCamp. Dates are when the version was finished.
 
+## 1.1.1 (2026-10-07)
+
+### Fixed
+
+- When the phone couldn't get a GPS fix (indoors, poor signal, or the iPhone Simulator with no location set), "Show my location" treated it as an app error: in development it opened a red "Console Error" screen. It's now handled as "no fix yet": the camper sees "Couldn't find your location. Try again in a moment, ideally with a clear view of the sky."
+
 ## 1.1.0 (2026-10-06)
 
 Hardening release: same features as 1.0, made reliable, plus quality-of-life additions.
@@ -73,7 +79,7 @@ Hardening release: same features as 1.0, made reliable, plus quality-of-life add
 ### For developers
 
 - Strict TypeScript, ESLint (with checks for forgotten promises) and Prettier; `npm run check` runs everything.
-- 201 tests, including full-app screen tests, plus 7 database tests that run in CI. Coverage thresholds: 96% statements, 86% branches, 94% functions, 97% lines.
+- 202 tests as of 1.1.1, including full-app screen tests, plus 7 database tests that run in CI. Coverage thresholds: 96% statements, 86% branches, 94% functions, 97% lines.
 - Tests fail on any unexpected console warning or error.
 - Every outside input is validated with zod at the boundary.
 - GitHub Actions CI, plus a database job against Postgres + PostGIS.
