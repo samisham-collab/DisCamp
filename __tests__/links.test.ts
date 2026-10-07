@@ -15,8 +15,8 @@ import {
   shareSpot,
 } from '@/lib/links';
 
-const smoky = SEED_SPOTS[0];
-if (!smoky) throw new Error('No starter spot');
+const smoky = SEED_SPOTS.find((s) => s.id === 'smoky-gardens');
+if (!smoky) throw new Error('No Smoky Gardens starter spot');
 
 describe('links', () => {
   afterEach(() => {

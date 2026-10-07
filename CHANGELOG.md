@@ -2,6 +2,26 @@
 
 All notable changes to DisCamp. Dates are when the version was finished.
 
+## 1.2.0 (2026-10-07)
+
+### Added
+
+Five starter spots, filled in from public listings (Forest Service, Idaho Fish and Game, Campendium, The Dyrt, Trails Offroad, WTA). Each page links its sources and is marked "not yet confirmed on site".
+
+- **Sublett Reservoir, Idaho** (three spots, west to east):
+  - **Sublett Dam**: free Fish and Game access site, vault toilet, RVs up to 35 ft, 10-day limit. The road across the dam is narrow.
+  - **Sublett Campground**: free Forest Service campground, 5 to 9 small sites in one loop, vault toilet, tables, fire rings, RVs up to 20 ft. No drinking water.
+  - **South Fork Sublett Creek**: free dispersed sites on Forest Road 583 just past the campground. No road reports yet.
+- **Forest Road 46 near Packwood, Washington**: free dispersed camping on a gravel forest road off US 12, with camps near the FR 4610 junction and Goat Rocks Wilderness trailheads. The pin is approximate (no source lists coordinates).
+- **Forest Road 356 near Mount Rushmore, South Dakota**: free dispersed sites about 0.6 mile east of the Mount Rushmore KOA at Palmer Gulch. 2WD to the first sites, high clearance beyond; a 30 ft trailer has made it. No open campfires anywhere in the South Dakota Black Hills.
+
+### For developers
+
+- New `__tests__/seedSpots.test.ts`: every starter spot is valid, sits in the right state, cites https sources, and gives each preset rig the fit rating its sources support.
+- New `__tests__/screens/starterSpots.test.tsx` opens every starter spot in the full app.
+- The Explore and Spot screen tests now run against Smoky Gardens only (`test/mocks/seedSpots.ts`), so adding spots never changes their expected counts or distances.
+- 232 tests, plus the 7 database tests.
+
 ## 1.1.1 (2026-10-07)
 
 ### Fixed

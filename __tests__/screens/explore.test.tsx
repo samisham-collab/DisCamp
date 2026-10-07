@@ -15,6 +15,9 @@ import { GOODLAND } from '../../test/mocks/expoLocation';
 import { holdMapReady, mapMethods, markerMethods, releaseMapReady } from '../../test/mocks/reactNativeMaps';
 import { renderApp } from '../../test/renderApp';
 
+// Pinned to Smoky Gardens only: see test/mocks/seedSpots.ts.
+jest.mock('@/data/seedSpots', () => jest.requireActual('../../test/mocks/seedSpots'));
+
 describe('Explore screen', () => {
   // Expo Router's renderRouter turns on fake timers; leave them on so the
   // testing library can unmount the app cleanly after each test.

@@ -14,6 +14,9 @@ const textOf = () => JSON.stringify(screen.toJSON());
 /** Position of a whole text node in the rendered tree, for checking order. */
 const positionOf = (text: string) => textOf().indexOf(JSON.stringify(text));
 
+// Pinned to Smoky Gardens only: see test/mocks/seedSpots.ts.
+jest.mock('@/data/seedSpots', () => jest.requireActual('../../test/mocks/seedSpots'));
+
 describe('Spot screen', () => {
   // Expo Router's renderRouter turns on fake timers; leave them on so the
   // testing library can unmount the app cleanly after each test.

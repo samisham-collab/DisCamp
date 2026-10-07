@@ -2,7 +2,16 @@
 
 A free, community-built map of campsites that tells you whether your rig can reach a spot, whether it fits, and what it costs to stay.
 
-**Version 1.1** hardens the first version for real use: over 30 bugs fixed, every screen tested, the database locked down, and a set of quality-of-life features. See [CHANGELOG.md](CHANGELOG.md) for the full list. It starts with **Smoky Gardens** (Soldiers Memorial Park, Sherman County, Kansas).
+**Version 1.2** adds five starter spots from public listings, for six in all. See [CHANGELOG.md](CHANGELOG.md) for every version.
+
+| Spot                                | Where                                               | Type       |
+| ----------------------------------- | --------------------------------------------------- | ---------- |
+| Smoky Gardens                       | Soldiers Memorial Park, Sherman County, Kansas      | Campground |
+| Sublett Dam                         | Sublett Reservoir, Idaho (Fish and Game)            | Dispersed  |
+| Sublett Campground                  | Sublett Reservoir, Idaho (Sawtooth National Forest) | Campground |
+| South Fork Sublett Creek            | Forest Road 583, Sublett Reservoir, Idaho           | Dispersed  |
+| Forest Road 46 near Packwood        | Gifford Pinchot National Forest, Washington         | Dispersed  |
+| Forest Road 356 near Mount Rushmore | Black Hills National Forest, South Dakota           | Dispersed  |
 
 ## What the app does
 
@@ -54,17 +63,22 @@ npm run test:watch # re-run tests as you edit
 
 GitHub runs the same checks on every push to `main` and on every pull request (`.github/workflows/ci.yml`), plus a database test against a real Postgres + PostGIS.
 
-## Update Smoky Gardens
+## Update the starter spots
 
-Edit `src/data/seedSpots.ts`. These came from public listings and need a visit to confirm:
+Edit `src/data/seedSpots.ts`. Every spot came from the public listings linked on its page (and in the file) and needs a visit to confirm. Comments in the file mark each ASSUMPTION; `null` means no source reported it. The biggest gaps:
 
-- **Pin location** is approximate (39.19, -101.76). Drop an exact pin on site.
-- **Clearance (C2) and "2WD OK"** are assumptions about the county roads.
-- **Not reported yet:** longest trailer or RV, big-rig turnaround, stay limit, whether the roads are impassable when wet.
+| Spot                                | Confirm on site                                                                                                                                     |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Smoky Gardens                       | Exact pin (approximate now); clearance C2 and "2WD OK" are assumptions; longest trailer, turnaround, stay limit, wet roads                          |
+| Sublett Dam                         | Turnaround; whether the road is OK when wet                                                                                                         |
+| Sublett Campground                  | Clearance C3 (from "washboard"); number of sites (sources say 5 and 9)                                                                              |
+| South Fork Sublett Creek            | Everything about the road: no camper has reported on FR 583                                                                                         |
+| Forest Road 46 near Packwood        | **Exact pin**: the current one is worked out from road mileages and could be off by a few hundred yards. Also longest trailer, big rigs, turnaround |
+| Forest Road 356 near Mount Rushmore | Turnaround; whether the road is OK when wet (campers report big puddles after storms)                                                               |
 
-After editing, run `npm run seed:sql` to regenerate `supabase/seed.sql` (a test fails if you forget).
+After editing, run `npm run seed:sql` to regenerate `supabase/seed.sql` (a test fails if you forget). `__tests__/seedSpots.test.ts` also checks what each preset rig sees at each spot, so a changed rating shows up there; update the expected table if the change was meant.
 
-When it's confirmed on site, set `verified: true` and the "Starter info" banner disappears. If you've connected Supabase, run this in the SQL Editor too, because re-running the seed never overwrites camper-earned fields:
+When a spot is confirmed on site, set `verified: true` and its "Starter info" banner disappears. If you've connected Supabase, run this in the SQL Editor too, because re-running the seed never overwrites camper-earned fields:
 
 ```sql
 update public.spots set verified = true where id = 'smoky-gardens';
@@ -76,7 +90,7 @@ update public.spots set verified = true where id = 'smoky-gardens';
 2. Open **SQL Editor** and run these files in order, each pasted in and run on its own:
    1. `supabase/migrations/0001_init.sql` creates the `spots` table.
    2. `supabase/migrations/0002_harden.sql` makes it read-only for the app and adds data checks.
-   3. `supabase/seed.sql` adds Smoky Gardens.
+   3. `supabase/seed.sql` adds the starter spots.
 3. Copy your **Project URL** and **publishable key** from the project's API settings.
 4. For your phone: `cp .env.example .env`, put both values in `.env`, and restart `npx expo start`.
 5. For builds made on EAS: `.env` isn't uploaded, so add both values on expo.dev (your project > **Environment variables**) for the **preview** and **production** environments. Without them, a build quietly uses the starter spots only.
@@ -104,7 +118,7 @@ src/
     spot/[id].tsx           Spot page
     +not-found.tsx          Page for broken links
   components/               Map, pins, cost meter, clearance gauge, cards, shared UI
-  data/seedSpots.ts         Starter spots (Smoky Gardens)
+  data/seedSpots.ts         Starter spots (6, from public listings)
   data/spots.tsx            Shares spots with every screen: starter → saved → server
   data/spotsRepository.ts   Server queries and the offline copy
   lib/fit.ts                Rig-fit rules and the C1–C7 clearance tiers
@@ -142,7 +156,7 @@ test/                       Test helpers and stand-ins for native modules
 
 - **Maps:** v1 uses `react-native-maps` (Apple Maps on iPhone, Google Maps on Android) because it runs in Expo Go for free. The plan's MapLibre + OpenFreeMap switch comes with offline maps; only `src/components/SpotMap.tsx` touches the map.
 - **Lots of spots:** the app loads every spot in one request, and Supabase returns at most 1,000 rows per request. Before you get close, switch to loading spots for the visible map area (the app logs a warning if it ever hits the limit).
-- **Next up (Sprint 2):** add a spot from the app, photo upload and sign-in.
+- **Next up (Sprint 2):** sign-in and adding a spot from the app. The product plan's MVP backlog lists the rest, sprint by sprint.
 
 ## Put it on GitHub
 
@@ -150,7 +164,7 @@ test/                       Test helpers and stand-ins for native modules
 cd ~/Documents/DisCamp
 git init
 git add .
-git commit -m "DisCamp v1.1"
+git commit -m "DisCamp v1.2"
 ```
 
 Then create an empty repo on GitHub and follow its "push an existing repository" steps. CI starts running on the first push.
