@@ -1,0 +1,8 @@
+node_modules
+dist
+coverage
+.expo
+android
+ios
+package-lock.json
+supabase/seed.sql

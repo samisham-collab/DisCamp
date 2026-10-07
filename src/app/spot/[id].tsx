@@ -1,0 +1,284 @@
+// Spot detail: fit for your rig, the cost meter, access and who-fits ratings,
+// amenities, rules and directions. Trailers and big rigs see the cost meter
+// first, priced on the RV hookup fee.
+
+import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { AccessibilityInfo, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+
+import { ClearanceGauge } from '@/components/ClearanceGauge';
+import { CostMeter } from '@/components/CostMeter';
+import { FitBanner } from '@/components/Fit';
+import { siteTypeLabel } from '@/components/SpotSummary';
+import { ActionButton, Banner, Button, Card, Chip, EmptyState, Row, SectionTitle } from '@/components/ui';
+import { useSpot } from '@/data/spots';
+import { costForRig, describeRvFee, formatFee, formatHookups } from '@/lib/cost';
+import { SPOT_DRIVETRAINS, fitFor, isTowing, tierInfo } from '@/lib/fit';
+import {
+  COMPASS_WORDS,
+  bearingDegrees,
+  compassPoint,
+  distanceMiles,
+  formatCoordinates,
+  formatDistance,
+} from '@/lib/geo';
+import { callPhone, copyCoordinates, openDirections, openWebLink, shareSpot } from '@/lib/links';
+import { useLocation } from '@/lib/location';
+import { useRig } from '@/lib/rig';
+import { rigDisplayName } from '@/lib/rigModel';
+import type { Coordinates, Reservations, Rig, Spot } from '@/types';
+import { colors, TOUCH_TARGET } from '@/theme';
+
+const yesNo = (v: boolean | null, yes = 'Yes', no = 'No') => (v == null ? 'Not reported' : v ? yes : no);
+
+const RESERVATIONS: Record<Reservations, string> = {
+  'first-come': 'First come, first served',
+  reservable: 'Reservations available',
+  'not-needed': 'No reservations needed',
+};
+
+/** "11 mi south of you, in a straight line". */
+function distanceFrom(here: Coordinates, spot: Spot): string {
+  const miles = distanceMiles(here, spot);
+  if (miles < 0.1) return `${formatDistance(miles)} from you`;
+  const direction = COMPASS_WORDS[compassPoint(bearingDegrees(here, spot))];
+  return `${formatDistance(miles)} ${direction} of you, in a straight line`;
+}
+
+function reportsLabel(count: number): string {
+  if (count <= 0) return 'No camper reports yet';
+  return `${count} camper ${count === 1 ? 'report' : 'reports'}`;
+}
+
+function costTitle(rig: Rig): string {
+  if (rig.setup === 'bigrig') return 'Big-rig cost meter';
+  if (rig.setup === 'trailer') return 'Trailer cost meter';
+  return 'Cost to stay';
+}
+
+function CostCard({ spot, rig }: { spot: Spot; rig: Rig }) {
+  const cost = costForRig(spot, rig);
+  const { nightlyFeeUsd, hookups, reservations, notes } = spot.cost;
+  return (
+    <Card style={isTowing(rig) ? styles.costHighlight : undefined}>
+      <SectionTitle>{costTitle(rig)}</SectionTitle>
+      <Text style={styles.costFor}>
+        For your rig: <Text style={styles.costStrong}>{formatFee(cost.feeUsd)}</Text> ({cost.basis})
+      </Text>
+      <CostMeter level={cost.level} />
+      <Row label="Standard / dry camping" value={formatFee(nightlyFeeUsd)} />
+      <Row label="RV site" value={describeRvFee(spot.cost)} />
+      <Row label="Hookups" value={formatHookups(hookups)} />
+      <Row label="Reservations" value={reservations ? RESERVATIONS[reservations] : 'Not reported'} />
+      {notes ? <Text style={styles.note}>{notes}</Text> : null}
+    </Card>
+  );
+}
+
+function useCopiedFlag(): [boolean, () => void] {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return undefined;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  return [copied, () => setCopied(true)];
+}
+
+export default function SpotScreen() {
+  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  const { spot, loading } = useSpot(id);
+  const { rig } = useRig();
+  const { coords } = useLocation();
+  const [copied, markCopied] = useCopiedFlag();
+
+  if (!spot) {
+    return (
+      <View style={styles.center}>
+        <Stack.Screen options={{ title: loading ? 'Loading' : 'Not found' }} />
+        {loading ? (
+          <>
+            <ActivityIndicator size="large" color={colors.pine} />
+            <Text style={styles.body}>Loading spot…</Text>
+          </>
+        ) : (
+          <EmptyState
+            icon="compass-outline"
+            title="Spot not found"
+            message="It may have been removed, or the link is wrong."
+            actionLabel="Back to the map"
+            onAction={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+          />
+        )}
+      </View>
+    );
+  }
+
+  const fit = fitFor(spot, rig);
+  const tier = spot.access.clearanceTier;
+  const drive = spot.access.drivetrain;
+  const towing = isTowing(rig);
+  const f = spot.fit;
+  const distance = coords ? distanceFrom(coords, spot) : null;
+
+  const onCopy = async () => {
+    if (await copyCoordinates(spot)) {
+      markCopied();
+      AccessibilityInfo.announceForAccessibility('Coordinates copied');
+    }
+  };
+
+  return (
+    <ScrollView contentContainerStyle={styles.content}>
+      <Stack.Screen options={{ title: 'Spot details' }} />
+
+      <View style={styles.titleBlock}>
+        <Text style={styles.name} accessibilityRole="header">
+          {spot.name}
+        </Text>
+        <Text style={styles.meta}>
+          {siteTypeLabel(spot)} · {spot.landManager}
+        </Text>
+        <Text style={styles.meta}>
+          {spot.stayLimitDays ? `${spot.stayLimitDays}-day stay limit` : 'Stay limit not reported'} ·{' '}
+          {reportsLabel(spot.reportCount)}
+        </Text>
+        {distance ? <Text style={styles.meta}>{distance}</Text> : null}
+      </View>
+
+      {!spot.verified && (
+        <Banner
+          tone="warning"
+          icon="information-circle-outline"
+          message='Starter info from public listings, not yet confirmed on site. Items marked "Not reported" need a camper to check.'
+        />
+      )}
+
+      <FitBanner fit={fit} rigName={rigDisplayName(rig)} />
+
+      <View style={styles.actions}>
+        <Button label="Directions" icon="navigate-outline" onPress={() => void openDirections(spot)} />
+        <View style={styles.actionRow}>
+          <ActionButton icon="share-outline" label="Share" onPress={() => void shareSpot(spot)} />
+          <ActionButton
+            icon={copied ? 'checkmark' : 'copy-outline'}
+            label={copied ? 'Copied' : 'Copy GPS'}
+            onPress={() => void onCopy()}
+          />
+          {spot.phone ? (
+            <ActionButton icon="call-outline" label="Call" onPress={() => void callPhone(spot.phone ?? '')} />
+          ) : null}
+        </View>
+      </View>
+
+      {towing && <CostCard spot={spot} rig={rig} />}
+
+      <Card>
+        <SectionTitle>Access</SectionTitle>
+        <ClearanceGauge tier={tier} />
+        <Text style={styles.tierLine}>
+          {tier == null ? 'Clearance not reported' : `C${tier} · needs ${tierInfo(tier).label} of clearance`}
+        </Text>
+        {tier != null && <Text style={styles.body}>{tierInfo(tier).road}</Text>}
+        <Row label="Drivetrain" value={drive ? SPOT_DRIVETRAINS[drive].label : 'Not reported'} />
+        <Row label="Road" value={spot.access.surface ?? 'Not reported'} />
+        <Row
+          label="When wet"
+          value={yesNo(spot.access.impassableWhenWet, 'Impassable when wet', 'OK when wet')}
+          tone={spot.access.impassableWhenWet ? 'warn' : undefined}
+        />
+      </Card>
+
+      <Card>
+        <SectionTitle>Who fits</SectionTitle>
+        <Row label="Tent" value={yesNo(f.tent)} />
+        <Row label="Rooftop tent" value={yesNo(f.rtt)} />
+        <Row label="Van / truck camper" value={yesNo(f.van)} />
+        <Row
+          label="Longest trailer or RV"
+          value={
+            f.maxTrailerFt == null ? 'Not reported' : f.maxTrailerFt === 0 ? 'No trailers' : `${f.maxTrailerFt} ft`
+          }
+        />
+        <Row label="Big rigs" value={yesNo(f.bigRig)} />
+        <Row label="Big-rig turnaround" value={yesNo(f.turnaround)} />
+      </Card>
+
+      {!towing && <CostCard spot={spot} rig={rig} />}
+
+      {spot.amenities.length > 0 && (
+        <Card>
+          <SectionTitle>What&apos;s there</SectionTitle>
+          <View style={styles.chips}>
+            {spot.amenities.map((a, i) => (
+              <Chip key={`${i}-${a}`} label={a} />
+            ))}
+          </View>
+        </Card>
+      )}
+
+      {spot.rules.length > 0 && (
+        <Card>
+          <SectionTitle>Rules</SectionTitle>
+          {spot.rules.map((r, i) => (
+            <Text key={`${i}-${r}`} style={styles.body}>
+              • {r}
+            </Text>
+          ))}
+        </Card>
+      )}
+
+      <Card>
+        <SectionTitle>Getting there</SectionTitle>
+        {spot.directions ? <Text style={styles.body}>{spot.directions}</Text> : null}
+        <Row label="GPS" value={`${formatCoordinates(spot)}${spot.verified ? '' : ' (approximate)'}`} />
+        {spot.phone ? <Row label="Phone" value={spot.phone} /> : null}
+      </Card>
+
+      {spot.sources.length > 0 && (
+        <View style={styles.sources}>
+          <Text style={styles.sourcesTitle}>Sources</Text>
+          {spot.sources.map((s, i) => (
+            <Pressable
+              key={`${i}-${s.url}`}
+              onPress={() => void openWebLink(s.url)}
+              accessibilityRole="link"
+              accessibilityHint="Opens in your browser"
+              style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}
+            >
+              <Text style={styles.link}>{s.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+
+      <Text style={styles.disclaimer}>
+        Ratings are community reports, not guarantees. Conditions change; check with the land manager before you go.
+      </Text>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  content: { padding: 16, gap: 14, paddingBottom: 40 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
+  titleBlock: { gap: 4 },
+  name: { fontSize: 30, fontWeight: '800', color: colors.ink },
+  meta: { fontSize: 14, color: colors.muted },
+  actions: { gap: 12 },
+  actionRow: { flexDirection: 'row', gap: 8 },
+  costHighlight: { borderColor: colors.orange, borderWidth: 1.5 },
+  costFor: { fontSize: 15, color: colors.body },
+  costStrong: { fontWeight: '800', color: colors.ink },
+  note: { fontSize: 14, color: colors.body, marginTop: 4 },
+  tierLine: { fontSize: 16, fontWeight: '700', color: colors.ink },
+  body: { fontSize: 15, color: colors.body, lineHeight: 21 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  sources: { gap: 0 },
+  sourcesTitle: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase' },
+  linkRow: { minHeight: TOUCH_TARGET, justifyContent: 'center' },
+  link: { fontSize: 14, color: colors.pine, textDecorationLine: 'underline' },
+  pressed: { opacity: 0.6 },
+  disclaimer: { fontSize: 12, color: colors.muted },
+});

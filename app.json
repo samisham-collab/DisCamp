@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "DisCamp",
+    "slug": "discamp",
+    "version": "1.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F4F6F2",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "org.discamp.app",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1F5C43",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "org.discamp.app",
+      "blockedPermissions": [
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "scheme": "discamp",
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#F4F6F2"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "DisCamp uses your location to show how far away spots are and to center the map on you.",
+          "locationAlwaysAndWhenInUsePermission": "DisCamp only uses your location while the app is open, to show how far away spots are.",
+          "locationAlwaysPermission": "DisCamp only uses your location while the app is open, to show how far away spots are.",
+          "motionUsagePermission": "DisCamp does not use motion or fitness data.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false
+        }
+      ]
+    ]
+  }
+}
