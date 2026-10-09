@@ -2,6 +2,60 @@
 
 All notable changes to DisCamp. Dates are when the version was finished.
 
+## 1.3.0 (2026-10-07)
+
+Accounts and camper-added spots (MVP story 5, and enabler E1: sign-in).
+
+### Added
+
+**Sign-in**
+
+- Sign in with **Apple, Google, Microsoft or GitHub**, from the new **Account** tab or when adding a spot. Browsing never needs an account.
+- On iPhone, Apple uses the built-in Sign in with Apple sheet. Everything else opens in a secure browser sheet and returns to the app.
+- The sign-in session is kept in the phone's keychain (iOS Keychain or Android Keystore), on this device only.
+- `EXPO_PUBLIC_AUTH_PROVIDERS` chooses which sign-in buttons show, so a provider that isn't set up yet stays hidden.
+
+**Adding spots**
+
+- **Add spot** button on Explore. Drop a pin on a satellite map, use your location, or paste GPS coordinates. Then add access, who fits, cost, amenities, rules and directions.
+- Only the name, land manager and location are required; anything else can stay "Not sure".
+- The draft is saved on the phone as you type, so leaving the screen or losing signal never loses it.
+- A warning appears when another spot is within a quarter mile, with a link to it.
+- Fields that need fixing are marked in red, and the form scrolls to the first one.
+- New spots show for everyone right away, marked "Added by a camper, not yet confirmed".
+
+**Your spots and your account**
+
+- Spot pages show who added a spot and when. On your own spots you can **edit** or **delete**.
+- The Account tab shows your display name (which you can change), the spots you added, **Sign out** and **Delete account**.
+
+### Security and reliability
+
+- New migration `0003_accounts.sql`:
+  - Profiles hold display names.
+  - Each spot records who added it.
+  - The database itself decides who may change what: column grants, row-level security, and a trigger that sets the server-owned fields (who added it, when, confirmed status, report count, sources).
+  - Campers can add at most 20 spots a day. This holds even when many adds arrive at once.
+  - Names show only for campers who have added a spot.
+  - The account-deletion function deletes your own account and nothing else.
+- Adding a spot can be retried safely. Each draft gets its own id, so if the connection drops after the server saved the spot, trying again opens that spot instead of adding a second copy.
+- Sign-in uses PKCE: the browser only ever carries a one-time code, which only this app can trade for a session. Each code is traded once, even if it arrives twice.
+- Apple sign-in sends a hashed one-time nonce, so a captured answer can't be replayed.
+- After sign-in, the app returns only to known screens; a crafted link can't redirect it anywhere else.
+- Saving the session never leaves a half-written copy that would look like being signed out.
+
+### For developers
+
+- `test/fakeSupabase.ts` is now an in-memory Supabase with the same ownership rules as the database, so screen tests can sign in and add, edit and delete spots.
+- The database test now runs against a stand-in for Supabase's auth schema. It checks every permission rule: who can add, edit, delete and rename, the daily limit under concurrent requests, and that account deletion keeps spots.
+- 348 tests plus 13 database tests. Coverage floors raised to 97% statements, 89% branches, 96% functions, 98% lines.
+- New packages (Expo SDK 57 versions): `expo-web-browser`, `expo-apple-authentication`, `expo-crypto`, `expo-secure-store`.
+
+### Still to do before the App Store
+
+- Switch on Sign in with Apple. Apple requires it whenever Google, Microsoft or GitHub sign-in is offered.
+- Revoke Apple tokens when an account is deleted, which needs a small server function holding the Apple key (planned for Sprint 6).
+
 ## 1.2.0 (2026-10-07)
 
 ### Added

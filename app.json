@@ -2,7 +2,7 @@
   "expo": {
     "name": "DisCamp",
     "slug": "discamp",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -12,7 +12,8 @@
       "bundleIdentifier": "org.discamp.app",
       "config": {
         "usesNonExemptEncryption": false
-      }
+      },
+      "usesAppleSignIn": true
     },
     "android": {
       "adaptiveIcon": {
@@ -55,7 +56,10 @@
           "isAndroidBackgroundLocationEnabled": false,
           "isAndroidForegroundServiceEnabled": false
         }
-      ]
+      ],
+      "expo-apple-authentication",
+      "expo-secure-store",
+      "expo-web-browser"
     ]
   }
 }

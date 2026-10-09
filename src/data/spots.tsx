@@ -6,7 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { REMOTE_TIMEOUT_MS } from '../config';
-import { getSupabase } from '../lib/supabase';
+import { useServerClient } from '../lib/server';
 import type { Spot } from '../types';
 import { SEED_SPOTS } from './seedSpots';
 import { SpotsLoadError, fetchRemoteSpots, loadCachedSpots, saveCachedSpots } from './spotsRepository';
@@ -29,6 +29,15 @@ export interface SpotsState {
 
 interface SpotsContextValue extends SpotsState {
   refresh: () => Promise<void>;
+  /** Shows a spot the camper just added or edited right away, without a reload. */
+  saveLocal: (spot: Spot) => void;
+  /** Takes a spot the camper just deleted off the map right away. */
+  removeLocal: (id: string) => void;
+}
+
+/** Spots in name order, like the server sends them, with `spot` added or replaced. */
+function withSpot(spots: Spot[], spot: Spot): Spot[] {
+  return [...spots.filter((s) => s.id !== spot.id), spot].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 const SpotsContext = createContext<SpotsContextValue | null>(null);
@@ -47,7 +56,7 @@ export function SpotsProvider({
   seed = SEED_SPOTS,
   timeoutMs = REMOTE_TIMEOUT_MS,
 }: Props) {
-  const [client] = useState(() => (clientProp !== undefined ? clientProp : getSupabase()));
+  const client = useServerClient(clientProp);
   const [state, setState] = useState<SpotsState>(() => ({
     spots: seed,
     source: 'seed',
@@ -59,6 +68,8 @@ export function SpotsProvider({
   }));
   const mounted = useRef(true);
   const inflight = useRef<Promise<void> | null>(null);
+  // Set when a local change should also go into the offline copy.
+  const saveAfterChange = useRef(false);
 
   useEffect(() => {
     mounted.current = true;
@@ -120,7 +131,26 @@ export function SpotsProvider({
     };
   }, [client, refresh]);
 
-  const value = useMemo(() => ({ ...state, refresh }), [state, refresh]);
+  const saveLocal = useCallback((spot: Spot) => {
+    saveAfterChange.current = true;
+    setState((s) => ({ ...s, spots: withSpot(s.spots, spot) }));
+  }, []);
+
+  const removeLocal = useCallback((id: string) => {
+    saveAfterChange.current = true;
+    setState((s) => ({ ...s, spots: s.spots.filter((spot) => spot.id !== id) }));
+  }, []);
+
+  useEffect(() => {
+    if (!saveAfterChange.current) return;
+    saveAfterChange.current = false;
+    void saveCachedSpots(state.spots);
+  }, [state.spots]);
+
+  const value = useMemo(
+    () => ({ ...state, refresh, saveLocal, removeLocal }),
+    [state, refresh, saveLocal, removeLocal],
+  );
   return <SpotsContext.Provider value={value}>{children}</SpotsContext.Provider>;
 }
 

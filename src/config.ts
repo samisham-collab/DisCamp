@@ -7,6 +7,7 @@ export const STORAGE_KEYS = {
   rig: 'discamp.rig.v1',
   prefs: 'discamp.prefs.v1',
   spotsCache: 'discamp.spots-cache.v1',
+  spotDraft: 'discamp.spot-draft.v1',
 } as const;
 
 /** Where the map opens before any spots load: Goodland, Kansas. */

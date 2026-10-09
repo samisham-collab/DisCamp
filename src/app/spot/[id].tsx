@@ -4,14 +4,25 @@
 
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { ClearanceGauge } from '@/components/ClearanceGauge';
 import { CostMeter } from '@/components/CostMeter';
 import { FitBanner } from '@/components/Fit';
 import { siteTypeLabel } from '@/components/SpotSummary';
 import { ActionButton, Banner, Button, Card, Chip, EmptyState, Row, SectionTitle } from '@/components/ui';
-import { useSpot } from '@/data/spots';
+import { useSpot, useSpots } from '@/data/spots';
+import { deleteSpot } from '@/data/spotWrites';
+import { useAuth } from '@/lib/auth';
 import { costForRig, describeRvFee, formatFee, formatHookups } from '@/lib/cost';
 import { SPOT_DRIVETRAINS, fitFor, isTowing, tierInfo } from '@/lib/fit';
 import {
@@ -26,6 +37,7 @@ import { callPhone, copyCoordinates, openDirections, openWebLink, shareSpot } fr
 import { useLocation } from '@/lib/location';
 import { useRig } from '@/lib/rig';
 import { rigDisplayName } from '@/lib/rigModel';
+import { formatDay } from '@/lib/time';
 import type { Coordinates, Reservations, Rig, Spot } from '@/types';
 import { colors, TOUCH_TARGET } from '@/theme';
 
@@ -91,7 +103,10 @@ export default function SpotScreen() {
   const { spot, loading } = useSpot(id);
   const { rig } = useRig();
   const { coords } = useLocation();
+  const { user, client } = useAuth();
+  const { removeLocal } = useSpots();
   const [copied, markCopied] = useCopiedFlag();
+  const [deleting, setDeleting] = useState(false);
 
   if (!spot) {
     return (
@@ -122,6 +137,35 @@ export default function SpotScreen() {
   const f = spot.fit;
   const distance = coords ? distanceFrom(coords, spot) : null;
 
+  const mine = user != null && spot.createdBy === user.id;
+  const addedOn = formatDay(spot.createdAt);
+
+  const onDelete = () => {
+    Alert.alert('Delete this spot?', 'It comes off the map for everyone. This can’t be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          if (!client) return;
+          setDeleting(true);
+          void deleteSpot(client, spot.id).then(
+            () => {
+              removeLocal(spot.id);
+              AccessibilityInfo.announceForAccessibility('Spot deleted');
+              if (router.canGoBack()) router.back();
+              else router.replace('/');
+            },
+            (error: unknown) => {
+              setDeleting(false);
+              Alert.alert("Couldn't delete the spot", error instanceof Error ? error.message : 'Please try again.');
+            },
+          );
+        },
+      },
+    ]);
+  };
+
   const onCopy = async () => {
     if (await copyCoordinates(spot)) {
       markCopied();
@@ -145,15 +189,47 @@ export default function SpotScreen() {
           {reportsLabel(spot.reportCount)}
         </Text>
         {distance ? <Text style={styles.meta}>{distance}</Text> : null}
+        {spot.createdBy ? (
+          <Text style={styles.meta}>
+            Added by {mine ? 'you' : (spot.addedBy ?? 'a camper')}
+            {addedOn ? ` on ${addedOn}` : ''}
+          </Text>
+        ) : null}
       </View>
 
       {!spot.verified && (
         <Banner
           tone="warning"
           icon="information-circle-outline"
-          message='Starter info from public listings, not yet confirmed on site. Items marked "Not reported" need a camper to check.'
+          message={
+            spot.createdBy
+              ? 'Added by a camper, not yet confirmed by others. Items marked "Not reported" need a camper to check.'
+              : 'Starter info from public listings, not yet confirmed on site. Items marked "Not reported" need a camper to check.'
+          }
         />
       )}
+
+      {mine ? (
+        <Card>
+          <SectionTitle>Your spot</SectionTitle>
+          <Text style={styles.body}>You added this spot. Fix anything that&apos;s wrong or missing.</Text>
+          <Button
+            label="Edit spot"
+            icon="create-outline"
+            kind="secondary"
+            onPress={() => router.push({ pathname: '/spot/edit/[id]', params: { id: spot.id } })}
+          />
+          <Pressable
+            onPress={onDelete}
+            disabled={deleting}
+            accessibilityRole="button"
+            accessibilityState={{ busy: deleting, disabled: deleting }}
+            style={styles.deleteButton}
+          >
+            {deleting ? <ActivityIndicator color={colors.red} /> : <Text style={styles.deleteText}>Delete spot</Text>}
+          </Pressable>
+        </Card>
+      ) : null}
 
       <FitBanner fit={fit} rigName={rigDisplayName(rig)} />
 
@@ -261,6 +337,8 @@ export default function SpotScreen() {
 }
 
 const styles = StyleSheet.create({
+  deleteButton: { minHeight: TOUCH_TARGET, alignItems: 'center', justifyContent: 'center' },
+  deleteText: { fontSize: 15, fontWeight: '700', color: colors.red, textDecorationLine: 'underline' },
   content: { padding: 16, gap: 14, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   titleBlock: { gap: 4 },

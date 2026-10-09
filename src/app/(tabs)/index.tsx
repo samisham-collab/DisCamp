@@ -22,6 +22,7 @@ import { SpotListItem, SpotSummaryCard } from '@/components/SpotSummary';
 import { Banner, EmptyState, IconButton, Pills, Segmented } from '@/components/ui';
 import { DEFAULT_REGION } from '@/config';
 import { useSpots } from '@/data/spots';
+import { useAuth } from '@/lib/auth';
 import { regionForCoordinates } from '@/lib/geo';
 import { selectionFeedback } from '@/lib/haptics';
 import { useLocation } from '@/lib/location';
@@ -59,6 +60,7 @@ export default function ExploreScreen() {
   const fitRig = useFitRig();
   const { prefs, toggleFilter, clearFilters, setView, setMapType } = usePrefs();
   const { coords, status: locationStatus, locating, locate } = useLocation();
+  const { status: authStatus } = useAuth();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheetHeight, setSheetHeight] = useState(0);
@@ -136,6 +138,12 @@ export default function ExploreScreen() {
     AccessibilityInfo.announceForAccessibility(countLabel(applyFilters(allRows, next).length, next.length > 0));
   };
 
+  // Adding a spot needs an account: sign in first, then straight to the form.
+  const onAddSpot = () => {
+    if (authStatus === 'signed-in') router.push('/spot/new');
+    else router.push({ pathname: '/sign-in', params: { next: '/spot/new' } });
+  };
+
   const onLocate = async () => {
     const found = await locate();
     if (found) mapRef.current?.centerOn(found);
@@ -161,14 +169,27 @@ export default function ExploreScreen() {
           <Text style={styles.title} accessibilityRole="header">
             DisCamp
           </Text>
-          <Pressable
-            onPress={() => setLegendOpen(true)}
-            accessibilityRole="button"
-            accessibilityLabel="What the colors mean"
-            style={styles.headerIcon}
-          >
-            <Ionicons name="help-circle-outline" size={26} color={colors.pine} />
-          </Pressable>
+          <View style={styles.headerActions}>
+            {authStatus !== 'disabled' && (
+              <Pressable
+                onPress={onAddSpot}
+                accessibilityRole="button"
+                accessibilityLabel="Add a spot"
+                style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
+              >
+                <Ionicons name="add" size={20} color="#FFFFFF" />
+                <Text style={styles.addText}>Add spot</Text>
+              </Pressable>
+            )}
+            <Pressable
+              onPress={() => setLegendOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="What the colors mean"
+              style={styles.headerIcon}
+            >
+              <Ionicons name="help-circle-outline" size={26} color={colors.pine} />
+            </Pressable>
+          </View>
         </View>
 
         <Pressable
@@ -337,6 +358,17 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4 },
   title: { fontSize: 28, fontWeight: '800', color: colors.ink, letterSpacing: 0.3 },
   headerIcon: { width: TOUCH_TARGET, height: TOUCH_TARGET, alignItems: 'center', justifyContent: 'center' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: TOUCH_TARGET,
+    paddingHorizontal: 12,
+    borderRadius: radius.pill,
+    backgroundColor: colors.pine,
+  },
+  addText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
   rigChip: {
     flexDirection: 'row',
     alignItems: 'center',

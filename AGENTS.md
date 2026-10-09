@@ -10,6 +10,9 @@ Community map of campsites that checks whether a camper's rig can reach and fit 
 - Validate anything from outside the code (server, storage, links) with zod at the boundary. Screens can then trust their data.
 - Native code paths (maps, location, storage) sit behind small modules with test stand-ins in `test/mocks/` and `src/lib/__mocks__/`.
 - Tests fail on unexpected `console.warn`/`console.error`. If a test expects a log, silence it with `jest.spyOn(console, 'warn').mockImplementation(() => undefined)`.
+- Accounts and writes: the database decides who may change what (`supabase/migrations/0003_accounts.sql`: column grants, row-level security, the `guard_spot_write` trigger). The app checks first for friendlier messages, but never relies on that. New writable columns need a grant there and a test in `__tests__/database.test.ts`.
+- Screens get the Supabase client from `useAuth().client` (one shared client via `ServerProvider`). Tests use the in-memory fake in `test/fakeSupabase.ts`, which follows the same ownership rules; connect it with `connectServer(backend)` from `test/helpers.ts`.
+- Sign-in uses PKCE and keeps the session in the keychain (`src/lib/secureStorage.ts`). Never log tokens, codes or email addresses.
 - Run `npm run check` (types, lint, formatting, tests with coverage thresholds) before calling a change done.
 
 This is an Expo/React Native mobile application. Prioritize mobile-first patterns, performance, and cross-platform compatibility.

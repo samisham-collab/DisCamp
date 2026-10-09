@@ -1,6 +1,6 @@
 {
   "name": "discamp",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "main": "expo-router/entry",
   "engines": {
@@ -27,17 +27,21 @@
     "@expo/vector-icons": "^15.0.2",
     "@supabase/supabase-js": "^2.117.2",
     "expo": "~57.0.27",
+    "expo-apple-authentication": "~57.0.2",
     "expo-asset": "~57.0.19",
     "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.21",
+    "expo-crypto": "~57.0.3",
     "expo-font": "~57.0.4",
     "expo-haptics": "~57.0.3",
     "expo-linking": "~57.0.12",
     "expo-location": "~57.0.20",
     "expo-router": "~57.0.25",
+    "expo-secure-store": "~57.0.4",
     "expo-splash-screen": "~57.0.9",
     "expo-sqlite": "~57.0.4",
     "expo-status-bar": "~57.0.1",
+    "expo-web-browser": "~57.0.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
@@ -90,10 +94,10 @@
     ],
     "coverageThreshold": {
       "global": {
-        "statements": 96,
-        "branches": 86,
-        "functions": 94,
-        "lines": 97
+        "statements": 97,
+        "branches": 89,
+        "functions": 96,
+        "lines": 98
       }
     }
   }

@@ -74,6 +74,12 @@ export interface Spot extends Coordinates {
   verified: boolean;
   reportCount: number;
   sources: SourceLink[];
+  /** Spots added in the app: the camper's account id. Starter spots have none. */
+  createdBy?: string;
+  /** Display name of the camper who added it, if they still have an account. */
+  addedBy?: string;
+  /** When a camper added it (ISO time). */
+  createdAt?: string;
 }
 
 export interface Rig {

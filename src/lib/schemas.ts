@@ -93,6 +93,9 @@ export const spotSchema: z.ZodType<Spot> = z.object({
   verified: z.boolean(),
   reportCount: z.number().int().min(0),
   sources: z.array(z.object({ label: shortText(200), url: webUrl })).max(10),
+  createdBy: z.string().uuid().optional(),
+  addedBy: shortText(40).optional(),
+  createdAt: z.string().datetime({ offset: true }).optional(),
 });
 
 /** Postgres `numeric` can arrive as a string; accept both. */
@@ -126,6 +129,45 @@ function cleanList(values: readonly unknown[] | null, maxItems: number, maxLengt
     .map((v) => cleanText(v, maxLength))
     .filter((v): v is string => v != null)
     .slice(0, maxItems);
+}
+
+const uuid = z.string().uuid();
+const timestamp = z.string().datetime({ offset: true });
+
+/**
+ * A Postgres time as an ISO time. Accepts the JSON form PostgREST sends
+ * ("2026-10-07T12:00:00.123456+00:00") and the SQL form ("2026-10-07
+ * 12:00:00+00"). Extra fraction digits are cut to milliseconds, which every
+ * phone's date parser understands.
+ */
+export function toIsoTime(text: string): string | undefined {
+  const normalized = text
+    .trim()
+    .replace(' ', 'T')
+    .replace(/(\.\d{3})\d+/, '$1')
+    .replace(/([+-]\d{2})$/, '$1:00');
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
+/**
+ * Who added a spot in the app, and when. Starter spots (no owner) get none of
+ * these. A bad name or time is dropped rather than hiding the spot; Postgres
+ * sends times like "2026-10-07 10:01:00+00", which become ISO times here.
+ */
+function addedByCamper(
+  createdBy: string | null | undefined,
+  addedBy: string | null | undefined,
+  createdAt: string | null | undefined,
+): Pick<Spot, 'createdBy' | 'addedBy' | 'createdAt'> {
+  if (!createdBy || !uuid.safeParse(createdBy).success) return {};
+  const name = cleanText(addedBy, 40);
+  const at = createdAt ? toIsoTime(createdAt) : undefined;
+  return {
+    createdBy,
+    ...(name ? { addedBy: name } : {}),
+    ...(at && timestamp.safeParse(at).success ? { createdAt: at } : {}),
+  };
 }
 
 /**
@@ -166,6 +208,10 @@ export const spotRowSchema = z
     verified: z.boolean(),
     report_count: z.number(),
     sources: z.unknown(),
+    // Added in migration 0003. Optional so a server that hasn't run it yet still works.
+    created_by: z.string().nullable().optional(),
+    added_by: z.string().nullable().optional(),
+    created_at: z.string().nullable().optional(),
   })
   .transform((r) => {
     const fee = (v: number | null) => (v != null && v >= 0 && v <= 10_000 ? v : null);
@@ -209,6 +255,7 @@ export const spotRowSchema = z
         .map((src) => sourceSchema.safeParse(src))
         .flatMap((res) => (res.success ? [res.data] : []))
         .slice(0, 10),
+      ...addedByCamper(r.created_by, r.added_by, r.created_at),
     };
   })
   .pipe(spotSchema);

@@ -2,7 +2,9 @@
 
 A free, community-built map of campsites that tells you whether your rig can reach a spot, whether it fits, and what it costs to stay.
 
-**Version 1.2** adds five starter spots from public listings, for six in all. See [CHANGELOG.md](CHANGELOG.md) for every version.
+**Version 1.3** adds accounts and camper-added spots: sign in with Apple, Google, Microsoft or GitHub, then add campsites, and edit or delete the ones you added. Browsing still needs no account. See [CHANGELOG.md](CHANGELOG.md) for every version.
+
+It ships with six starter spots from public listings:
 
 | Spot                                | Where                                               | Type       |
 | ----------------------------------- | --------------------------------------------------- | ---------- |
@@ -24,7 +26,10 @@ A free, community-built map of campsites that tells you whether your rig can rea
 - **Works offline**: the last spots loaded are saved on the phone. If the server can't be reached, a banner says so and offers Retry.
 - **Location only when asked**: DisCamp never asks for location on launch. Tap "Show my location" or "Sort by distance" when you want distances.
 - **Screen readers**: every control has a label and role, and filter counts and connection problems are read out.
-- Works with **no backend**. Supabase is optional (see below).
+- **Sign in** with Apple, Google, Microsoft or GitHub (Account tab, or "Add spot"). Only needed to add spots.
+- **Add a spot**: drop a pin on a satellite map (or use your location, or paste GPS), then rate access, who fits and cost. Only the name, land manager and location are required; anything else can stay "Not sure". The draft is saved as you type. New spots show for everyone right away, marked "not yet confirmed".
+- **Your spots**: edit or delete the spots you added (deleting stops once other campers have reported on a spot). The Account tab lists them, and lets you change your display name, sign out or delete your account.
+- Works with **no backend**: then it shows the starter spots, and sign-in and adding spots are turned off. Supabase is optional (see below).
 
 ## Run it on your phone (free)
 
@@ -90,12 +95,51 @@ update public.spots set verified = true where id = 'smoky-gardens';
 2. Open **SQL Editor** and run these files in order, each pasted in and run on its own:
    1. `supabase/migrations/0001_init.sql` creates the `spots` table.
    2. `supabase/migrations/0002_harden.sql` makes it read-only for the app and adds data checks.
-   3. `supabase/seed.sql` adds the starter spots.
+   3. `supabase/migrations/0003_accounts.sql` adds accounts: profiles, who added each spot, and exactly what signed-in campers may change.
+   4. `supabase/seed.sql` adds the starter spots.
+
+   Already ran 0001 and 0002 for an earlier version? Run just 0003, then the seed.
+
 3. Copy your **Project URL** and **publishable key** from the project's API settings.
 4. For your phone: `cp .env.example .env`, put both values in `.env`, and restart `npx expo start`.
 5. For builds made on EAS: `.env` isn't uploaded, so add both values on expo.dev (your project > **Environment variables**) for the **preview** and **production** environments. Without them, a build quietly uses the starter spots only.
 
 The app then reads spots from the database. If it can't reach it, it shows the last saved copy (or the starter spots) and a banner with Retry. Never put the secret (service role) key in the app or in `.env`.
+
+To let campers sign in and add spots, set up sign-in next.
+
+## Sign-in
+
+Supabase Auth handles sign-in. The app opens each provider in a secure browser sheet (Apple uses the built-in sheet on iPhone) and keeps the session in the phone's keychain. Set up the providers you want; each takes about 10 minutes.
+
+**1. Tell Supabase where to send campers back.** In Supabase: **Authentication > URL Configuration > Redirect URLs**, add:
+
+- `discamp://auth/callback` (the app)
+- `exp://**` (Expo Go, for testing)
+
+Without these, sign-in opens and then quietly comes back as "cancelled".
+
+**2. Switch on each provider** in **Authentication > Sign In / Providers**. Every provider asks for a callback URL: use `https://<your-project-ref>.supabase.co/auth/v1/callback` (Supabase shows it on the provider's page).
+
+- **GitHub** (easiest, free): GitHub > Settings > Developer settings > OAuth Apps > **New OAuth App**. Callback URL: the Supabase one. Copy the Client ID, generate a client secret, and paste both into Supabase's GitHub provider.
+- **Google** (free): in [Google Cloud Console](https://console.cloud.google.com), set up the **OAuth consent screen** (External), then **Credentials > Create credentials > OAuth client ID > Web application**. Authorized redirect URI: the Supabase one. Paste the client ID and secret into Supabase's Google provider.
+- **Microsoft** (free; Supabase calls it **Azure**): in the [Azure portal](https://portal.azure.com), **Microsoft Entra ID > App registrations > New registration**. Supported account types: **Accounts in any organizational directory and personal Microsoft accounts**. Redirect URI (Web): the Supabase one. Under **Certificates & secrets**, make a client secret and copy its **Value**. In Supabase's Azure provider, paste the Application (client) ID and the secret, and leave the tenant URL empty. Recommended: under **Token configuration**, add the optional claim `xms_edov`, so Supabase can tell whether the email address is verified.
+- **Apple** (needs the $99/year Apple Developer Program): in Supabase's Apple provider, put your app's bundle ID under **Client IDs** (replace the placeholder `org.discamp.app` in `app.json` with your own first), plus `host.exp.Exponent` to test in Expo Go. That's all iPhone needs. Sign in with Apple on Android goes through the browser and also needs a Services ID and a signing key; Supabase's Apple page walks through it. That secret expires every 6 months, so set a reminder.
+
+**3. Show only the buttons you've set up.** Until a provider is on, hide its button: in `.env` (and on expo.dev for builds), set for example `EXPO_PUBLIC_AUTH_PROVIDERS=google,microsoft,github`. Leave it empty for all four.
+
+**Before the App Store:**
+
+- Apple requires Sign in with Apple in any app that offers Google, Microsoft or GitHub sign-in (App Review guideline 4.8), so switch Apple on before submitting.
+- Account deletion is in the app (Account > Delete account), as Apple requires. Apple also asks apps to revoke a camper's Sign in with Apple tokens when they delete their account. That needs a small server function holding the Apple key; it's on the backlog for Sprint 6, before the first App Store submission.
+
+**What the database allows** (enforced by `0003_accounts.sql`, checked by the database tests):
+
+- Anyone can read spots. Only signed-in campers can add them, at most 20 a day each.
+- Campers can edit spots they added, and delete them until another camper has reported on them. Starter spots and other campers' spots can't be changed from the app. An edit clears a spot's "confirmed" status.
+- The server sets who added a spot, when, whether it's confirmed, and its report count. The app can't.
+- Display names show only on spots a camper has added. Emails are never shown to anyone else.
+- Deleting an account removes the sign-in and the name. Spots it added stay, without a name.
 
 ## Build for TestFlight and Android
 
@@ -112,15 +156,22 @@ Builds run on Expo's servers with EAS (`eas.json` has a **preview** and a **prod
 src/
   app/                      Screens (Expo Router: every file here is a screen)
     _layout.tsx             Providers, splash screen, crash screen, main stack
-    (tabs)/_layout.tsx      Bottom tabs: Explore, My Rig
-    (tabs)/index.tsx        Explore: map or list, filters, summary card
+    (tabs)/_layout.tsx      Bottom tabs: Explore, My Rig, Account
+    (tabs)/index.tsx        Explore: map or list, filters, summary card, "Add spot"
     (tabs)/rig.tsx          My Rig
-    spot/[id].tsx           Spot page
+    (tabs)/account.tsx      Account: name, your spots, sign out, delete account
+    spot/[id].tsx           Spot page (edit and delete if you added it)
+    spot/new.tsx            Add a spot
+    spot/edit/[id].tsx      Edit a spot you added
+    sign-in.tsx             Sign in with Apple, Google, Microsoft or GitHub
+    auth/callback.tsx       Where a sign-in link lands in a browser
+    +native-intent.tsx      Catches the sign-in link on phones
     +not-found.tsx          Page for broken links
   components/               Map, pins, cost meter, clearance gauge, cards, shared UI
   data/seedSpots.ts         Starter spots (6, from public listings)
   data/spots.tsx            Shares spots with every screen: starter → saved → server
   data/spotsRepository.ts   Server queries and the offline copy
+  data/spotWrites.ts        Adding, editing and deleting spots on the server
   lib/fit.ts                Rig-fit rules and the C1–C7 clearance tiers
   lib/cost.ts               Cost meter levels and the fee that applies to your rig
   lib/geo.ts                Distances, directions, map regions
@@ -129,6 +180,10 @@ src/
   lib/location.tsx          Location, only when asked
   lib/usePersistentState.ts Saved-on-phone state with safe loading and saving
   lib/links.ts              Directions, share, copy and call
+  lib/auth.tsx              Who's signed in; sign in, sign out, rename, delete account
+  lib/authFlows.ts          The sign-in steps for each provider (PKCE, Apple nonce)
+  lib/secureStorage.ts      Keeps the sign-in session in the phone's keychain
+  lib/spotDraft.ts          The add/edit form as data: checks and conversions
   config.ts                 App-wide settings (timeouts, storage keys)
   theme.ts                  Colors and sizes
 supabase/migrations/        Database schema, one numbered file per change
@@ -156,7 +211,7 @@ test/                       Test helpers and stand-ins for native modules
 
 - **Maps:** v1 uses `react-native-maps` (Apple Maps on iPhone, Google Maps on Android) because it runs in Expo Go for free. The plan's MapLibre + OpenFreeMap switch comes with offline maps; only `src/components/SpotMap.tsx` touches the map.
 - **Lots of spots:** the app loads every spot in one request, and Supabase returns at most 1,000 rows per request. Before you get close, switch to loading spots for the visible map area (the app logs a warning if it ever hits the limit).
-- **Next up (Sprint 2):** sign-in and adding a spot from the app. The product plan's MVP backlog lists the rest, sprint by sprint.
+- **Next up (Sprint 3):** photos, "Still good?" check-ins and change reports. The product plan's MVP backlog lists the rest, sprint by sprint.
 
 ## Put it on GitHub
 
@@ -164,7 +219,7 @@ test/                       Test helpers and stand-ins for native modules
 cd ~/Documents/DisCamp
 git init
 git add .
-git commit -m "DisCamp v1.2"
+git commit -m "DisCamp v1.3"
 ```
 
 Then create an empty repo on GitHub and follow its "push an existing repository" steps. CI starts running on the first push.

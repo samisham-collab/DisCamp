@@ -30,7 +30,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-function parseSaved<T>(key: string, schema: z.ZodType<T>, raw: string | null): T | null {
+function parseSaved<T>(key: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, raw: string | null): T | null {
   if (raw == null) return null;
 
   let json: unknown;
@@ -58,7 +58,11 @@ export interface ReadOptions<T> {
   onLateValue?: (value: T) => void;
 }
 
-export async function readJson<T>(key: string, schema: z.ZodType<T>, options: ReadOptions<T> = {}): Promise<T | null> {
+export async function readJson<T>(
+  key: string,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  options: ReadOptions<T> = {},
+): Promise<T | null> {
   let read: Promise<string | null> | undefined;
   let raw: string | null;
   try {

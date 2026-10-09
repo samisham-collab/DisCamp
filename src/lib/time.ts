@@ -15,3 +15,11 @@ export function timeAgo(iso: string | null, now: Date = new Date()): string | nu
   const days = Math.floor(diff / DAY);
   return days === 1 ? '1 day ago' : `${days} days ago`;
 }
+
+/** "Oct 7, 2026". Null for a missing or unreadable time. */
+export function formatDay(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}

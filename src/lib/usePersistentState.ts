@@ -17,7 +17,7 @@ type Updater<T> = T | ((prev: T) => T);
  */
 export function usePersistentState<T>(
   key: string,
-  schema: z.ZodType<T>,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
   initial: T,
   normalize: (value: T) => T,
 ): [value: T, update: (next: Updater<T>) => void, ready: boolean] {

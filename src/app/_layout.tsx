@@ -10,9 +10,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui';
 import { SpotsProvider } from '@/data/spots';
+import { AuthProvider } from '@/lib/auth';
 import { LocationProvider } from '@/lib/location';
 import { log } from '@/lib/log';
 import { PrefsProvider, usePrefs } from '@/lib/prefs';
+import { ServerProvider } from '@/lib/server';
 import { RigProvider, useRig } from '@/lib/rig';
 import { colors } from '@/theme';
 
@@ -66,6 +68,10 @@ function AppStack() {
       <Stack screenOptions={SCREEN_OPTIONS}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="spot/[id]" options={{ title: 'Spot details', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="spot/new" options={{ title: 'Add a spot', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="spot/edit/[id]" options={{ title: 'Edit spot', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="sign-in" options={{ title: 'Sign in', presentation: 'modal' }} />
+        <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" options={{ title: 'Not found' }} />
       </Stack>
     ),
@@ -84,15 +90,19 @@ function AppStack() {
 
 export default function RootLayout() {
   return (
-    <RigProvider>
-      <PrefsProvider>
-        <LocationProvider>
-          <SpotsProvider>
-            <AppStack />
-          </SpotsProvider>
-        </LocationProvider>
-      </PrefsProvider>
-    </RigProvider>
+    <ServerProvider>
+      <RigProvider>
+        <PrefsProvider>
+          <LocationProvider>
+            <AuthProvider>
+              <SpotsProvider>
+                <AppStack />
+              </SpotsProvider>
+            </AuthProvider>
+          </LocationProvider>
+        </PrefsProvider>
+      </RigProvider>
+    </ServerProvider>
   );
 }
 

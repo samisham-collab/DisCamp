@@ -1,4 +1,4 @@
-// Bottom tabs: Explore and My Rig. Cleanups and Profile arrive in later sprints.
+// Bottom tabs: Explore, My Rig and Account. Cleanups arrive in a later sprint.
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router/js-tabs';
@@ -27,6 +27,13 @@ export default function TabsLayout() {
         options={{
           title: 'My Rig',
           tabBarIcon: ({ color, size }) => <Ionicons name="car-sport-outline" color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="account"
+        options={{
+          title: 'Account',
+          tabBarIcon: ({ color, size }) => <Ionicons name="person-circle-outline" color={color} size={size} />,
         }}
       />
     </Tabs>

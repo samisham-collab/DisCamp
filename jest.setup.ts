@@ -16,6 +16,15 @@ jest.mock('@/lib/supabase', () => ({
 
 jest.mock('react-native-maps', () => jest.requireActual('./test/mocks/reactNativeMaps'));
 jest.mock('expo-location', () => jest.requireActual('./test/mocks/expoLocation'));
+jest.mock('expo-secure-store', () => jest.requireActual('./test/mocks/expoSecureStore'));
+jest.mock('expo-web-browser', () => jest.requireActual('./test/mocks/expoWebBrowser'));
+jest.mock('expo-apple-authentication', () => jest.requireActual('./test/mocks/expoAppleAuthentication'));
+jest.mock('expo-crypto', () => jest.requireActual('./test/mocks/expoCrypto'));
+// Expo builds sign-in redirect links from app.json, which tests don't load.
+jest.mock('expo-linking', () => ({
+  ...jest.requireActual<Record<string, unknown>>('expo-linking'),
+  createURL: jest.fn((path: string) => `discamp://${path}`),
+}));
 jest.mock('expo-haptics', () => ({ selectionAsync: jest.fn(() => Promise.resolve()) }));
 jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn(() => Promise.resolve(true)) }));
 jest.mock('expo-splash-screen', () => ({
@@ -40,6 +49,7 @@ const unexpectedLogs: string[] = [];
 beforeEach(() => {
   const { kvStore } = jest.requireMock<{ kvStore: typeof MemoryKvStore }>('@/lib/kvStore');
   kvStore.reset();
+  jest.requireMock<{ store: Map<string, string> }>('expo-secure-store').store.clear();
 
   unexpectedLogs.length = 0;
   for (const level of ['error', 'warn'] as const) {
