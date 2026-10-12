@@ -45,3 +45,6 @@ yarn-error.*
 
 # test coverage reports
 coverage/
+
+# Supabase CLI working files
+supabase/.temp/

@@ -1,6 +1,12 @@
 import { describe, expect, it, jest } from '@jest/globals';
 
-import { AUTH_PROVIDERS, enabledProviders, parseProviderList, providerLabel } from '@/lib/authProviders';
+import {
+  appleRemovalSteps,
+  AUTH_PROVIDERS,
+  enabledProviders,
+  parseProviderList,
+  providerLabel,
+} from '@/lib/authProviders';
 import { checkDisplayName } from '@/lib/displayName';
 import { safeNext } from '@/lib/navigation';
 import { formatDay } from '@/lib/time';
@@ -33,6 +39,12 @@ describe('sign-in providers', () => {
     expect(providerLabel('email')).toBe('email');
     expect(providerLabel(null)).toBe('email');
   });
+
+  it('explains how to finish removing DisCamp from an Apple Account', () => {
+    expect(appleRemovalSteps('ios')).toMatch(/Open Settings, tap your name, then Sign in with Apple/);
+    expect(appleRemovalSteps('android')).toMatch(/account\.apple\.com/);
+    expect(appleRemovalSteps()).toBe(appleRemovalSteps('ios'));
+  });
 });
 
 describe('display names', () => {
@@ -50,6 +62,14 @@ describe('display names', () => {
       message: "Use a name, not an email address (no '@').",
     });
   });
+
+  it('rejects names with words DisCamp doesn’t allow', () => {
+    expect(checkDisplayName('Shit Head')).toEqual({
+      ok: false,
+      message: "Pick a name without words that aren't allowed on DisCamp.",
+    });
+    expect(checkDisplayName('Hooker Creek Hiker')).toEqual({ ok: true, name: 'Hooker Creek Hiker' });
+  });
 });
 
 describe('after sign-in', () => {
@@ -57,6 +77,13 @@ describe('after sign-in', () => {
     expect(safeNext('/spot/new')).toBe('/spot/new');
     expect(safeNext(['/account', '/x'])).toBe('/account');
     expect(safeNext('/spot/edit/camper-spot-1')).toBe('/spot/edit/camper-spot-1');
+    expect(safeNext('/spot/smoky-gardens')).toBe('/spot/smoky-gardens');
+    expect(safeNext('/report/spot/smoky-gardens')).toBe('/report/spot/smoky-gardens');
+    expect(safeNext('/report/camper/22222222-2222-4222-8222-222222222222')).toBe(
+      '/report/camper/22222222-2222-4222-8222-222222222222',
+    );
+    expect(safeNext('/report/camper/not-an-id')).toBeNull();
+    expect(safeNext('/report/other/x')).toBeNull();
     expect(safeNext('https://evil.example')).toBeNull();
     expect(safeNext('/spot/edit/../../x')).toBeNull();
     expect(safeNext('//evil.example/spot/new')).toBeNull();

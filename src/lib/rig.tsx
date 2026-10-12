@@ -6,7 +6,7 @@ import { createContext, useCallback, useContext, useMemo, type ReactNode } from 
 import { STORAGE_KEYS } from '../config';
 import type { Rig } from '../types';
 import type { FitRig } from './fit';
-import { DEFAULT_RIG, normalizeRig } from './rigModel';
+import { DEFAULT_RIG, changeRig, normalizeRig } from './rigModel';
 import { storedRigSchema } from './schemas';
 import { usePersistentState } from './usePersistentState';
 
@@ -26,7 +26,7 @@ export function RigProvider({ children }: { children: ReactNode }) {
   const [rig, update, ready] = usePersistentState(STORAGE_KEYS.rig, storedRigSchema, DEFAULT_RIG, normalizeRig);
 
   const setRig = useCallback((next: Rig) => update(next), [update]);
-  const updateRig = useCallback((patch: Partial<Rig>) => update((prev) => ({ ...prev, ...patch })), [update]);
+  const updateRig = useCallback((patch: Partial<Rig>) => update((prev) => changeRig(prev, patch)), [update]);
 
   const value = useMemo(() => ({ rig, ready, setRig, updateRig }), [rig, ready, setRig, updateRig]);
   return <RigContext.Provider value={value}>{children}</RigContext.Provider>;

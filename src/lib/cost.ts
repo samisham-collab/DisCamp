@@ -1,7 +1,7 @@
 // Cost meter: what it costs to stay at a spot, per night.
 // Trailers and big rigs are priced on the RV / hookup fee when a spot has one.
 
-import type { Hookup, Rig, Spot, SpotCost } from '../types';
+import type { Hookup, Rig, Spot } from '../types';
 import { isTowing } from './fit';
 
 export type CostLevel = 0 | 1 | 2 | 3;
@@ -29,15 +29,25 @@ export interface RigCost {
 }
 
 /**
- * The nightly fee that applies to this rig at this spot. Trailers and big rigs
- * pay the RV site fee. When a spot has hookup sites but nobody has reported
- * their fee, the cost is unknown: the standard (often free) fee would be a guess.
+ * The spot's hookups as far as anyone knows: dispersed spots have none by
+ * definition; elsewhere null means nobody has said yet.
  */
-export function costForRig(spot: Pick<Spot, 'cost'>, rig: Pick<Rig, 'setup'>): RigCost {
-  const { nightlyFeeUsd, rvFeeUsd, hookups } = spot.cost;
+export function knownHookups(spot: Pick<Spot, 'cost' | 'siteType'>): Hookup[] | null {
+  return spot.cost.hookups ?? (spot.siteType === 'dispersed' ? [] : null);
+}
+
+/**
+ * The nightly fee that applies to this rig at this spot. Trailers and big rigs
+ * pay the RV site fee. When a spot has hookup sites (or might: nobody has said)
+ * but nobody has reported their fee, the cost is unknown: the standard (often
+ * free) fee would be a guess.
+ */
+export function costForRig(spot: Pick<Spot, 'cost' | 'siteType'>, rig: Pick<Rig, 'setup'>): RigCost {
+  const { nightlyFeeUsd, rvFeeUsd } = spot.cost;
   if (isTowing(rig)) {
     if (rvFeeUsd != null) return { feeUsd: rvFeeUsd, level: costLevel(rvFeeUsd), basis: 'RV site' };
-    if (hookups.length > 0) return { feeUsd: null, level: null, basis: 'RV site' };
+    const hookups = knownHookups(spot);
+    if (hookups == null || hookups.length > 0) return { feeUsd: null, level: null, basis: 'RV site' };
   }
   return { feeUsd: nightlyFeeUsd, level: costLevel(nightlyFeeUsd), basis: 'standard site' };
 }
@@ -49,10 +59,11 @@ export function formatFee(feeUsd: number | null): string {
 }
 
 /** What to show for the RV site fee, which may be missing for different reasons. */
-export function describeRvFee(cost: Pick<SpotCost, 'nightlyFeeUsd' | 'rvFeeUsd' | 'hookups'>): string {
-  if (cost.rvFeeUsd != null) return formatFee(cost.rvFeeUsd);
+export function describeRvFee(spot: Pick<Spot, 'cost' | 'siteType'>): string {
+  const { rvFeeUsd, nightlyFeeUsd } = spot.cost;
+  if (rvFeeUsd != null) return formatFee(rvFeeUsd);
   // Hookup sites usually cost extra, so don't assume they match the standard fee.
-  if (cost.hookups.length === 0 && cost.nightlyFeeUsd != null) return 'Same as standard';
+  if (knownHookups(spot)?.length === 0 && nightlyFeeUsd != null) return 'Same as standard';
   return 'Not reported';
 }
 
@@ -62,7 +73,8 @@ const HOOKUP_LABELS: Record<Hookup, string> = {
   sewer: 'Sewer',
 };
 
-export function formatHookups(hookups: Hookup[]): string {
+export function formatHookups(hookups: Hookup[] | null): string {
+  if (hookups == null) return 'Not reported';
   if (!hookups.length) return 'None';
   return hookups.map((h) => HOOKUP_LABELS[h]).join(', ');
 }

@@ -87,6 +87,12 @@ describe('timeAgo', () => {
     expect(timeAgo('2026-10-05T11:00:00.000Z', now)).toBe('1 day ago');
     expect(timeAgo('2026-10-01T12:00:00.000Z', now)).toBe('5 days ago');
   });
+
+  it('doesn\'t call a time in the future "just now"', () => {
+    // A few seconds of clock difference is fine; days ahead means the clock was off.
+    expect(timeAgo('2026-10-06T12:00:20.000Z', now)).toBe('just now');
+    expect(timeAgo('2026-10-09T12:00:00.000Z', now)).toBeNull();
+  });
 });
 
 describe('spotsStatus', () => {

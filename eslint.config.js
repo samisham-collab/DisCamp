@@ -10,7 +10,15 @@ const tseslint = require('typescript-eslint');
 module.exports = defineConfig([
   expoConfig,
   {
-    ignores: ['dist/*', '.expo/*', 'coverage/*', 'android/*', 'ios/*', 'expo-env.d.ts'],
+    ignores: [
+      'dist/*',
+      '.expo/*',
+      'coverage/*',
+      'android/*',
+      'ios/*',
+      'expo-env.d.ts',
+      'supabase/functions/**/index.ts',
+    ],
   },
   {
     files: ['*.config.js'],

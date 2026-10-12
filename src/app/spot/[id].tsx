@@ -23,7 +23,7 @@ import { ActionButton, Banner, Button, Card, Chip, EmptyState, Row, SectionTitle
 import { useSpot, useSpots } from '@/data/spots';
 import { deleteSpot } from '@/data/spotWrites';
 import { useAuth } from '@/lib/auth';
-import { costForRig, describeRvFee, formatFee, formatHookups } from '@/lib/cost';
+import { costForRig, describeRvFee, formatFee, formatHookups, knownHookups } from '@/lib/cost';
 import { SPOT_DRIVETRAINS, fitFor, isTowing, tierInfo } from '@/lib/fit';
 import {
   COMPASS_WORDS,
@@ -36,6 +36,8 @@ import {
 import { callPhone, copyCoordinates, openDirections, openWebLink, shareSpot } from '@/lib/links';
 import { useLocation } from '@/lib/location';
 import { useRig } from '@/lib/rig';
+import { useBlockCamper } from '@/lib/useBlockCamper';
+import { useStillHere } from '@/lib/useStillHere';
 import { rigDisplayName } from '@/lib/rigModel';
 import { formatDay } from '@/lib/time';
 import type { Coordinates, Reservations, Rig, Spot } from '@/types';
@@ -70,7 +72,7 @@ function costTitle(rig: Rig): string {
 
 function CostCard({ spot, rig }: { spot: Spot; rig: Rig }) {
   const cost = costForRig(spot, rig);
-  const { nightlyFeeUsd, hookups, reservations, notes } = spot.cost;
+  const { nightlyFeeUsd, reservations, notes } = spot.cost;
   return (
     <Card style={isTowing(rig) ? styles.costHighlight : undefined}>
       <SectionTitle>{costTitle(rig)}</SectionTitle>
@@ -79,8 +81,8 @@ function CostCard({ spot, rig }: { spot: Spot; rig: Rig }) {
       </Text>
       <CostMeter level={cost.level} />
       <Row label="Standard / dry camping" value={formatFee(nightlyFeeUsd)} />
-      <Row label="RV site" value={describeRvFee(spot.cost)} />
-      <Row label="Hookups" value={formatHookups(hookups)} />
+      <Row label="RV site" value={describeRvFee(spot)} />
+      <Row label="Hookups" value={formatHookups(knownHookups(spot))} />
       <Row label="Reservations" value={reservations ? RESERVATIONS[reservations] : 'Not reported'} />
       {notes ? <Text style={styles.note}>{notes}</Text> : null}
     </Card>
@@ -107,6 +109,8 @@ export default function SpotScreen() {
   const { removeLocal } = useSpots();
   const [copied, markCopied] = useCopiedFlag();
   const [deleting, setDeleting] = useState(false);
+  const { block, busy: blocking } = useBlockCamper();
+  const stillHere = useStillHere();
 
   if (!spot) {
     return (
@@ -139,6 +143,7 @@ export default function SpotScreen() {
 
   const mine = user != null && spot.createdBy === user.id;
   const addedOn = formatDay(spot.createdAt);
+  const camperName = spot.addedBy ?? 'this camper';
 
   const onDelete = () => {
     Alert.alert('Delete this spot?', 'It comes off the map for everyone. This can’t be undone.', [
@@ -153,6 +158,7 @@ export default function SpotScreen() {
             () => {
               removeLocal(spot.id);
               AccessibilityInfo.announceForAccessibility('Spot deleted');
+              if (!stillHere()) return;
               if (router.canGoBack()) router.back();
               else router.replace('/');
             },
@@ -196,6 +202,14 @@ export default function SpotScreen() {
           </Text>
         ) : null}
       </View>
+
+      {spot.hidden ? (
+        <Banner
+          tone="warning"
+          icon="eye-off-outline"
+          message="Hidden while DisCamp reviews reports about it. Only you can see it. Fix anything that's wrong, and we'll take another look."
+        />
+      ) : null}
 
       {!spot.verified && (
         <Banner
@@ -329,6 +343,55 @@ export default function SpotScreen() {
         </View>
       )}
 
+      {!mine ? (
+        <Card>
+          <SectionTitle>Something wrong?</SectionTitle>
+          <Text style={styles.body}>
+            Report a spot that&apos;s fake, unsafe, spam or offensive. We review every report within 24 hours.
+          </Text>
+          <Button
+            label="Report this spot"
+            icon="flag-outline"
+            kind="secondary"
+            onPress={() => router.push({ pathname: '/report/[kind]/[id]', params: { kind: 'spot', id: spot.id } })}
+          />
+          {spot.createdBy ? (
+            <View style={styles.camperActions}>
+              <Pressable
+                onPress={() =>
+                  router.push({
+                    pathname: '/report/[kind]/[id]',
+                    params: { kind: 'camper', id: spot.createdBy ?? '' },
+                  })
+                }
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.textButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.textButtonLabel}>
+                  Report {spot.addedBy ? `the name “${spot.addedBy}”` : 'their name'}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() =>
+                  block({ id: spot.createdBy ?? '', name: spot.addedBy ?? null }, `/spot/${spot.id}`, leave)
+                }
+                disabled={blocking}
+                accessibilityRole="button"
+                accessibilityHint="Hides every spot this camper adds, for you only"
+                accessibilityState={{ busy: blocking, disabled: blocking }}
+                style={({ pressed }) => [styles.textButton, pressed && styles.pressed]}
+              >
+                {blocking ? (
+                  <ActivityIndicator color={colors.pine} />
+                ) : (
+                  <Text style={styles.textButtonLabel}>Block {camperName}</Text>
+                )}
+              </Pressable>
+            </View>
+          ) : null}
+        </Card>
+      ) : null}
+
       <Text style={styles.disclaimer}>
         Ratings are community reports, not guarantees. Conditions change; check with the land manager before you go.
       </Text>
@@ -336,7 +399,16 @@ export default function SpotScreen() {
   );
 }
 
+/** Off this spot's page, which is about to disappear (its camper was blocked). */
+function leave() {
+  if (router.canGoBack()) router.back();
+  else router.replace('/');
+}
+
 const styles = StyleSheet.create({
+  camperActions: { gap: 0 },
+  textButton: { minHeight: TOUCH_TARGET, justifyContent: 'center' },
+  textButtonLabel: { fontSize: 15, fontWeight: '600', color: colors.pine, textDecorationLine: 'underline' },
   deleteButton: { minHeight: TOUCH_TARGET, alignItems: 'center', justifyContent: 'center' },
   deleteText: { fontSize: 15, fontWeight: '700', color: colors.red, textDecorationLine: 'underline' },
   content: { padding: 16, gap: 14, paddingBottom: 40 },

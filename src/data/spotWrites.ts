@@ -3,14 +3,18 @@
 // messages. No React here, so every path can be unit tested.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import * as Crypto from 'expo-crypto';
 
 import { REMOTE_TIMEOUT_MS } from '../config';
+import { DeadlineError, withDeadline } from '../lib/deadline';
 import { describeError, log } from '../lib/log';
+import { bannedMessage } from './moderation';
 import type { SpotInput } from '../lib/spotDraft';
 import { spotRowSchema } from '../lib/schemas';
 import type { Spot } from '../types';
 
-export type SpotWriteErrorKind = 'offline' | 'timeout' | 'signed-out' | 'not-allowed' | 'limit' | 'invalid' | 'server';
+export type SpotWriteErrorKind =
+  'offline' | 'timeout' | 'signed-out' | 'not-allowed' | 'limit' | 'invalid' | 'banned' | 'terms' | 'server';
 
 export class SpotWriteError extends Error {
   constructor(
@@ -78,6 +82,17 @@ export function toWriteError(error: unknown, action: 'save' | 'delete'): SpotWri
   if (e.message === 'daily_limit') {
     return new SpotWriteError('You can add up to 20 spots a day. Try again tomorrow.', 'limit');
   }
+  // Moderation (migration 0004).
+  if (e.message === 'banned') return new SpotWriteError(bannedMessage(), 'banned');
+  if (e.message === 'terms_required') {
+    return new SpotWriteError(
+      'Agree to the DisCamp terms of use first. If you already have, update DisCamp to see the latest terms.',
+      'terms',
+    );
+  }
+  if (e.message === 'blocked_words') {
+    return new SpotWriteError("Some words aren't allowed on DisCamp. Change them, then try again.", 'invalid');
+  }
   // 42501 ("permission denied"): the request arrived without a signed-in
   // camper, usually because the sign-in expired and couldn't be renewed.
   // (Someone else's spot doesn't error; it just isn't changed. See below.)
@@ -102,20 +117,27 @@ export function toWriteError(error: unknown, action: 'save' | 'delete'): SpotWri
 
 /** Runs one request with a time limit and no hidden retries. */
 async function withTimeout<T>(run: (signal: AbortSignal) => Promise<T>, timeoutMs: number, action: 'save' | 'delete') {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const result = await run(controller.signal);
-    if (controller.signal.aborted)
-      throw new SpotWriteError('The server took too long to answer. Try again.', 'timeout');
-    return result;
+    return await withDeadline(run, timeoutMs);
   } catch (error) {
-    if (controller.signal.aborted)
+    if (error instanceof DeadlineError) {
       throw new SpotWriteError('The server took too long to answer. Try again.', 'timeout');
+    }
     throw toWriteError(error, action);
-  } finally {
-    clearTimeout(timer);
   }
+}
+
+/** Whether the map (as this camper sees it) still has a spot with this id. */
+async function spotExists(client: SupabaseClient, id: string, signal: AbortSignal): Promise<boolean> {
+  const { data, error } = await client
+    .from('spots_api')
+    .select('id')
+    .eq('id', id)
+    .retry(false)
+    .abortSignal(signal)
+    .maybeSingle();
+  if (error) throw error;
+  return data != null;
 }
 
 /** Reads one spot back the way the map does, so it shows exactly as everyone sees it. */
@@ -151,35 +173,50 @@ export function createSpot(
   input: SpotInput,
   id: string,
   timeoutMs: number = REMOTE_TIMEOUT_MS,
+  newId: () => string = Crypto.randomUUID,
 ): Promise<Spot> {
   return withTimeout(
     async (signal) => {
       const row = toSpotRow(input);
-      const { error } = await client
-        .from('spots')
-        .insert({ id, ...row })
-        .select('id')
-        .retry(false)
-        .abortSignal(signal)
-        .single();
-      if (error?.code === '23505') {
-        // A spot with this id exists: an earlier try saved it even though
-        // its answer never arrived. Bring it up to date with this try.
-        const { error: updateError } = await client
+      const insert = (spotId: string) =>
+        client
+          .from('spots')
+          .insert({ id: spotId, ...row })
+          .select('id')
+          .retry(false)
+          .abortSignal(signal)
+          .single();
+      let savedId = id;
+      const { error } = await insert(id);
+      // A spot with this id may exist already: an earlier try saved it even
+      // though its answer never arrived. The database answers 23505 for that,
+      // or "daily_limit" when that earlier spot was the day's 20th. Either
+      // way, bring that spot up to date with this try.
+      if (error?.code === '23505' || error?.message === 'daily_limit') {
+        const { data, error: updateError } = await client
           .from('spots')
           .update(row)
           .eq('id', id)
+          .select('id')
           .retry(false)
           .abortSignal(signal);
         if (updateError) throw updateError;
+        if (!Array.isArray(data) || data.length === 0) {
+          // Not this camper's spot after all (say, a draft left on a shared
+          // phone by someone else): really over the limit, or add it anew.
+          if (error.code !== '23505') throw error;
+          savedId = newId();
+          const { error: retryError } = await insert(savedId);
+          if (retryError) throw retryError;
+        }
       } else if (error) {
         throw error;
       }
       return readSpot(
         client,
-        id,
+        savedId,
         signal,
-        'Your spot was saved, but it could not be loaded. Tap Add spot again to open it.',
+        'Your spot was saved, but it could not be loaded. Pull down on the map to refresh.',
       );
     },
     timeoutMs,
@@ -226,8 +263,10 @@ export function deleteSpot(client: SupabaseClient, id: string, timeoutMs: number
         .abortSignal(signal);
       if (error) throw error;
       if (!Array.isArray(data) || data.length === 0) {
+        // Already gone: an earlier try deleted it, but its answer was lost.
+        if (!(await spotExists(client, id, signal))) return;
         throw new SpotWriteError(
-          "This spot can't be deleted: other campers have reported on it, or it isn't yours. You can still edit it.",
+          "This spot can't be deleted: it's being reviewed after reports, other campers have reported on it, or it isn't yours. You can still edit it.",
           'not-allowed',
         );
       }

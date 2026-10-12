@@ -8,6 +8,7 @@ import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
 
 import { AccountGate } from '@/components/AccountGate';
 import { SpotForm } from '@/components/SpotForm';
+import { TermsGate } from '@/components/TermsGate';
 import { STORAGE_KEYS } from '@/config';
 import { useSpots } from '@/data/spots';
 import { createSpot, SpotWriteError } from '@/data/spotWrites';
@@ -23,13 +24,14 @@ import {
 } from '@/lib/spotDraft';
 import { usePersistentState } from '@/lib/usePersistentState';
 import { useSpotEditor } from '@/lib/useSpotEditor';
+import { useStillHere } from '@/lib/useStillHere';
 import { colors } from '@/theme';
 
 const EMPTY = emptyDraft();
 const keepDraft = (d: SpotDraft) => d;
 
 export default function NewSpotScreen() {
-  const { status, client } = useAuth();
+  const { status, user, client, termsAccepted, reloadProfile } = useAuth();
   const { spots, saveLocal } = useSpots();
   const [draft, updateDraft, ready] = usePersistentState(STORAGE_KEYS.spotDraft, storedDraftSchema, EMPTY, keepDraft);
 
@@ -42,10 +44,12 @@ export default function NewSpotScreen() {
     },
     [client],
   );
-  const editor = useSpotEditor(draft, save);
+  const editor = useSpotEditor(draft, save, reloadProfile);
+  const stillHere = useStillHere();
 
   const gate = <AccountGate status={status} next="/spot/new" action="Adding a spot" />;
   if (status !== 'signed-in') return gate;
+  if (termsAccepted !== true) return <TermsGate />;
   if (!ready) {
     return (
       <View style={styles.center}>
@@ -57,19 +61,23 @@ export default function NewSpotScreen() {
   const near = nearbySpot(spots, parseCoordinates(draft.coordinates));
 
   const onSubmit = async () => {
-    if (!draft.clientId) {
-      const id = Crypto.randomUUID();
-      // Saved with the draft, so a retry (even after a restart) reuses it.
-      updateDraft((d) => ({ ...d, clientId: d.clientId || id }));
-      spotId.current = id;
-    } else {
+    const me = user?.id ?? '';
+    // A retry (even after a restart) reuses the draft's id, unless another
+    // camper on this phone picked it.
+    if (draft.clientId && (draft.ownerId === me || draft.ownerId === '')) {
       spotId.current = draft.clientId;
+    } else {
+      const id = Crypto.randomUUID();
+      // Saved with the draft, so the next retry finds it.
+      updateDraft((d) => ({ ...d, clientId: id, ownerId: me }));
+      spotId.current = id;
     }
     const spot = await editor.submit();
     if (!spot) return;
     saveLocal(spot);
+    // Cleared even if the camper already left, so the next spot starts fresh.
     updateDraft(emptyDraft());
-    router.replace({ pathname: '/spot/[id]', params: { id: spot.id } });
+    if (stillHere()) router.replace({ pathname: '/spot/[id]', params: { id: spot.id } });
   };
 
   const onDiscard = () => {

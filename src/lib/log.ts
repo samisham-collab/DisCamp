@@ -1,5 +1,8 @@
-// One place for app logging. Today it writes to the console; later it can
-// forward warnings and errors to a crash reporter without touching callers.
+// One place for app logging. It writes to the console and, when crash reports
+// are on (src/lib/crashReports.ts), sends errors to Sentry and keeps warnings
+// as notes that show alongside the next error.
+
+import { noteForReports, reportError } from './crashReports';
 
 type Context = Record<string, unknown>;
 
@@ -16,9 +19,17 @@ export const log = {
   },
   warn(message: string, context?: Context) {
     console.warn(...format(message, context));
+    noteForReports(message);
   },
   error(message: string, error?: unknown, context?: Context) {
     console.error(...format(message, error === undefined ? context : { ...context, error: describeError(error) }));
+    reportError(
+      error instanceof Error ? error : new Error(error === undefined ? message : `${message}: ${describeError(error)}`),
+      {
+        ...context,
+        where: message,
+      },
+    );
   },
 };
 

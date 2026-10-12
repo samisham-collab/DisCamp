@@ -11,7 +11,11 @@ import type { SpotMapProps } from './SpotMap.types';
 export type { SpotMapHandle, SpotMapProps } from './SpotMap.types';
 
 export function SpotMap({ ref, rows, selectedId, onSelect, bottomInset, onMapReady }: SpotMapProps) {
-  useImperativeHandle(ref, () => ({ fitToRows: () => undefined, centerOn: () => undefined }), []);
+  useImperativeHandle(
+    ref,
+    () => ({ fitToRows: () => undefined, centerOn: () => undefined, currentRegion: () => null }),
+    [],
+  );
   useEffect(() => onMapReady?.(), [onMapReady]);
 
   return (

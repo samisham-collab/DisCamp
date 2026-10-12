@@ -100,6 +100,8 @@ describe('saving spots', () => {
     const first = await createSpot(backend.client, input, newId());
     await deleteSpot(backend.client, first.id);
     expect(backend.spots.has(first.id)).toBe(false);
+    // Trying again after a lost answer: it's gone, which is what was wanted.
+    await expect(deleteSpot(backend.client, first.id)).resolves.toBeUndefined();
 
     const second = await createSpot(backend.client, input, newId());
     backend.spots.get(second.id)!.report_count = 2;
@@ -119,6 +121,9 @@ describe('saving spots', () => {
       [{ message: 'TypeError: Network request failed' }, 'offline'],
       [{ message: 'JWT expired', code: 'PGRST301' }, 'signed-out'],
       [{ message: 'new row violates check constraint', code: '23514' }, 'invalid'],
+      [{ message: 'banned', code: 'P0001' }, 'banned'],
+      [{ message: 'terms_required', code: 'P0001' }, 'terms'],
+      [{ message: 'blocked_words', code: 'P0001' }, 'invalid'],
       [{ message: 'something odd', code: 'XX000' }, 'server'],
     ];
     for (const [answer, kind] of answers) {
@@ -127,6 +132,24 @@ describe('saving spots', () => {
     }
     expect(error).toHaveBeenCalled();
     expect(warn).toHaveBeenCalled();
+  });
+
+  it('asks for the terms, and turns away banned campers, like the database', async () => {
+    const backend = fakeBackend();
+    backend.auth.setUser({ ...SAM, termsVersion: null });
+    await expect(createSpot(backend.client, input, newId())).rejects.toMatchObject({
+      kind: 'terms',
+      message: expect.stringContaining('Agree to the DisCamp terms of use first'),
+    });
+    backend.terms.set(SAM.id, 1);
+    backend.banned.add(SAM.id);
+    await expect(createSpot(backend.client, input, newId())).rejects.toMatchObject({
+      kind: 'banned',
+      message: "Your account can't add, change or report spots.",
+    });
+    expect(toWriteError({ message: 'blocked_words' }, 'save').message).toBe(
+      "Some words aren't allowed on DisCamp. Change them, then try again.",
+    );
   });
 
   it('gives up on a slow server', async () => {
@@ -140,6 +163,44 @@ describe('saving spots', () => {
       });
     await expect(createSpot(backend.client, input, newId(), 5)).rejects.toMatchObject({ kind: 'timeout' });
     await expect(deleteSpot(backend.client, 'x', 5)).rejects.toMatchObject({ kind: 'timeout' });
+  });
+
+  it('adds a draft left by someone else as a new spot, instead of changing theirs', async () => {
+    const backend = fakeBackend();
+    backend.auth.setUser(ALEX);
+    const taken = newId();
+    await createSpot(backend.client, { ...input, name: 'Alex Spot' }, taken);
+    backend.auth.setUser(SAM);
+    const fresh = newId();
+    const spot = await createSpot(backend.client, { ...input, name: 'Sam Spot' }, taken, undefined, () => fresh);
+    expect(spot).toMatchObject({ id: fresh, name: 'Sam Spot', createdBy: SAM.id });
+    expect(backend.spots.get(taken)).toMatchObject({ name: 'Alex Spot' });
+  });
+
+  it("finds a spot saved by an earlier try that hit the day's limit", async () => {
+    const backend = fakeBackend();
+    backend.auth.setUser(SAM);
+    const id = newId();
+    await createSpot(backend.client, input, id);
+    // The database checks the daily limit before it notices the id is taken.
+    backend.intercept = (query) =>
+      query.op === 'insert'
+        ? Promise.resolve({ data: null, error: { message: 'daily_limit', code: 'P0001' } })
+        : undefined;
+    await expect(createSpot(backend.client, { ...input, name: 'Renamed' }, id)).resolves.toMatchObject({
+      id,
+      name: 'Renamed',
+    });
+    // A new spot over the limit is still refused.
+    await expect(createSpot(backend.client, input, newId())).rejects.toMatchObject({ kind: 'limit' });
+  });
+
+  it('gives up on time even when the request never answers', async () => {
+    const backend = fakeBackend();
+    backend.auth.setUser(SAM);
+    backend.intercept = () => new Promise(() => undefined);
+    await expect(createSpot(backend.client, input, newId(), 20)).rejects.toMatchObject({ kind: 'timeout' });
+    await expect(deleteSpot(backend.client, 'x', 20)).rejects.toMatchObject({ kind: 'timeout' });
   });
 
   it('copes with a server that answers strangely', async () => {
@@ -158,7 +219,7 @@ describe('saving spots', () => {
         : undefined;
     await expect(createSpot(backend.client, input, newId())).rejects.toMatchObject({
       kind: 'server',
-      message: 'Your spot was saved, but it could not be loaded. Tap Add spot again to open it.',
+      message: 'Your spot was saved, but it could not be loaded. Pull down on the map to refresh.',
     });
     expect(warn).toHaveBeenCalled();
     expect(error).toHaveBeenCalled();

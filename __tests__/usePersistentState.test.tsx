@@ -39,6 +39,16 @@ describe('usePersistentState', () => {
     expect(result.current[0]).toEqual({ count: 0 });
   });
 
+  it('saves a change that arrives after the screen closed (a save finishing late)', async () => {
+    await kvStore.setItem('k', JSON.stringify({ count: 3 }));
+    const { result, unmount } = renderHook(() => usePersistentState('k', schema, { count: 0 }, clampToTen));
+    await waitFor(() => expect(result.current[0]).toEqual({ count: 3 }));
+    const update = result.current[1];
+    unmount();
+    update((prev) => ({ count: prev.count + 20 }));
+    await waitFor(async () => expect(await kvStore.getItem('k')).toBe(JSON.stringify({ count: 10 })));
+  });
+
   it('never lets a slow load overwrite a change the user already made', async () => {
     let finishLoad: (value: string | null) => void = () => undefined;
     jest.spyOn(kvStore, 'getItem').mockReturnValueOnce(

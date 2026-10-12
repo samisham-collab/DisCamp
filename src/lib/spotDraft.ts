@@ -7,6 +7,10 @@ import { z } from 'zod';
 import type { ClearanceTier, Hookup, Reservations, SiteType, Spot, SpotDrivetrain } from '../types';
 import { distanceMiles, formatCoordinates, isValidCoordinate } from './geo';
 import { charCount, isPhoneNumber, spotSchema } from './schemas';
+import { hasBlockedWords } from './wordFilter';
+
+/** Shown when a field has a word DisCamp doesn't allow (the server checks too). */
+export const BLOCKED_WORDS_MESSAGE = "Remove words that aren't allowed on DisCamp.";
 
 export type FeeKind = 'free' | 'paid';
 
@@ -16,6 +20,11 @@ export interface SpotDraft {
    * save it, reused on every retry so a spot is never added twice.
    */
   clientId: string;
+  /**
+   * The account that picked `clientId`, so a draft left on a shared phone
+   * never reuses another camper's id. Empty in drafts from before 1.4.1.
+   */
+  ownerId: string;
   name: string;
   siteType: SiteType;
   landManager: string;
@@ -37,6 +46,8 @@ export interface SpotDraft {
   feeAmount: string;
   rvFee: string;
   hookups: Hookup[];
+  /** "None" picked for hookups. With no hookups picked either, it's "not sure". */
+  noHookups: boolean;
   reservations: Reservations | null;
   costNotes: string;
   /** One per line. */
@@ -53,7 +64,7 @@ export type DraftErrors = Partial<Record<DraftField, string>>;
 /** What the app sends to the server: a spot minus the fields the server owns. */
 export type SpotInput = Omit<
   Spot,
-  'id' | 'verified' | 'reportCount' | 'sources' | 'createdBy' | 'addedBy' | 'createdAt'
+  'id' | 'verified' | 'reportCount' | 'sources' | 'createdBy' | 'addedBy' | 'createdAt' | 'hidden'
 >;
 
 export const LIMITS = {
@@ -70,6 +81,7 @@ export const LIMITS = {
 export function emptyDraft(): SpotDraft {
   return {
     clientId: '',
+    ownerId: '',
     name: '',
     siteType: 'dispersed',
     landManager: '',
@@ -89,6 +101,7 @@ export function emptyDraft(): SpotDraft {
     feeAmount: '',
     rvFee: '',
     hookups: [],
+    noHookups: false,
     reservations: null,
     costNotes: '',
     amenities: '',
@@ -100,7 +113,7 @@ export function emptyDraft(): SpotDraft {
 
 /** True when nothing has been filled in, so there's no draft worth keeping. */
 export function isBlankDraft(draft: SpotDraft): boolean {
-  return JSON.stringify({ ...draft, clientId: '' }) === JSON.stringify(emptyDraft());
+  return JSON.stringify({ ...draft, clientId: '', ownerId: '' }) === JSON.stringify(emptyDraft());
 }
 
 const feeText = (fee: number | null) => (fee == null ? '' : String(fee));
@@ -109,6 +122,7 @@ export function draftFromSpot(spot: Spot): SpotDraft {
   const fee = spot.cost.nightlyFeeUsd;
   return {
     clientId: '',
+    ownerId: '',
     name: spot.name,
     siteType: spot.siteType,
     landManager: spot.landManager,
@@ -127,7 +141,8 @@ export function draftFromSpot(spot: Spot): SpotDraft {
     feeKind: fee == null ? null : fee === 0 ? 'free' : 'paid',
     feeAmount: fee != null && fee > 0 ? feeText(fee) : '',
     rvFee: feeText(spot.cost.rvFeeUsd),
-    hookups: [...spot.cost.hookups],
+    hookups: [...(spot.cost.hookups ?? [])],
+    noHookups: spot.cost.hookups?.length === 0,
     reservations: spot.cost.reservations,
     costNotes: spot.cost.notes ?? '',
     amenities: spot.amenities.join('\n'),
@@ -150,9 +165,15 @@ export function parseCoordinates(text: string): { latitude: number; longitude: n
 
 const visible = (s: string) => s.replace(/\s+/g, ' ').trim();
 
-/** "$15", "15.50" or "15" as dollars; null for anything else. */
+/**
+ * "$15", "15.50" or "15" as dollars; null for anything else. A decimal comma
+ * ("22,50") works too: it's the only decimal key on some phones' keypads.
+ */
 function parseFee(text: string): number | null {
-  const cleaned = text.trim().replace(/^\$\s*/, '');
+  const cleaned = text
+    .trim()
+    .replace(/^\$\s*/, '')
+    .replace(',', '.');
   if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) return null;
   const value = Number(cleaned);
   return value <= 10_000 ? value : null;
@@ -248,6 +269,18 @@ export function checkDraft(draft: SpotDraft): DraftCheck {
   const phone = draft.phone.trim();
   if (phone && !isPhoneNumber(phone)) errors.phone = 'Enter a phone number with 7 to 15 digits, or leave it empty.';
 
+  // The word filter, on every field campers can type into (except the phone).
+  const checkWords = (field: DraftField, ...texts: string[]) => {
+    if (!errors[field] && texts.some(hasBlockedWords)) errors[field] = BLOCKED_WORDS_MESSAGE;
+  };
+  checkWords('name', name);
+  checkWords('landManager', landManager);
+  checkWords('surface', surface);
+  checkWords('costNotes', costNotes);
+  checkWords('amenities', ...amenities);
+  checkWords('rules', ...rules);
+  checkWords('directions', directions);
+
   if (Object.keys(errors).length > 0 || !point) return { input: null, errors };
 
   const input: SpotInput = {
@@ -274,7 +307,7 @@ export function checkDraft(draft: SpotDraft): DraftCheck {
     cost: {
       nightlyFeeUsd,
       rvFeeUsd,
-      hookups: [...new Set(draft.hookups)],
+      hookups: draft.noHookups ? [] : draft.hookups.length > 0 ? [...new Set(draft.hookups)] : null,
       reservations: draft.reservations,
       ...(costNotes ? { notes: costNotes } : {}),
     },
@@ -290,40 +323,59 @@ export function checkDraft(draft: SpotDraft): DraftCheck {
   return { input, errors: {} };
 }
 
-/** Saved new-spot draft. Loose on purpose: a draft from an older version still loads. */
-export const storedDraftSchema: z.ZodType<SpotDraft, z.ZodTypeDef, unknown> = z
-  .object({
-    clientId: z.string().max(64),
-    name: z.string().max(2000),
-    siteType: z.enum(['dispersed', 'campground']),
-    landManager: z.string().max(2000),
-    stayLimitDays: z.string().max(50),
-    coordinates: z.string().max(200),
-    clearanceTier: z
-      .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7)])
-      .nullable(),
-    drivetrain: z.enum(['2wd-ok', 'awd-recommended', '4wd-required', '4wd-lockers']).nullable(),
-    surface: z.string().max(2000),
-    impassableWhenWet: z.boolean().nullable(),
-    tent: z.boolean().nullable(),
-    rtt: z.boolean().nullable(),
-    van: z.boolean().nullable(),
-    bigRig: z.boolean().nullable(),
-    turnaround: z.boolean().nullable(),
-    maxTrailerFt: z.string().max(50),
-    feeKind: z.enum(['free', 'paid']).nullable(),
-    feeAmount: z.string().max(50),
-    rvFee: z.string().max(50),
-    hookups: z.array(z.enum(['electric', 'water', 'sewer'])).max(3),
-    reservations: z.enum(['first-come', 'reservable', 'not-needed']).nullable(),
-    costNotes: z.string().max(5000),
-    amenities: z.string().max(10_000),
-    rules: z.string().max(10_000),
-    directions: z.string().max(10_000),
-    phone: z.string().max(100),
-  })
-  .partial()
-  .transform((d) => ({ ...emptyDraft(), ...d }));
+/** Text from a saved draft, cut to `max` characters rather than refused. */
+const savedText = (max: number) => z.string().transform((text) => Array.from(text).slice(0, max).join(''));
+
+/**
+ * Saved new-spot draft. Forgiving on purpose: a draft from an older version
+ * still loads, and a field that doesn't fit (too long, or the wrong kind of
+ * value) falls back to empty instead of losing the whole draft.
+ */
+const storedDraftFields = {
+  clientId: z.string().max(64),
+  ownerId: z.string().max(64),
+  name: savedText(2000),
+  siteType: z.enum(['dispersed', 'campground']),
+  landManager: savedText(2000),
+  stayLimitDays: savedText(50),
+  coordinates: savedText(200),
+  clearanceTier: z
+    .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7)])
+    .nullable(),
+  drivetrain: z.enum(['2wd-ok', 'awd-recommended', '4wd-required', '4wd-lockers']).nullable(),
+  surface: savedText(2000),
+  impassableWhenWet: z.boolean().nullable(),
+  tent: z.boolean().nullable(),
+  rtt: z.boolean().nullable(),
+  van: z.boolean().nullable(),
+  bigRig: z.boolean().nullable(),
+  turnaround: z.boolean().nullable(),
+  maxTrailerFt: savedText(50),
+  feeKind: z.enum(['free', 'paid']).nullable(),
+  feeAmount: savedText(50),
+  rvFee: savedText(50),
+  hookups: z.array(z.enum(['electric', 'water', 'sewer'])).max(3),
+  noHookups: z.boolean(),
+  reservations: z.enum(['first-come', 'reservable', 'not-needed']).nullable(),
+  costNotes: savedText(5000),
+  amenities: savedText(10_000),
+  rules: savedText(10_000),
+  directions: savedText(10_000),
+  phone: savedText(100),
+};
+
+type StoredFields = typeof storedDraftFields;
+const forgiving = Object.fromEntries(
+  Object.entries(storedDraftFields).map(([key, schema]) => [key, (schema as z.ZodTypeAny).optional().catch(undefined)]),
+) as { [K in keyof StoredFields]: z.ZodCatch<z.ZodOptional<StoredFields[K]>> };
+
+export const storedDraftSchema: z.ZodType<SpotDraft, z.ZodTypeDef, unknown> = z.object(forgiving).transform((d) => {
+  const draft = emptyDraft();
+  for (const [key, value] of Object.entries(d)) {
+    if (value !== undefined) Object.assign(draft, { [key]: value });
+  }
+  return draft;
+});
 
 /** A point formatted for the coordinates field. */
 export function coordinatesText(point: { latitude: number; longitude: number }): string {

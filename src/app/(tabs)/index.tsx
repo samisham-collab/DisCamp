@@ -8,6 +8,7 @@ import {
   AccessibilityInfo,
   BackHandler,
   FlatList,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -23,7 +24,7 @@ import { Banner, EmptyState, IconButton, Pills, Segmented } from '@/components/u
 import { DEFAULT_REGION } from '@/config';
 import { useSpots } from '@/data/spots';
 import { useAuth } from '@/lib/auth';
-import { regionForCoordinates } from '@/lib/geo';
+import { regionForCoordinates, type Region } from '@/lib/geo';
 import { selectionFeedback } from '@/lib/haptics';
 import { useLocation } from '@/lib/location';
 import { usePrefs } from '@/lib/prefs';
@@ -55,7 +56,9 @@ function ListSeparator() {
 
 export default function ExploreScreen() {
   const spotsState = useSpots();
-  const { spots, source, refresh, refreshing, remoteEnabled } = spotsState;
+  const { spots: everySpot, source, refresh, refreshing, remoteEnabled } = spotsState;
+  // Your own spots hidden for review stay off the map, like everyone else's.
+  const spots = useMemo(() => everySpot.filter((s) => !s.hidden), [everySpot]);
   const { rig } = useRig();
   const fitRig = useFitRig();
   const { prefs, toggleFilter, clearFilters, setView, setMapType } = usePrefs();
@@ -69,7 +72,10 @@ export default function ExploreScreen() {
   const [legendOpen, setLegendOpen] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const mapRef = useRef<SpotMapHandle>(null);
-  const [initialRegion] = useState(() => regionForCoordinates(spots, DEFAULT_REGION));
+  const [startRegion] = useState(() => regionForCoordinates(spots, DEFAULT_REGION));
+  // Where the map was when the camper switched to the list, to come back to.
+  const [returnRegion, setReturnRegion] = useState<Region | null>(null);
+  const initialRegion = returnRegion ?? startRegion;
 
   const allRows = useMemo(() => buildSpotRows(spots, fitRig, coords), [spots, fitRig, coords]);
   const rows = useMemo(() => sortRows(applyFilters(allRows, prefs.filters)), [allRows, prefs.filters]);
@@ -101,6 +107,8 @@ export default function ExploreScreen() {
         setSelectedId(null);
         return undefined;
       }
+      // Browsers have no back button to catch (the browser preview).
+      if (Platform.OS === 'web') return undefined;
       const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
         setSelectedId(null);
         return true;
@@ -166,7 +174,7 @@ export default function ExploreScreen() {
     <View style={styles.screen}>
       <SafeAreaView edges={['top']} style={styles.header}>
         <View style={styles.titleRow}>
-          <Text style={styles.title} accessibilityRole="header">
+          <Text style={styles.title} accessibilityRole="header" numberOfLines={1} maxFontSizeMultiplier={1.4}>
             DisCamp
           </Text>
           <View style={styles.headerActions}>
@@ -178,7 +186,9 @@ export default function ExploreScreen() {
                 style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
               >
                 <Ionicons name="add" size={20} color="#FFFFFF" />
-                <Text style={styles.addText}>Add spot</Text>
+                <Text style={styles.addText} numberOfLines={1} maxFontSizeMultiplier={1.6}>
+                  Add spot
+                </Text>
               </Pressable>
             )}
             <Pressable
@@ -224,8 +234,12 @@ export default function ExploreScreen() {
             value={prefs.view}
             onChange={(view) => {
               setSelectedId(null);
-              // The map is rebuilt when it comes back, and has to load again.
-              if (view !== 'map') setMapReady(false);
+              // The map is rebuilt when it comes back, and has to load again,
+              // in the same place.
+              if (view !== 'map' && prefs.view === 'map') {
+                setReturnRegion(mapRef.current?.currentRegion() ?? null);
+                setMapReady(false);
+              }
               setView(view);
             }}
             accessibilityLabel="Show spots as"
@@ -356,7 +370,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.line,
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4 },
-  title: { fontSize: 28, fontWeight: '800', color: colors.ink, letterSpacing: 0.3 },
+  title: { flexShrink: 1, fontSize: 28, fontWeight: '800', color: colors.ink, letterSpacing: 0.3 },
   headerIcon: { width: TOUCH_TARGET, height: TOUCH_TARGET, alignItems: 'center', justifyContent: 'center' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   addButton: {

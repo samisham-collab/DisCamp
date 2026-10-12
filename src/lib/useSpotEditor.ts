@@ -21,7 +21,12 @@ export interface SpotEditor {
   submit: () => Promise<Spot | null>;
 }
 
-export function useSpotEditor(draft: SpotDraft, save: (input: SpotInput) => Promise<Spot>): SpotEditor {
+export function useSpotEditor(
+  draft: SpotDraft,
+  save: (input: SpotInput) => Promise<Spot>,
+  /** The server asked for the terms of use first (they changed): show them again. */
+  onTermsRequired?: () => void,
+): SpotEditor {
   const [tried, setTried] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -48,6 +53,7 @@ export function useSpotEditor(draft: SpotDraft, save: (input: SpotInput) => Prom
     try {
       return await save(check.input);
     } catch (error) {
+      if (error instanceof SpotWriteError && error.kind === 'terms') onTermsRequired?.();
       const message = error instanceof SpotWriteError ? error.message : describeError(error);
       setServerError(message);
       AccessibilityInfo.announceForAccessibility(message);
@@ -55,7 +61,7 @@ export function useSpotEditor(draft: SpotDraft, save: (input: SpotInput) => Prom
     } finally {
       setSaving(false);
     }
-  }, [check, save]);
+  }, [check, save, onTermsRequired]);
 
   return { errors, failedTries, formError, saving, edited, submit };
 }

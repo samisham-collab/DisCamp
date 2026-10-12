@@ -26,13 +26,27 @@ export function usePersistentState<T>(
   // Set once the user changes something, so a slow load never overwrites it.
   const touched = useRef(false);
   const pending = useRef<{ value: T } | null>(null);
+  // The latest value, and whether the screen holding it is still open: an
+  // update that arrives after it closed (a save finishing late) is written
+  // straight to storage instead of being lost.
+  const latest = useRef(initial);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
     // A saved value only replaces the default if the user hasn't changed
     // anything yet, even when a slow read delivers it after start-up.
     const applySaved = (saved: T) => {
-      if (active && !touched.current) setValue(normalize(saved));
+      if (active && !touched.current) {
+        latest.current = normalize(saved);
+        setValue(latest.current);
+      }
     };
     void readJson(key, schema, { onLateValue: applySaved })
       .then((saved) => {
@@ -78,9 +92,19 @@ export function usePersistentState<T>(
   const update = useCallback(
     (next: Updater<T>) => {
       touched.current = true;
-      setValue((prev) => normalize(typeof next === 'function' ? (next as (prev: T) => T)(prev) : next));
+      const resolve = (prev: T) => normalize(typeof next === 'function' ? (next as (prev: T) => T)(prev) : next);
+      if (!mounted.current) {
+        latest.current = resolve(latest.current);
+        pending.current = null;
+        void writeJson(key, latest.current);
+        return;
+      }
+      setValue((prev) => {
+        latest.current = resolve(prev);
+        return latest.current;
+      });
     },
-    [normalize],
+    [key, normalize],
   );
 
   return [value, update, ready];

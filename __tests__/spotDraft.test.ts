@@ -3,6 +3,7 @@ import { describe, expect, it } from '@jest/globals';
 import { SEED_SPOTS } from '@/data/seedSpots';
 import { spotSchema } from '@/lib/schemas';
 import {
+  BLOCKED_WORDS_MESSAGE,
   checkDraft,
   draftFromSpot,
   emptyDraft,
@@ -50,10 +51,35 @@ describe('checking a draft', () => {
       stayLimitDays: null,
       access: { clearanceTier: null, drivetrain: null, surface: null, impassableWhenWet: null },
       fit: { tent: null, rtt: null, van: null, maxTrailerFt: null, bigRig: null, turnaround: null },
-      cost: { nightlyFeeUsd: null, rvFeeUsd: null, hookups: [], reservations: null },
+      cost: { nightlyFeeUsd: null, rvFeeUsd: null, hookups: null, reservations: null },
       amenities: [],
       rules: [],
     });
+  });
+
+  it('keeps hookups unknown until the camper picks some, or "None"', () => {
+    const hookups = (patch: Partial<SpotDraft>) => checkDraft(filled(patch)).input?.cost.hookups;
+    expect(hookups({})).toBeNull();
+    expect(hookups({ noHookups: true })).toEqual([]);
+    expect(hookups({ hookups: ['water', 'water', 'electric'] })).toEqual(['water', 'electric']);
+    // "None" wins over a stale pick (the form clears picks when None is tapped).
+    expect(hookups({ noHookups: true, hookups: ['water'] })).toEqual([]);
+    // Editing a spot shows what it says, including "None" and "not reported".
+    const spot = SEED_SPOTS[0]!;
+    expect(draftFromSpot({ ...spot, cost: { ...spot.cost, hookups: [] } })).toMatchObject({
+      hookups: [],
+      noHookups: true,
+    });
+    expect(draftFromSpot({ ...spot, cost: { ...spot.cost, hookups: null } })).toMatchObject({
+      hookups: [],
+      noHookups: false,
+    });
+  });
+
+  it('takes a fee with a decimal comma', () => {
+    const cost = checkDraft(filled({ feeKind: 'paid', feeAmount: '22,50', rvFee: '$30,5' })).input?.cost;
+    expect(cost).toMatchObject({ nightlyFeeUsd: 22.5, rvFeeUsd: 30.5 });
+    expect(checkDraft(filled({ feeKind: 'paid', feeAmount: '1,234' })).errors.feeAmount).toBeDefined();
   });
 
   it('explains each missing required field', () => {
@@ -137,6 +163,32 @@ describe('checking a draft', () => {
     expect(checkDraft(filled({ feeKind: 'paid', feeAmount: '20000' })).errors.feeAmount).toBeDefined();
   });
 
+  it('flags words DisCamp doesn’t allow, in every text field', () => {
+    const { errors } = checkDraft(
+      filled({
+        name: 'Shit Creek',
+        landManager: 'Whore Creek Ranch',
+        surface: 'Fucking awful',
+        costNotes: 'Free, you bastard',
+        amenities: 'Toilet\nPorn shop',
+        rules: 'No fires\nBitch about it',
+        directions: 'What the fuck',
+      }),
+    );
+    expect(errors).toEqual({
+      name: BLOCKED_WORDS_MESSAGE,
+      landManager: BLOCKED_WORDS_MESSAGE,
+      surface: BLOCKED_WORDS_MESSAGE,
+      costNotes: BLOCKED_WORDS_MESSAGE,
+      amenities: BLOCKED_WORDS_MESSAGE,
+      rules: BLOCKED_WORDS_MESSAGE,
+      directions: BLOCKED_WORDS_MESSAGE,
+    });
+    // A field that's already wrong keeps its first message.
+    expect(checkDraft(filled({ name: `Shit ${'x'.repeat(120)}` })).errors.name).toMatch(/120 characters/);
+    expect(checkDraft(filled({ name: 'Hooker Creek', directions: 'Past the bear scat' })).input).not.toBeNull();
+  });
+
   it('produces spots the app accepts', () => {
     const { input } = checkDraft(draftFromSpot(smoky));
     expect(spotSchema.safeParse({ ...input, id: 'x', verified: false, reportCount: 0, sources: [] }).success).toBe(
@@ -175,11 +227,25 @@ describe('drafts', () => {
   it('knows when nothing has been entered', () => {
     expect(isBlankDraft(emptyDraft())).toBe(true);
     expect(isBlankDraft({ ...emptyDraft(), name: 'x' })).toBe(false);
+    expect(isBlankDraft({ ...emptyDraft(), clientId: 'abc', ownerId: 'someone' })).toBe(true);
   });
 
   it('loads a saved draft, filling in anything an older version didn’t save', () => {
     expect(storedDraftSchema.parse({ name: 'Half done' })).toEqual({ ...emptyDraft(), name: 'Half done' });
-    expect(storedDraftSchema.safeParse({ siteType: 'hotel' }).success).toBe(false);
+  });
+
+  it('keeps the rest of a saved draft when one field doesn’t fit', () => {
+    const longLink = `https://maps.google.com/?q=${'x'.repeat(240)}`;
+    const draft = storedDraftSchema.parse({
+      clientId: 'abc',
+      name: 'Half done',
+      siteType: 'hotel',
+      coordinates: longLink,
+      hookups: ['wifi'],
+      amenities: 7,
+    });
+    expect(draft).toEqual({ ...emptyDraft(), clientId: 'abc', name: 'Half done', coordinates: longLink.slice(0, 200) });
+    expect(storedDraftSchema.safeParse('not a draft').success).toBe(false);
   });
 });
 

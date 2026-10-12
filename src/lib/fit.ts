@@ -42,6 +42,9 @@ export const RIG_DRIVETRAINS: Record<RigDrivetrain, { label: string; rank: numbe
   '4wd-lockers': { label: '4WD + lockers', rank: 3 },
 };
 
+/** Rigs this long count as big rigs, whatever they're called. */
+export const BIG_RIG_FT = 40;
+
 export const RIG_SETUPS: Record<RigSetup, { label: string; short: string; tows: boolean }> = {
   tent: { label: 'Tent', short: 'Tent', tows: false },
   rtt: { label: 'Rooftop tent', short: 'Rooftop tent', tows: false },
@@ -137,11 +140,15 @@ export function fitFor(spot: Spot, rig: FitRig): FitResult {
       check(f.van, 'No level pull-off for a van or camper', 'Van fit not reported');
       break;
     case 'bigrig':
-      check(f.bigRig, 'Not suited to big rigs', 'Big-rig fit not reported');
-      check(f.turnaround, 'No turnaround', 'Turnaround not reported');
-      break;
     case 'trailer':
       break;
+  }
+
+  // Big rigs, and trailers long enough to count as one (40 ft and up, as the
+  // spot form asks), need a spot suited to them and room to turn around.
+  if (rig.setup === 'bigrig' || (rig.setup === 'trailer' && rig.lengthFt >= BIG_RIG_FT)) {
+    check(f.bigRig, 'Not suited to big rigs', 'Big-rig fit not reported');
+    check(f.turnaround, 'No turnaround', 'Turnaround not reported');
   }
 
   if (isTowing(rig)) {

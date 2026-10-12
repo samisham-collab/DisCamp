@@ -47,7 +47,8 @@ export interface SpotCost {
   nightlyFeeUsd: number | null;
   /** RV / hookup site, per night, when it differs from the standard fee. */
   rvFeeUsd: number | null;
-  hookups: Hookup[];
+  /** Empty: no hookups. Null: not reported (dispersed spots have none by definition). */
+  hookups: Hookup[] | null;
   reservations: Reservations | null;
   notes?: string;
 }
@@ -80,6 +81,11 @@ export interface Spot extends Coordinates {
   addedBy?: string;
   /** When a camper added it (ISO time). */
   createdAt?: string;
+  /**
+   * Hidden for review (after reports, or by the moderator). Only the camper
+   * who added a spot ever receives it hidden; it stays off the map.
+   */
+  hidden?: true;
 }
 
 export interface Rig {

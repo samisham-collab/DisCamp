@@ -37,15 +37,24 @@ interface MapProps {
   onPress?: (e: MapPress) => void;
   onMapReady?: () => void;
   onRegionChangeComplete?: (region: unknown) => void;
+  initialRegion?: unknown;
 }
+
+/** The region the newest map started at. */
+export const lastMap: { initialRegion: unknown } = { initialRegion: null };
 
 // Tests tap the map with fireEvent(map, 'touchEnd', { nativeEvent: { action } }),
 // and pan it with fireEvent(map, 'regionChangeComplete', region).
 const MapView = forwardRef<typeof mapMethods, MapProps>(function MapView(
-  { children, testID, onPress, onMapReady, onRegionChangeComplete },
+  { children, testID, onPress, onMapReady, onRegionChangeComplete, initialRegion },
   ref,
 ) {
   useImperativeHandle(ref, () => mapMethods);
+  // Like the real map, the starting region is read once, when it appears.
+  useEffect(() => {
+    lastMap.initialRegion = initialRegion;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, like the native map
+  }, []);
   // Like the real map, report ready once, right after it appears.
   useEffect(() => {
     if (mapReadyHeld) heldReady = onMapReady;

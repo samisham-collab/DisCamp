@@ -1,7 +1,8 @@
 import { describe, expect, it } from '@jest/globals';
 
 import { SEED_SPOTS } from '@/data/seedSpots';
-import { costForRig, costLevel, describeRvFee, formatFee, formatHookups } from '@/lib/cost';
+import { costForRig, costLevel, describeRvFee, formatFee, formatHookups, knownHookups } from '@/lib/cost';
+import type { SiteType, SpotCost } from '@/types';
 
 import { makeSpot, preset } from '../test/fixtures';
 
@@ -45,6 +46,25 @@ describe('costForRig', () => {
     expect(costForRig(spot, preset('Sedan'))).toEqual({ feeUsd: 0, level: 0, basis: 'standard site' });
   });
 
+  it("doesn't guess for trailers when nobody said whether there are hookups", () => {
+    const campground = makeSpot({ siteType: 'campground', cost: { nightlyFeeUsd: 0, rvFeeUsd: null, hookups: null } });
+    expect(costForRig(campground, preset('Truck + 25 ft trailer'))).toEqual({
+      feeUsd: null,
+      level: null,
+      basis: 'RV site',
+    });
+    expect(costForRig(campground, preset('Sedan'))).toEqual({ feeUsd: 0, level: 0, basis: 'standard site' });
+    // Dispersed spots have no hookups, so the standard fee is the fee.
+    const dispersed = makeSpot({ siteType: 'dispersed', cost: { nightlyFeeUsd: 0, rvFeeUsd: null, hookups: null } });
+    expect(costForRig(dispersed, preset('Truck + 25 ft trailer'))).toEqual({
+      feeUsd: 0,
+      level: 0,
+      basis: 'standard site',
+    });
+    expect(knownHookups(dispersed)).toEqual([]);
+    expect(knownHookups(campground)).toBeNull();
+  });
+
   it('reports an unknown fee as unknown', () => {
     const spot = makeSpot({ cost: { nightlyFeeUsd: null, rvFeeUsd: null } });
     expect(costForRig(spot, preset('Sedan'))).toEqual({ feeUsd: null, level: null, basis: 'standard site' });
@@ -61,13 +81,19 @@ describe('formatting', () => {
   });
 
   it('describes the RV fee for every combination', () => {
-    expect(describeRvFee({ nightlyFeeUsd: 0, rvFeeUsd: 20, hookups: ['electric'] })).toBe('$20 a night');
-    expect(describeRvFee({ nightlyFeeUsd: 0, rvFeeUsd: null, hookups: [] })).toBe('Same as standard');
-    expect(describeRvFee({ nightlyFeeUsd: 0, rvFeeUsd: null, hookups: ['water'] })).toBe('Not reported');
-    expect(describeRvFee({ nightlyFeeUsd: null, rvFeeUsd: null, hookups: [] })).toBe('Not reported');
+    const rv = (cost: Pick<SpotCost, 'nightlyFeeUsd' | 'rvFeeUsd' | 'hookups'>, siteType: SiteType = 'campground') =>
+      describeRvFee({ siteType, cost: { ...cost, reservations: null } });
+    expect(rv({ nightlyFeeUsd: 0, rvFeeUsd: 20, hookups: ['electric'] })).toBe('$20 a night');
+    expect(rv({ nightlyFeeUsd: 0, rvFeeUsd: null, hookups: [] })).toBe('Same as standard');
+    expect(rv({ nightlyFeeUsd: 0, rvFeeUsd: null, hookups: ['water'] })).toBe('Not reported');
+    expect(rv({ nightlyFeeUsd: null, rvFeeUsd: null, hookups: [] })).toBe('Not reported');
+    // Hookups nobody reported: unknown at a campground; dispersed spots have none.
+    expect(rv({ nightlyFeeUsd: 0, rvFeeUsd: null, hookups: null })).toBe('Not reported');
+    expect(rv({ nightlyFeeUsd: 0, rvFeeUsd: null, hookups: null }, 'dispersed')).toBe('Same as standard');
   });
 
   it('formats hookups', () => {
+    expect(formatHookups(null)).toBe('Not reported');
     expect(formatHookups([])).toBe('None');
     expect(formatHookups(['electric', 'water'])).toBe('Electric, Water');
   });

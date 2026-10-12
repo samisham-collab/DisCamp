@@ -238,6 +238,19 @@ describe('Account tab', () => {
     expect(await screen.findAllByText('Sam I.')).toBeTruthy();
   });
 
+  it("doesn't hand one camper's unsaved name to the next camper", async () => {
+    const backend = fakeBackend();
+    backend.auth.setUser(SAM);
+    connectServer(backend);
+    await renderApp('/account');
+    fireEvent.changeText(await screen.findByLabelText('Display name'), 'Sammy the camper');
+    fireEvent.press(screen.getByText('Sign out'));
+    expect(await screen.findByText('Add the spots you know')).toBeTruthy();
+    act(() => backend.auth.setUser(ALEX));
+    const field = await screen.findByLabelText('Display name');
+    await waitFor(() => expect(field.props.value).toBe('Alex'));
+  });
+
   it('signs out', async () => {
     const backend = fakeBackend();
     backend.auth.setUser(SAM);
@@ -270,7 +283,7 @@ describe('Account tab', () => {
     expect(alerts.alert.mock.calls.at(-1)?.[1]).toMatch(/Spots you added stay on the map without your name/);
 
     alerts.press('Cancel');
-    expect(backend.rpc).not.toHaveBeenCalled();
+    expect(backend.rpc).not.toHaveBeenCalledWith('delete_my_account');
 
     fireEvent.press(screen.getByText('Delete account'));
     await act(async () => alerts.press('Delete account'));
@@ -287,7 +300,8 @@ describe('Account tab', () => {
     backend.auth.setUser(SAM);
     connectServer(backend);
     await renderApp('/account');
-    backend.rpc.mockResolvedValueOnce({ data: null, error: { message: 'boom' } });
+    backend.intercept = (query) =>
+      query.op === 'rpc' ? Promise.resolve({ data: null, error: { message: 'boom' } }) : undefined;
     fireEvent.press(await screen.findByText('Delete account'));
     await act(async () => alerts.press('Delete account'));
     await waitFor(() => expect(alerts.lastTitle()).toBe("Couldn't delete your account"));

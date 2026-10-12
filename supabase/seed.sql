@@ -21,7 +21,7 @@ insert into public.spots (
   true,
   true,
   null,
-  true,
+  null,
   null,
   0,
   20,

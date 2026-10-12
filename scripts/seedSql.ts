@@ -62,7 +62,7 @@ function values(s: Spot): string[] {
     bool(s.fit.turnaround),
     num(s.cost.nightlyFeeUsd),
     num(s.cost.rvFeeUsd),
-    textArray(s.cost.hookups),
+    s.cost.hookups == null ? 'null' : textArray(s.cost.hookups),
     text(s.cost.reservations),
     text(s.cost.notes),
     textArray(s.amenities),

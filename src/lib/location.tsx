@@ -97,6 +97,10 @@ function explainDenied() {
   );
 }
 
+function servicesOff() {
+  Alert.alert('Location Services are off', 'Turn on Location Services in Settings to see spots near you.');
+}
+
 export function LocationProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<LocationStatus>('checking');
   const [coords, setCoords] = useState<Coordinates | null>(null);
@@ -152,13 +156,19 @@ export function LocationProvider({ children }: { children: ReactNode }) {
           setStatus('denied');
           // The camper just said no in the system prompt: respect that. Only
           // point to Settings when tapping again can't bring the prompt back.
-          if (!prompted && !permission.canAskAgain) explainDenied();
+          if (!prompted && !permission.canAskAgain) {
+            // With Location Services off for the whole phone, iPhone reports
+            // DisCamp as denied too; DisCamp's own settings can't fix that.
+            const servicesOn = await orAfter(Location.hasServicesEnabledAsync(), CHECK_TIMEOUT_MS, true);
+            if (servicesOn) explainDenied();
+            else servicesOff();
+          }
           return null;
         }
         setStatus('granted');
         const servicesOn = await orAfter(Location.hasServicesEnabledAsync(), CHECK_TIMEOUT_MS, true);
         if (!servicesOn) {
-          Alert.alert('Location Services are off', 'Turn on Location Services in Settings to see spots near you.');
+          servicesOff();
           return null;
         }
         const found = await currentPosition();

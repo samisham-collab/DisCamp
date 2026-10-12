@@ -1,8 +1,10 @@
 // Display names show on spots a camper adds. Same rules as the database
-// (profiles_display_name_ok in migration 0003), checked here first so the
-// camper gets a clear message instead of a server error.
+// (profiles_display_name_ok in migration 0003, and the word filter in 0004),
+// checked here first so the camper gets a clear message instead of a server
+// error.
 
 import { charCount } from './schemas';
+import { hasBlockedWords } from './wordFilter';
 
 export const MAX_DISPLAY_NAME = 40;
 
@@ -19,5 +21,6 @@ export function checkDisplayName(input: string): NameCheck {
     return { ok: false, message: `Use ${MAX_DISPLAY_NAME} characters or fewer.` };
   }
   if (name.includes('@')) return { ok: false, message: "Use a name, not an email address (no '@')." };
+  if (hasBlockedWords(name)) return { ok: false, message: "Pick a name without words that aren't allowed on DisCamp." };
   return { ok: true, name };
 }

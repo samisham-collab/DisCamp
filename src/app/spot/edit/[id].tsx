@@ -3,10 +3,11 @@
 
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { AccountGate } from '@/components/AccountGate';
 import { SpotForm } from '@/components/SpotForm';
+import { TermsGate } from '@/components/TermsGate';
 import { EmptyState } from '@/components/ui';
 import { useSpot, useSpots } from '@/data/spots';
 import { SpotWriteError, updateSpot } from '@/data/spotWrites';
@@ -20,6 +21,7 @@ import {
   type SpotInput,
 } from '@/lib/spotDraft';
 import { useSpotEditor } from '@/lib/useSpotEditor';
+import { useStillHere } from '@/lib/useStillHere';
 import { colors } from '@/theme';
 
 /** Stands in until the spot loads, so the editor always has a draft to check. */
@@ -28,8 +30,8 @@ const EMPTY = emptyDraft();
 export default function EditSpotScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
-  const { status, user, client } = useAuth();
-  const { spot } = useSpot(id);
+  const { status, user, client, termsAccepted, reloadProfile } = useAuth();
+  const { spot, loading } = useSpot(id);
   const { spots, saveLocal } = useSpots();
   // Starts from the spot as it is; null until the camper changes something.
   const [changes, setChanges] = useState<SpotDraft | null>(null);
@@ -44,11 +46,20 @@ export default function EditSpotScreen() {
     },
     [client, id],
   );
-  const editor = useSpotEditor(draft ?? EMPTY, save);
+  const editor = useSpotEditor(draft ?? EMPTY, save, reloadProfile);
+  const stillHere = useStillHere();
 
   const gate = <AccountGate status={status} next={`/spot/edit/${id ?? ''}`} action="Editing a spot" />;
   if (status !== 'signed-in') return gate;
+  if (termsAccepted !== true) return <TermsGate />;
 
+  if (!spot && loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={colors.pine} accessibilityLabel="Loading spot" />
+      </View>
+    );
+  }
   if (!spot || !draft) {
     return (
       <View style={styles.center}>
@@ -75,8 +86,8 @@ export default function EditSpotScreen() {
     if (!saved) return;
     saveLocal(saved);
     // Back to the spot's page: the one underneath, or a fresh one if this
-    // screen was opened from a link.
-    router.dismissTo({ pathname: '/spot/[id]', params: { id: saved.id } });
+    // screen was opened from a link. Not if the camper already left.
+    if (stillHere()) router.dismissTo({ pathname: '/spot/[id]', params: { id: saved.id } });
   };
 
   return (

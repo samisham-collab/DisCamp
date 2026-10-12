@@ -6,6 +6,8 @@
 import 'react-native-url-polyfill/auto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
+import { NETWORK_TIMEOUT_MS } from '../config';
+import { fetchWithTimeout } from './deadline';
 import { log } from './log';
 import { secureSessionStorage } from './secureStorage';
 
@@ -39,6 +41,9 @@ export function getSupabase(): SupabaseClient | null {
         flowType: 'pkce',
         detectSessionInUrl: false,
       },
+      // A stalled connection never answers on Android, so nothing would ever
+      // give up. Requests with their own, shorter limit keep it.
+      global: { fetch: fetchWithTimeout(NETWORK_TIMEOUT_MS) },
     });
   } catch (error) {
     log.error('Supabase is misconfigured; using starter spots', error);

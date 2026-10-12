@@ -82,3 +82,23 @@ export async function copyCoordinates(spot: Spot): Promise<boolean> {
     return false;
   }
 }
+
+/** Opens the mail app to write to `address`. */
+export function emailUrl(address: string, subject?: string): string {
+  return `mailto:${address}${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`;
+}
+
+export function openEmail(address: string, subject?: string): Promise<boolean> {
+  return open(emailUrl(address, subject), "Couldn't open your mail app", `Write to ${address}.`);
+}
+
+export async function copyText(text: string, what: string): Promise<boolean> {
+  try {
+    await Clipboard.setStringAsync(text);
+    return true;
+  } catch (error) {
+    log.warn('Copy failed', { error: String(error) });
+    Alert.alert("Couldn't copy", `The ${what} is ${text}.`);
+    return false;
+  }
+}

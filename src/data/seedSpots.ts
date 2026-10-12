@@ -34,7 +34,7 @@ export const SEED_SPOTS: Spot[] = [
       rtt: true,
       van: true,
       maxTrailerFt: null,
-      bigRig: true, // 15 RV sites with hookups
+      bigRig: null, // 15 RV sites with hookups, but no source says how big
       turnaround: null,
     },
     cost: {

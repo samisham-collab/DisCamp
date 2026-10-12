@@ -8,7 +8,7 @@ import { AuthProvider, useAuth } from '@/lib/auth';
 import { ServerProvider, useServerClient } from '@/lib/server';
 import { getSupabase } from '@/lib/supabase';
 
-import { ALEX, fakeBackend, SAM, type FakeBackend } from '../test/fakeSupabase';
+import { ALEX, fakeBackend, NEWBIE, SAM, type FakeBackend } from '../test/fakeSupabase';
 
 function renderAuth(backend: FakeBackend | null) {
   const client: SupabaseClient | null = backend?.client ?? null;
@@ -107,6 +107,78 @@ describe('AuthProvider', () => {
     expect(warn).toHaveBeenCalledTimes(2);
   });
 
+  it('refuses names the server won’t take', async () => {
+    const backend = fakeBackend();
+    backend.auth.setUser(SAM);
+    const { result } = renderAuth(backend);
+    await waitFor(() => expect(result.current.displayName).toBe('Sam'));
+    expect(await result.current.rename('Shit Head')).toEqual({
+      ok: false,
+      message: "Pick a name without words that aren't allowed on DisCamp.",
+    });
+    // The server's word list can be longer than the app's.
+    backend.intercept = () => Promise.resolve({ data: null, error: { message: 'blocked_words', code: 'P0001' } });
+    expect(await result.current.rename('Litter Bug')).toEqual({
+      ok: false,
+      message: "Pick a name without words that aren't allowed on DisCamp.",
+    });
+    backend.intercept = null;
+    for (const reporter of ['a', 'b', 'c']) {
+      backend.flags.push({ reporter, camperId: SAM.id, reason: 'offensive', status: 'open' });
+    }
+    expect(await result.current.rename('Sammy')).toEqual({
+      ok: false,
+      message: expect.stringContaining('Other campers reported your name'),
+    });
+    backend.banned.add(SAM.id);
+    expect(await result.current.rename('Sammy')).toEqual({ ok: false, message: "Your account can't change its name." });
+  });
+
+  it('knows whether the camper agreed to the terms, and records agreeing', async () => {
+    const backend = fakeBackend();
+    backend.auth.setUser(NEWBIE);
+    const { result } = renderAuth(backend);
+    expect(result.current.termsAccepted).toBeNull();
+    await waitFor(() => expect(result.current.termsAccepted).toBe(false));
+    await act(async () => {
+      expect(await result.current.acceptTerms()).toEqual({ ok: true });
+    });
+    expect(result.current.termsAccepted).toBe(true);
+    expect(result.current.displayName).toBe('Robin');
+
+    // Agreeing can fail, and the camper hears why.
+    backend.intercept = () => Promise.resolve({ data: null, error: { message: 'terms_outdated', code: 'P0001' } });
+    expect(await result.current.acceptTerms()).toEqual({
+      ok: false,
+      message: expect.stringContaining('DisCamp has new terms of use'),
+    });
+    backend.intercept = () => Promise.reject('odd');
+    silence('error');
+    expect((await result.current.acceptTerms()).ok).toBe(false);
+    backend.intercept = null;
+
+    // Reloading reads the profile again.
+    backend.terms.delete(NEWBIE.id);
+    act(() => result.current.reloadProfile());
+    await waitFor(() => expect(result.current.termsAccepted).toBe(false));
+  });
+
+  it('can’t agree to the terms signed out or without a server', async () => {
+    expect(await renderAuth(null).result.current.acceptTerms()).toEqual({ ok: false, message: 'Sign in first.' });
+  });
+
+  it('knows who signed in with Apple, even through a linked account', async () => {
+    const backend = fakeBackend();
+    backend.auth.setUser({ ...SAM, provider: 'apple' });
+    const { result } = renderAuth(backend);
+    await waitFor(() => expect(result.current.user?.apple).toBe(true));
+    act(() => backend.auth.setUser(ALEX));
+    expect(result.current.user?.apple).toBe(false);
+    act(() => backend.auth.setUser({ ...ALEX, providers: ['github', 'apple'] }, 'USER_UPDATED'));
+    expect(result.current.user?.apple).toBe(true);
+    await waitFor(() => expect(result.current.displayName).toBe('Alex'));
+  });
+
   it('signs out of this phone only', async () => {
     const backend = fakeBackend();
     backend.auth.setUser(SAM);
@@ -136,6 +208,28 @@ describe('AuthProvider', () => {
       message: "Signing out didn't work. Please try again.",
     });
     expect(warn).toHaveBeenCalledTimes(2);
+
+    // Offline, Supabase can't reach the server but still forgets the session
+    // on this phone: that counts as signed out.
+    backend.auth.signOut.mockImplementationOnce(async () => {
+      act(() => backend.auth.setUser(null));
+      return { error: { message: 'Failed to fetch' } };
+    });
+    expect(await result.current.signOut()).toEqual({ ok: true });
+    await waitFor(() => expect(result.current.status).toBe('signed-out'));
+    // And if it can't even tell, assume still signed in.
+    backend.auth.getSession.mockRejectedValueOnce(new Error('storage broke'));
+    backend.auth.signOut.mockResolvedValueOnce({ error: { message: 'Failed to fetch' } });
+    expect((await result.current.signOut()).ok).toBe(false);
+    // Or when the session is there but can't be renewed offline.
+    act(() => backend.auth.setUser(SAM));
+    await waitFor(() => expect(result.current.termsAccepted).toBe(true));
+    backend.auth.getSession.mockResolvedValueOnce({
+      data: { session: null },
+      error: { message: 'Failed to fetch' },
+    });
+    backend.auth.signOut.mockResolvedValueOnce({ error: { message: 'Failed to fetch' } });
+    expect((await result.current.signOut()).ok).toBe(false);
   });
 
   it('deletes the account on the server, then forgets it here', async () => {
@@ -157,9 +251,10 @@ describe('AuthProvider', () => {
     backend.auth.setUser(SAM);
     const { result } = renderAuth(backend);
     await waitFor(() => expect(result.current.status).toBe('signed-in'));
-    backend.rpc.mockResolvedValueOnce({ data: null, error: { message: 'Network request failed' } });
+    backend.intercept = (query) =>
+      query.op === 'rpc' ? Promise.resolve({ data: null, error: { message: 'Network request failed' } }) : undefined;
     expect((await result.current.deleteAccount()).ok).toBe(false);
-    backend.rpc.mockRejectedValueOnce(new Error('boom'));
+    backend.intercept = (query) => (query.op === 'rpc' ? Promise.reject(new Error('boom')) : undefined);
     expect(await result.current.deleteAccount()).toEqual({
       ok: false,
       message: "Deleting your account didn't work. Please try again.",
@@ -175,10 +270,9 @@ describe('AuthProvider', () => {
       query.table === 'profiles' ? Promise.resolve({ data: null, error: { message: 'boom' } }) : undefined;
     backend.auth.setUser(SAM);
     const { result } = renderAuth(backend);
-    await waitFor(() =>
-      expect(warn).toHaveBeenCalledWith('[DisCamp] Could not load the display name', expect.anything()),
-    );
-    expect(result.current).toMatchObject({ status: 'signed-in', displayName: null });
+    await waitFor(() => expect(warn).toHaveBeenCalledWith('[DisCamp] Could not load the profile', expect.anything()));
+    // Not knowing whether the terms were agreed to, the app asks again.
+    expect(result.current).toMatchObject({ status: 'signed-in', displayName: null, termsAccepted: false });
   });
 
   it('refreshes tokens only while the app is open', async () => {

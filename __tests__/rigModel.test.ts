@@ -2,6 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 
 import { RIG_PRESETS } from '@/lib/rigPresets';
 import {
+  changeRig,
   DEFAULT_RIG,
   defaultLengthFor,
   matchingPreset,
@@ -74,5 +75,20 @@ describe('presets', () => {
     const names = RIG_PRESETS.map((p) => p.name);
     expect(new Set(names).size).toBe(names.length);
     expect(matchingPreset(DEFAULT_RIG)).toBeDefined();
+  });
+});
+
+describe('changeRig', () => {
+  it('makes a rig switched to "big rig" at least big-rig length', () => {
+    const trailer = preset('Truck + 25 ft trailer');
+    expect(changeRig(trailer, { setup: 'bigrig' }).lengthFt).toBe(40);
+    expect(changeRig({ ...trailer, lengthFt: 45 }, { setup: 'bigrig' }).lengthFt).toBe(45);
+    expect(changeRig(trailer, { setup: 'bigrig', lengthFt: 38 }).lengthFt).toBe(38);
+    expect(changeRig(trailer, { clearanceIn: 10 })).toEqual({ ...trailer, clearanceIn: 10 });
+  });
+
+  it("cuts a long name by character, so an emoji isn't split", () => {
+    const name = `${'a'.repeat(39)}🚙`;
+    expect(normalizeRig({ ...DEFAULT_RIG, name: `${name}xyz` }).name).toBe(name);
   });
 });

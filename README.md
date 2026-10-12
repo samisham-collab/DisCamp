@@ -2,7 +2,7 @@
 
 A free, community-built map of campsites that tells you whether your rig can reach a spot, whether it fits, and what it costs to stay.
 
-**Version 1.3** adds accounts and camper-added spots: sign in with Apple, Google, Microsoft or GitHub, then add campsites, and edit or delete the ones you added. Browsing still needs no account. See [CHANGELOG.md](CHANGELOG.md) for every version.
+**Version 1.4** gets DisCamp ready for the App Store: reporting, blocking, a word filter and terms of use for camper-added content (Apple's Guideline 1.2), a privacy policy, terms and support page to publish, crash reports, over-the-air updates and a privacy manifest. Version 1.3 added accounts and camper-added spots. See [CHANGELOG.md](CHANGELOG.md) for every version.
 
 It ships with six starter spots from public listings:
 
@@ -29,6 +29,9 @@ It ships with six starter spots from public listings:
 - **Sign in** with Apple, Google, Microsoft or GitHub (Account tab, or "Add spot"). Only needed to add spots.
 - **Add a spot**: drop a pin on a satellite map (or use your location, or paste GPS), then rate access, who fits and cost. Only the name, land manager and location are required; anything else can stay "Not sure". The draft is saved as you type. New spots show for everyone right away, marked "not yet confirmed".
 - **Your spots**: edit or delete the spots you added (deleting stops once other campers have reported on a spot). The Account tab lists them, and lets you change your display name, sign out or delete your account.
+- **Community rules**: before a first spot, campers agree to the terms of use. A word filter keeps offensive words out of spots and names.
+- **Report and block**: every spot page has **Report this spot**, and for spots campers added, **Report the name** and **Block**. Blocked campers' spots disappear for you; Account lists them. Each report emails you, and 3 reports hide a spot until you review it. [MODERATION.md](MODERATION.md) is the routine.
+- **Help and contact**: the Account tab shows the support email and links to the privacy policy, terms and support page.
 - Works with **no backend**: then it shows the starter spots, and sign-in and adding spots are turned off. Supabase is optional (see below).
 
 ## Run it on your phone (free)
@@ -74,7 +77,7 @@ Edit `src/data/seedSpots.ts`. Every spot came from the public listings linked on
 
 | Spot                                | Confirm on site                                                                                                                                     |
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Smoky Gardens                       | Exact pin (approximate now); clearance C2 and "2WD OK" are assumptions; longest trailer, turnaround, stay limit, wet roads                          |
+| Smoky Gardens                       | Exact pin (approximate now); clearance C2 and "2WD OK" are assumptions; big-rig fit, longest trailer, turnaround, stay limit, wet roads             |
 | Sublett Dam                         | Turnaround; whether the road is OK when wet                                                                                                         |
 | Sublett Campground                  | Clearance C3 (from "washboard"); number of sites (sources say 5 and 9)                                                                              |
 | South Fork Sublett Creek            | Everything about the road: no camper has reported on FR 583                                                                                         |
@@ -96,9 +99,11 @@ update public.spots set verified = true where id = 'smoky-gardens';
    1. `supabase/migrations/0001_init.sql` creates the `spots` table.
    2. `supabase/migrations/0002_harden.sql` makes it read-only for the app and adds data checks.
    3. `supabase/migrations/0003_accounts.sql` adds accounts: profiles, who added each spot, and exactly what signed-in campers may change.
-   4. `supabase/seed.sql` adds the starter spots.
+   4. `supabase/migrations/0004_moderation.sql` adds moderation: terms of use, the word filter, reports, blocking, hidden spots, bans and your moderator tools.
+   5. `supabase/migrations/0005_fixes.sql` lets hookups be "not reported" and sharpens the word filter (1.4.1).
+   6. `supabase/seed.sql` adds the starter spots.
 
-   Already ran 0001 and 0002 for an earlier version? Run just 0003, then the seed.
+   Already ran some for an earlier version? Run only the ones after it (for 1.3: 0004 and 0005; for 1.4.0: just 0005), then the seed.
 
 3. Copy your **Project URL** and **publishable key** from the project's API settings.
 4. For your phone: `cp .env.example .env`, put both values in `.env`, and restart `npx expo start`.
@@ -131,15 +136,39 @@ Without these, sign-in opens and then quietly comes back as "cancelled".
 **Before the App Store:**
 
 - Apple requires Sign in with Apple in any app that offers Google, Microsoft or GitHub sign-in (App Review guideline 4.8), so switch Apple on before submitting.
-- Account deletion is in the app (Account > Delete account), as Apple requires. Apple also asks apps to revoke a camper's Sign in with Apple tokens when they delete their account. That needs a small server function holding the Apple key; it's on the backlog for Sprint 6, before the first App Store submission.
+- Account deletion is in the app (Account > Delete account), as Apple requires. For accounts that used Sign in with Apple, the app then explains how to remove DisCamp from the Apple Account (Apple's minimum, TN3194). Revoking the tokens automatically needs a server function holding the Apple key; it's on the list after launch.
 
-**What the database allows** (enforced by `0003_accounts.sql`, checked by the database tests):
+**What the database allows** (enforced by `0003_accounts.sql` and `0004_moderation.sql`, checked by the database tests):
 
 - Anyone can read spots. Only signed-in campers can add them, at most 20 a day each.
 - Campers can edit spots they added, and delete them until another camper has reported on them. Starter spots and other campers' spots can't be changed from the app. An edit clears a spot's "confirmed" status.
 - The server sets who added a spot, when, whether it's confirmed, and its report count. The app can't.
 - Display names show only on spots a camper has added. Emails are never shown to anyone else.
 - Deleting an account removes the sign-in and the name. Spots it added stay, without a name.
+- Campers must agree to the current terms before adding or editing spots. Banned campers can't add, edit, rename or report.
+- Spot text and names pass the word filter. Reports and blocks are private; only you (in the SQL Editor) see reports.
+- Hidden spots show only to the camper who added them. Only your moderator tools hide, restore and ban. A spot that's hidden or has open reports can't be deleted by its camper.
+- Bans hold through account deletion: the database keeps one-way hashes of a banned account's email and sign-ins.
+
+## Moderation, legal pages and crash reports
+
+**Moderation.** Apple expects you to act on reports within 24 hours. [MODERATION.md](MODERATION.md) sets up an email for every report (a small Supabase Edge Function, `supabase/functions/report-alert`, plus Resend) and walks through the daily routine in the SQL Editor.
+
+**Legal pages.** The privacy policy, terms of use and support page are in `docs/`, ready for GitHub Pages:
+
+1. Fill in your name and support email at the top of `docs/_config.yml`.
+2. On GitHub: your DisCamp repo > **Settings > Pages** > Deploy from a branch: `main`, folder `/docs`. (Pages needs a public repo on a free account. Prefer a private repo? Copy `docs/` into a separate public one, then set `EXPO_PUBLIC_LEGAL_BASE_URL` to its address.)
+3. The pages appear at `https://<your GitHub username>.github.io/DisCamp/` (`privacy/`, `terms/`, `support/`). The app links there by default.
+
+They're drafts written from what the app does, not legal advice: have someone qualified read them before launch.
+
+**Support email.** Set `EXPO_PUBLIC_SUPPORT_EMAIL` in `.env` and on expo.dev. The Account tab shows it, and a production build stops without it, since App Review needs a way to reach you.
+
+**Crash reports (optional, free).** Make a project at [sentry.io](https://sentry.io) (React Native), copy its DSN into `EXPO_PUBLIC_SENTRY_DSN`. Reports carry the error, app version and phone model, never emails, names, account ids or sign-in tokens (`src/lib/crashReports.ts` scrubs them). They're off in Expo Go. To see your own code in crash reports, also set `SENTRY_ORG`, `SENTRY_PROJECT` and the `SENTRY_AUTH_TOKEN` secret on expo.dev.
+
+**Over-the-air updates.** `expo-updates` is set up: after `npx eas-cli@latest init`, builds check for updates on launch, and a JavaScript-only fix reaches phones with `npx eas-cli@latest update --channel production --message "Fix ..."` without a new App Review. Anything that changes native code or permissions still needs a new build.
+
+**App Store Connect.** `store/app-store-connect.md` has draft answers for App Privacy, the age rating and the App Review notes.
 
 ## Build for TestFlight and Android
 
@@ -159,8 +188,9 @@ src/
     (tabs)/_layout.tsx      Bottom tabs: Explore, My Rig, Account
     (tabs)/index.tsx        Explore: map or list, filters, summary card, "Add spot"
     (tabs)/rig.tsx          My Rig
-    (tabs)/account.tsx      Account: name, your spots, sign out, delete account
-    spot/[id].tsx           Spot page (edit and delete if you added it)
+    (tabs)/account.tsx      Account: name, your spots, blocked campers, help, sign out, delete account
+    spot/[id].tsx           Spot page (edit and delete if you added it; report and block otherwise)
+    report/[kind]/[id].tsx  Report a spot or a camper's name
     spot/new.tsx            Add a spot
     spot/edit/[id].tsx      Edit a spot you added
     sign-in.tsx             Sign in with Apple, Google, Microsoft or GitHub
@@ -172,6 +202,7 @@ src/
   data/spots.tsx            Shares spots with every screen: starter → saved → server
   data/spotsRepository.ts   Server queries and the offline copy
   data/spotWrites.ts        Adding, editing and deleting spots on the server
+  data/moderation.ts        Reports, blocks and agreeing to the terms, on the server
   lib/fit.ts                Rig-fit rules and the C1–C7 clearance tiers
   lib/cost.ts               Cost meter levels and the fee that applies to your rig
   lib/geo.ts                Distances, directions, map regions
@@ -184,10 +215,17 @@ src/
   lib/authFlows.ts          The sign-in steps for each provider (PKCE, Apple nonce)
   lib/secureStorage.ts      Keeps the sign-in session in the phone's keychain
   lib/spotDraft.ts          The add/edit form as data: checks and conversions
-  config.ts                 App-wide settings (timeouts, storage keys)
+  lib/wordFilter.ts         The word filter (and the database's copy of it)
+  lib/crashReports.ts       Sentry crash reports, scrubbed of anything personal
+  components/TermsGate.tsx  Community rules and "I agree", before a first spot
+  config.ts                 App-wide settings (timeouts, storage keys, support and legal links)
   theme.ts                  Colors and sizes
 supabase/migrations/        Database schema, one numbered file per change
 supabase/seed.sql           Generated from seedSpots.ts (npm run seed:sql)
+supabase/functions/         report-alert: emails you each report (Deno, runs on Supabase)
+docs/                       Privacy policy, terms and support page (GitHub Pages)
+store/                      Draft App Store Connect answers
+MODERATION.md               Acting on reports within 24 hours
 scripts/seedSql.ts          The seed generator
 __tests__/                  Tests; screens/ renders the whole app
 test/                       Test helpers and stand-ins for native modules
@@ -203,7 +241,8 @@ test/                       Test helpers and stand-ins for native modules
 
 ## Security
 
-- The app only reads. The database lets the public read spots and nothing else: no inserts, updates, deletes or truncates, enforced by both grants and row-level security. The database test checks this on every push.
+- Visitors can only read. Signed-in campers can change only their own spots and account, enforced by grants, row-level security and triggers in the database (see "What the database allows"). Reports, blocks and moderator tools are out of reach of the app. The database test checks every rule on each push.
+- iPhone asks for location only while the app is in use; the unused "always" and motion permission messages, background location and Android's storage and overlay permissions are removed.
 - Every row from the server is validated. A bad field becomes "not reported"; a broken row is skipped; links can only be web links.
 - `npm audit` lists advisories in packages Expo uses at build time (its command-line tools and config plugins). They don't ship inside the app. Keep Expo up to date with `npx expo install --fix` to pick up their fixes.
 
@@ -211,7 +250,7 @@ test/                       Test helpers and stand-ins for native modules
 
 - **Maps:** v1 uses `react-native-maps` (Apple Maps on iPhone, Google Maps on Android) because it runs in Expo Go for free. The plan's MapLibre + OpenFreeMap switch comes with offline maps; only `src/components/SpotMap.tsx` touches the map.
 - **Lots of spots:** the app loads every spot in one request, and Supabase returns at most 1,000 rows per request. Before you get close, switch to loading spots for the visible map area (the app logs a warning if it ever hits the limit).
-- **Next up (Sprint 3):** photos, "Still good?" check-ins and change reports. The product plan's MVP backlog lists the rest, sprint by sprint.
+- **Next up:** TestFlight on a real iPhone, then the App Store. After launch, Sprint 3: photos, "Still good?" check-ins and change reports. The product plan's MVP backlog lists the rest, sprint by sprint.
 
 ## Put it on GitHub
 
@@ -219,7 +258,7 @@ test/                       Test helpers and stand-ins for native modules
 cd ~/Documents/DisCamp
 git init
 git add .
-git commit -m "DisCamp v1.3"
+git commit -m "DisCamp v1.4"
 ```
 
 Then create an empty repo on GitHub and follow its "push an existing repository" steps. CI starts running on the first push.

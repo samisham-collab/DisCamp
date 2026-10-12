@@ -8,7 +8,7 @@ import { SEED_SPOTS } from '@/data/seedSpots';
 import { SpotsProvider, useSpot, useSpots } from '@/data/spots';
 import { kvStore } from '@/lib/kvStore';
 
-import { fakeClient, type QueryResult } from '../test/fakeSupabase';
+import { ALEX, fakeBackend, fakeClient, SAM, type QueryResult } from '../test/fakeSupabase';
 import { makeRow } from '../test/fixtures';
 
 function wrapperFor(client: SupabaseClient | null) {
@@ -79,6 +79,124 @@ describe('SpotsProvider', () => {
       await Promise.resolve();
     });
     expect(await kvStore.getItem(STORAGE_KEYS.spotsCache)).toBeNull();
+  });
+
+  it('loads again when someone else signs in or out, not on token refreshes', async () => {
+    const backend = fakeBackend([makeRow({ id: 'a', name: 'Alex Hollow', created_by: ALEX.id, added_by: 'Alex' })]);
+    const { result } = renderHook(() => useSpots(), { wrapper: wrapperFor(backend.client) });
+    await waitFor(() => expect(result.current.source).toBe('remote'));
+    const loads = () => backend.queries.filter((q) => q.table === 'spots_api').length;
+    expect(loads()).toBe(1);
+
+    act(() => backend.auth.setUser(SAM));
+    await waitFor(() => expect(loads()).toBe(2));
+    act(() => backend.auth.setUser(SAM, 'TOKEN_REFRESHED'));
+    act(() => backend.auth.setUser(null));
+    await waitFor(() => expect(loads()).toBe(3));
+    await waitFor(() => expect(result.current.refreshing).toBe(false));
+  });
+
+  it('drops a server answer that started before a block, and loads again', async () => {
+    const backend = fakeBackend([
+      makeRow({ id: 'a', name: 'Alex Hollow', created_by: ALEX.id, added_by: 'Alex' }),
+      makeRow({ id: 'b', name: 'Smoky Gardens' }),
+    ]);
+    const { result } = renderHook(() => useSpots(), { wrapper: wrapperFor(backend.client) });
+    await waitFor(() => expect(result.current.source).toBe('remote'));
+
+    // A refresh is on its way with Alex's spot in it when Alex is blocked.
+    let answer: (r: QueryResult) => void = () => undefined;
+    backend.intercept = (query) =>
+      query.table === 'spots_api' ? new Promise<QueryResult>((resolve) => (answer = resolve)) : undefined;
+    let refreshing: Promise<void> = Promise.resolve();
+    act(() => {
+      refreshing = result.current.refresh();
+    });
+    act(() => result.current.removeByCreator(ALEX.id));
+    backend.intercept = null;
+    const stale = [...backend.spots.values()];
+    backend.spots.delete('a'); // From now on the server leaves Alex's spot out.
+    await act(async () => {
+      answer({ data: stale, error: null });
+      await refreshing;
+    });
+    // The old answer (with Alex's spot) was dropped; the next load agrees.
+    expect(result.current.spots.map((s) => s.id)).toEqual(['b']);
+    const loads = backend.queries.filter((q) => q.table === 'spots_api').length;
+    expect(loads).toBe(3);
+  });
+
+  it('drops a blocked camper’s spots at once', async () => {
+    const backend = fakeBackend([
+      makeRow({ id: 'a', name: 'Alex Hollow', created_by: ALEX.id, added_by: 'Alex' }),
+      makeRow({ id: 'b', name: 'Smoky Gardens' }),
+    ]);
+    const { result } = renderHook(() => useSpots(), { wrapper: wrapperFor(backend.client) });
+    await waitFor(() => expect(result.current.spots).toHaveLength(2));
+    act(() => result.current.removeByCreator(ALEX.id));
+    expect(result.current.spots.map((s) => s.id)).toEqual(['b']);
+    // And the offline copy follows.
+    await waitFor(async () => expect(await kvStore.getItem(STORAGE_KEYS.spotsCache)).not.toContain('Alex Hollow'));
+  });
+
+  it('keeps the offline copy as old as it is after a local change', async () => {
+    await kvStore.setItem(
+      STORAGE_KEYS.spotsCache,
+      JSON.stringify({ version: 1, savedAt: '2026-10-01T00:00:00.000Z', spots: [SEED_SPOTS[0]] }),
+    );
+    // The server can't be reached, so the saved copy stays on screen.
+    const { result } = renderSpots(async () => ({ data: null, error: { message: 'Network request failed' } }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.updatedAt).toBe('2026-10-01T00:00:00.000Z');
+    act(() => result.current.removeLocal(SEED_SPOTS[0]!.id));
+    await waitFor(async () => {
+      const saved = JSON.parse((await kvStore.getItem(STORAGE_KEYS.spotsCache)) ?? '{}') as {
+        spots: unknown[];
+        savedAt: string;
+      };
+      expect(saved).toMatchObject({ spots: [], savedAt: '2026-10-01T00:00:00.000Z' });
+    });
+  });
+
+  it('takes spots hidden for review off at once when someone else signs in', async () => {
+    const backend = fakeBackend([
+      makeRow({ id: 'h', name: 'Under Review', created_by: SAM.id, added_by: 'Sam' }),
+      makeRow({ id: 'b', name: 'Smoky Gardens' }),
+    ]);
+    backend.spots.get('h')!.hidden = true;
+    backend.auth.setUser(SAM);
+    const { result } = renderHook(() => useSpots(), { wrapper: wrapperFor(backend.client) });
+    await waitFor(() => expect(result.current.spots.map((s) => s.id)).toEqual(['b', 'h']));
+    // Signing out with no signal: the reload fails, but Sam's hidden spot goes.
+    backend.intercept = () => Promise.resolve({ data: null, error: { message: 'Network request failed' } });
+    act(() => backend.auth.setUser(null));
+    expect(result.current.spots.map((s) => s.id)).toEqual(['b']);
+    await waitFor(() => expect(result.current.refreshing).toBe(false));
+  });
+
+  it('reloads after unblocking even while a load is on its way', async () => {
+    const backend = fakeBackend([makeRow({ id: 'a', name: 'Alex Hollow', created_by: ALEX.id, added_by: 'Alex' })]);
+    const { result } = renderHook(() => useSpots(), { wrapper: wrapperFor(backend.client) });
+    await waitFor(() => expect(result.current.source).toBe('remote'));
+    let answer: (r: QueryResult) => void = () => undefined;
+    backend.intercept = (query) =>
+      query.table === 'spots_api' ? new Promise<QueryResult>((resolve) => (answer = resolve)) : undefined;
+    let first: Promise<void> = Promise.resolve();
+    act(() => {
+      first = result.current.refresh();
+    });
+    backend.intercept = null;
+    let reloading: Promise<void> = Promise.resolve();
+    act(() => {
+      reloading = result.current.reload();
+    });
+    await act(async () => {
+      answer({ data: [], error: null });
+      await first;
+      await reloading;
+    });
+    // The old (empty) answer was dropped and the spots loaded again.
+    expect(result.current.spots.map((s) => s.id)).toEqual(['a']);
   });
 
   it('finds one spot by id', () => {

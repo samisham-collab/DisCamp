@@ -1,0 +1,16 @@
+# GitHub Pages settings for DisCamp's public pages: the privacy policy, terms
+# of use and support page that the app and the App Store listing link to.
+# Publish: GitHub repo > Settings > Pages > "Deploy from a branch", branch
+# main, folder /docs. The pages then live at
+# https://<your GitHub username>.github.io/DisCamp/ (the app's default).
+#
+# Fill these in before publishing. Every page uses them.
+title: DisCamp
+description: A free, community-built map of dispersed campsites.
+owner: '[Your full name]'
+support_email: '[your support email]'
+state: Kansas
+terms_effective: October 8, 2026
+privacy_effective: October 8, 2026
+
+theme: jekyll-theme-primer

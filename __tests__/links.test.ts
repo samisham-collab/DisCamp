@@ -6,9 +6,12 @@ import { SEED_SPOTS } from '@/data/seedSpots';
 import {
   callPhone,
   copyCoordinates,
+  copyText,
   directionsUrl,
+  emailUrl,
   mapsSearchUrl,
   openDirections,
+  openEmail,
   openWebLink,
   phoneDigits,
   shareMessage,
@@ -88,5 +91,21 @@ describe('links', () => {
     jest.mocked(Clipboard.setStringAsync).mockRejectedValueOnce(new Error('denied'));
     await expect(copyCoordinates(smoky)).resolves.toBe(false);
     expect(alert).toHaveBeenCalledTimes(2);
+  });
+
+  it('writes emails and copies text, reporting failures', async () => {
+    expect(emailUrl('help@discamp.app')).toBe('mailto:help@discamp.app');
+    expect(emailUrl('help@discamp.app', 'Spot & name')).toBe('mailto:help@discamp.app?subject=Spot%20%26%20name');
+    const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    await expect(openEmail('help@discamp.app', 'DisCamp')).resolves.toBe(true);
+    expect(open).toHaveBeenCalledWith('mailto:help@discamp.app?subject=DisCamp');
+
+    await expect(copyText('help@discamp.app', 'email address')).resolves.toBe(true);
+    expect(Clipboard.setStringAsync).toHaveBeenCalledWith('help@discamp.app');
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    jest.mocked(Clipboard.setStringAsync).mockRejectedValueOnce(new Error('denied'));
+    await expect(copyText('help@discamp.app', 'email address')).resolves.toBe(false);
+    expect(alert).toHaveBeenCalledWith("Couldn't copy", 'The email address is help@discamp.app.');
   });
 });

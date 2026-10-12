@@ -143,6 +143,18 @@ describe('location', () => {
     expect(alert).toHaveBeenCalledWith('Location Services are off', expect.any(String));
   });
 
+  it('explains Location Services are off when iPhone reports DisCamp as denied because of it', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const { result } = await setup();
+    jest.mocked(Location.getForegroundPermissionsAsync).mockResolvedValueOnce(permission('denied', false));
+    jest.mocked(Location.hasServicesEnabledAsync).mockResolvedValueOnce(false);
+    await act(async () => {
+      await expect(result.current.locate()).resolves.toBeNull();
+    });
+    expect(alert).toHaveBeenCalledWith('Location Services are off', expect.any(String));
+    expect(alert).not.toHaveBeenCalledWith('Location is off for DisCamp', expect.any(String), expect.any(Array));
+  });
+
   it('gives up on a position that never comes', async () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     const { result } = await setup();

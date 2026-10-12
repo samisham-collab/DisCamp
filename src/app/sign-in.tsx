@@ -7,7 +7,9 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { LinkRow } from '@/components/HelpCard';
 import { Banner, Button, EmptyState } from '@/components/ui';
+import { LEGAL_URLS } from '@/config';
 import { useAuth } from '@/lib/auth';
 import { canUseNativeApple } from '@/lib/authFlows';
 import { AUTH_PROVIDERS, type AuthProviderId } from '@/lib/authProviders';
@@ -133,8 +135,13 @@ export default function SignInScreen() {
       </View>
 
       <Text style={styles.fine}>
-        Your display name shows on spots you add, and you can change it any time. Your email address is never shown.
+        Your display name shows on spots you add, and you can change it any time. Your email address is never shown. By
+        continuing, you agree to DisCamp&apos;s terms of use and privacy policy.
       </Text>
+      <View style={styles.legal}>
+        <LinkRow label="Terms of use" url={LEGAL_URLS.terms} />
+        <LinkRow label="Privacy policy" url={LEGAL_URLS.privacy} />
+      </View>
     </ScrollView>
   );
 }
@@ -149,4 +156,5 @@ const styles = StyleSheet.create({
   appleButton: { height: 50, width: '100%' },
   dimmed: { opacity: 0.4 },
   fine: { fontSize: 13, color: colors.muted, textAlign: 'center' },
+  legal: { flexDirection: 'row', justifyContent: 'center', gap: 20 },
 });

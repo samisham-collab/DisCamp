@@ -37,6 +37,10 @@ describe('formatDistance', () => {
     expect(formatDistance(4.24)).toBe('4.2 mi');
     expect(formatDistance(37.6)).toBe('38 mi');
     expect(formatDistance(1204.2)).toBe('1,204 mi');
+    // Rounded before choosing the format: never "10.0 mi".
+    expect(formatDistance(9.96)).toBe('10 mi');
+    expect(formatDistance(9.94)).toBe('9.9 mi');
+    expect(formatDistanceSpoken(9.96)).toBe('10 miles');
   });
 
   it('returns nothing for nonsense input', () => {

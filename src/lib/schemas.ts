@@ -82,7 +82,8 @@ export const spotSchema: z.ZodType<Spot> = z.object({
     hookups: z
       .array(hookup)
       .max(3)
-      .refine((h) => new Set(h).size === h.length, 'Hookups must not repeat'),
+      .refine((h) => new Set(h).size === h.length, 'Hookups must not repeat')
+      .nullable(),
     reservations: reservations.nullable(),
     notes: shortText(500).optional(),
   }),
@@ -96,6 +97,7 @@ export const spotSchema: z.ZodType<Spot> = z.object({
   createdBy: z.string().uuid().optional(),
   addedBy: shortText(40).optional(),
   createdAt: z.string().datetime({ offset: true }).optional(),
+  hidden: z.literal(true).optional(),
 });
 
 /** Postgres `numeric` can arrive as a string; accept both. */
@@ -212,6 +214,8 @@ export const spotRowSchema = z
     created_by: z.string().nullable().optional(),
     added_by: z.string().nullable().optional(),
     created_at: z.string().nullable().optional(),
+    // Added in migration 0004: true on your own spot while it's hidden for review.
+    hidden: z.boolean().nullable().optional(),
   })
   .transform((r) => {
     const fee = (v: number | null) => (v != null && v >= 0 && v <= 10_000 ? v : null);
@@ -241,7 +245,10 @@ export const spotRowSchema = z
       cost: {
         nightlyFeeUsd: fee(r.nightly_fee_usd),
         rvFeeUsd: fee(r.rv_fee_usd),
-        hookups: [...new Set(textItems(r.hookups).filter((h) => (hookup.options as readonly string[]).includes(h)))],
+        hookups:
+          r.hookups == null
+            ? null
+            : [...new Set(textItems(r.hookups).filter((h) => (hookup.options as readonly string[]).includes(h)))],
         reservations: oneOf(r.reservations, reservations.options),
         notes: cleanText(r.cost_notes, 500),
       },
@@ -256,6 +263,7 @@ export const spotRowSchema = z
         .flatMap((res) => (res.success ? [res.data] : []))
         .slice(0, 10),
       ...addedByCamper(r.created_by, r.added_by, r.created_at),
+      ...(r.hidden === true ? { hidden: true as const } : {}),
     };
   })
   .pipe(spotSchema);

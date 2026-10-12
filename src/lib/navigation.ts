@@ -2,7 +2,10 @@
 // its link; only these known screens are accepted, so a crafted link can't
 // send a camper anywhere unexpected.
 
-const SAFE_NEXT = /^\/(?:account|spot\/new|spot\/edit\/[A-Za-z0-9_-]{1,100})$/;
+const ID = '[A-Za-z0-9_-]{1,100}';
+const SAFE_NEXT = new RegExp(
+  `^/(?:account|spot/new|spot/edit/${ID}|spot/${ID}|report/spot/${ID}|report/camper/[0-9a-f-]{36})$`,
+);
 
 export function safeNext(raw: unknown): string | null {
   const value = Array.isArray(raw) ? raw[0] : raw;

@@ -11,7 +11,7 @@ import { Button, SectionTitle } from './ui';
 
 const STATUSES: readonly { status: FitStatus; detail: string }[] = [
   { status: 'fits', detail: 'Your clearance, drivetrain and setup all work.' },
-  { status: 'tight', detail: 'Possible, but the road is one tier rougher than your rig, or 4WD is recommended.' },
+  { status: 'tight', detail: 'Possible, but the road is one tier rougher than your rig, or AWD is recommended.' },
   { status: 'unknown', detail: "Campers haven't reported enough to check your rig yet." },
   { status: 'no', detail: 'Something rules it out, like clearance, length or no turnaround.' },
 ];

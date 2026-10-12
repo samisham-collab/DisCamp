@@ -2,6 +2,158 @@
 
 All notable changes to DisCamp. Dates are when the version was finished.
 
+## 1.4.1 (2026-10-12)
+
+Bug fixes from a review of the whole project. Run migration `0005_fixes.sql` along with this version.
+
+### Fixed
+
+**Saving, deleting and slow connections**
+
+- Every request to the server now gives up on time. Before, a sign-in that needed renewing could keep "Saving…" or "Loading" spinning for a minute or more, and on Android a stalled connection could wait forever.
+- Leaving "Add a spot" or "Edit" while it saves no longer jumps you to the spot afterwards (which could leave you on a screen with no tabs or way back), and the next new spot starts from a clean form instead of overwriting the one just saved.
+- Leaving a spot page while it deletes no longer switches you to Explore.
+- Trying a delete again after the first answer was lost says it's done, instead of "can't be deleted".
+- Trying a save again after a lost answer, when that spot was your 20th of the day, finds the saved spot instead of saying you've hit the limit.
+- A draft another camper left on a shared phone gets a new spot of its own, instead of changing theirs (or silently failing).
+- "Add spot" or "Edit" no longer spins forever on "Loading your account" when the connection stalls.
+- An edit link opened while spots are still loading shows a spinner, not "Spot not found".
+- Signing out with no signal counts as signed out when the phone has forgotten the session.
+
+**Spot details**
+
+- Hookups can be "not reported", like every other detail. The form has a "None" choice; leaving all of them off means "not sure". Trailers and big rigs at a campground with unknown hookups now show their fee as unknown instead of the (often free) standard fee. Campground spots campers already added go back to "not reported", since the old form couldn't say "not sure".
+- Trailers 40 ft and longer get the big-rig checks (suited to big rigs, room to turn around), as the spot form's "Big rigs (40 ft and up)" suggests.
+- Switching My Rig to "Big rig" makes it at least 40 ft long.
+- Smoky Gardens no longer claims "Big rigs: Yes"; no source says so.
+- Fees typed with a decimal comma ("22,50") work.
+- A long paste into GPS, "What's there" or "Rules" no longer wipes the whole saved draft; those fields have limits now.
+- The map legend says "AWD is recommended", which is what makes a spot "tight".
+- Distances just under 10 miles read "10 mi", not "10.0 mi", and "Under 0.1 mi" no longer has a capital U mid-sentence.
+
+**Word filter**
+
+- The app and the database now run exactly the same check on the same rules, so they never disagree. Stretched spellings ("shiiit") are caught everywhere, and real names that contain a blocked word are allowed: Cummings, Cummins, Fagan, Raper, Chinkapin, Assonet, Shiitake, Annalise, Rappel, and Rio, Cerro, Arroyo and Ojo Negro.
+- `moderation.block_word` and `allow_phrase` read words the same way the filter does.
+
+**Screens**
+
+- On Android, the keyboard no longer covers the lower fields of the spot form, the report form and Account.
+- On iPhone with Location Services off, "Show my location" says so, instead of sending you to DisCamp's settings, which can't fix it.
+- Switching from List back to Map returns to where the map was.
+- "Show all spots" no longer zooms all the way in when spots sit at almost the same place.
+- A display name typed but not saved no longer carries over to the next camper who signs in on the phone.
+- With very large text, the Explore header keeps "Add spot" and the help button on screen.
+
+**Offline copy**
+
+- Spots hidden for review come off the map as soon as their camper signs out, even with no signal.
+- A local change (adding, deleting, blocking) no longer makes an old offline copy look "saved just now", and a time in the future never reads "just now".
+- Unblocking a camper reloads the map even if a load was already on its way.
+
+### For developers
+
+- `src/lib/deadline.ts`: `withDeadline` (stops waiting, not just aborts) and a 30 s backstop fetch for the Supabase client.
+- `src/lib/useStillHere.ts`: navigate after a wait only if the screen is still open.
+- `src/components/KeyboardSafe.tsx`: Android keyboard padding (Android apps are edge to edge, so the window no longer resizes).
+- Migration `0005_fixes.sql`: nullable hookups (with a one-time reset), `moderation.collapse_repeats`, the updated `normalize_text`, `block_word` and `allow_phrase`, and the new word rules. Safe to run twice, after 0004.
+- `supabase/.temp/` (Supabase CLI files) is ignored by git.
+- 455 tests (from 422) and 26 database tests (from 25).
+
+## 1.4.0 (2026-10-08)
+
+Ready for the App Store: moderation for camper-added content (App Review Guideline 1.2), legal pages, and release
+settings. Master task list items B1, B2, B3, B5, B7, Q1, Q2 and Q4.
+
+### Added
+
+**Community rules and the word filter**
+
+- Before their first spot, campers see the community rules and agree to the terms of use: real places only, no spam
+  or fake spots, nothing offensive, zero tolerance for objectionable content and abusive campers, 13 or older. Campers
+  from 1.3 are asked before their next spot or edit. If the terms change, everyone is asked again.
+- A word filter keeps offensive words out of spot text and display names. It catches common disguises ("sh1t") and
+  leaves place names alone ("Hooker Creek", "Shitake Flats", "bear scat").
+
+**Report and block**
+
+- Every spot page has **Something wrong?** with **Report this spot**. Spots campers added also have **Report the name**
+  and **Block**.
+- Reports ask what's wrong (offensive, spam, not a real spot, unsafe or private land, something else) with an optional
+  note. Reports are private. Reporting the same thing twice just says it's already reported.
+- When 3 different campers report a spot, it comes off the map until reviewed. 3 reports on a name reset it to
+  "Camper". The camper who added a hidden spot still sees it, with a note explaining why.
+- **Block** hides every spot from that camper for you, right away. After a report you're offered to block them too.
+  **Account > Blocked campers** lists them, with **Unblock**.
+
+**Help, legal and account deletion**
+
+- **Account > Help and contact**: the support email (with Email us and Copy), and links to the support page, privacy
+  policy and terms. Also on the sign-in screen, and when signed out.
+- After deleting an account that used Sign in with Apple, the app explains how to remove DisCamp from the Apple
+  Account, with Apple's help link.
+- `docs/`: a privacy policy, terms of use and support page, ready to publish with GitHub Pages.
+- `store/app-store-connect.md`: draft answers for App Privacy, the age rating and the App Review notes.
+- `MODERATION.md`: setting up report emails, and the daily routine for acting within 24 hours.
+
+**For you, the moderator**
+
+- Every report emails you (new Supabase Edge Function `report-alert`, through Resend), with the exact SQL to act on it.
+- `moderation.queue` lists open reports. `hide_spot`, `restore_spot`, `reset_name`, `dismiss_name`, `ban`, `unban`,
+  `forget_ban` (for an account deleted after its ban), `find_camper`, `block_word` and `allow_phrase` do the rest,
+  from the Supabase SQL Editor.
+
+**Release settings**
+
+- Crash reports through Sentry, when `EXPO_PUBLIC_SENTRY_DSN` is set: errors only, no tracing, screenshots or view
+  trees, and every report scrubbed of emails, account ids, sign-in codes and tokens. Off in Expo Go.
+- Over-the-air updates with `expo-updates` (on after `eas init`), with `preview` and `production` channels.
+- iPhone privacy manifest: the reasons for the system features DisCamp's libraries use, and the data it collects.
+- Only the permissions DisCamp uses: the iPhone asks for location while in use, and nothing else. The unused "always"
+  location, motion and Face ID messages are gone, and Android no longer lists storage or overlay permissions.
+- A production build stops if `EXPO_PUBLIC_SUPPORT_EMAIL` isn't set.
+
+### Security
+
+- New migration `0004_moderation.sql`:
+  - Every spot add or edit checks the terms, the word filter (disguised spellings included) and bans in the database
+    itself, so requests that don't come from the app are held to the same rules. Names from the sign-in provider pass
+    the filter too.
+  - Reports (`public.flags`) can be sent but never read from the app; one open report per camper per spot or name, up
+    to 30 a day, never about yourself. Reports sent at the same moment all count.
+  - A spot that's hidden or has open reports can't be deleted by its camper, so nothing leaves review early.
+  - After the moderator restores a spot, the same campers can't hide it again; a reset name stays "Camper" until
+    reviewed.
+  - Bans hold if the camper deletes their account and comes back with the same email or sign-in (kept as one-way
+    hashes).
+  - Blocks are private to the camper who made them. Spots from blocked campers are filtered by the database.
+  - Hidden spots are visible only to the camper who added them; only the moderator tools hide or restore.
+  - Moderator tools live in a `moderation` schema the app can't reach.
+- Account deletion also removes the camper's blocks and reports about their name; reports they sent stay without their
+  id.
+- Report emails keep what campers wrote on one line, apart from the SQL to run, so a note can't pose as an instruction.
+- A server answer that started before a block, a new spot or a sign-in change is dropped and the spots load again, so
+  blocked campers' spots can't flash back.
+
+### For developers
+
+- `test/fakeSupabase.ts` follows the moderation rules too: terms, bans, reports with auto-hide, blocks and hidden spots.
+- 25 database tests (from 13), covering every moderation rule, the word filter and its list staying in step with the
+  app, bans that survive account deletion, simultaneous reports, and the moderator tools.
+- CI type-checks and lints the Edge Function with Deno.
+- Each test may take up to 15 seconds (from 5), so a first run on a slow machine or a cold cache doesn't fail.
+- 422 tests. Coverage 98% statements, 91% branches, 97% functions, 99% lines.
+- New packages (Expo SDK 57 versions): `@sentry/react-native`, `expo-updates`; plus `obscenity` (word filter).
+
+### Still to do before the App Store
+
+- Fill in `docs/_config.yml`, publish the pages, and set `EXPO_PUBLIC_SUPPORT_EMAIL`.
+- Run migration 0004, deploy `report-alert` and add its webhook (MODERATION.md).
+- Switch on Sign in with Apple, then test on a real iPhone through TestFlight.
+- Add one spot from a second account, so App Review can find Report the name and Block.
+- Consider automatic Apple token revocation (master task list Q6) before the first submission: Apple says apps
+  "should" revoke Sign in with Apple tokens on account deletion. 1.4 explains the manual step instead.
+
 ## 1.3.0 (2026-10-07)
 
 Accounts and camper-added spots (MVP story 5, and enabler E1: sign-in).

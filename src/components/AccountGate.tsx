@@ -10,7 +10,18 @@ import { colors } from '../theme';
 import { EmptyState } from './ui';
 
 /** Null when signed in: render the screen itself. */
-export function AccountGate({ status, next, action }: { status: AuthStatus; next: string; action: string }) {
+export function AccountGate({
+  status,
+  next,
+  action,
+  message,
+}: {
+  status: AuthStatus;
+  next: string;
+  action: string;
+  /** Why signing in helps here. Defaults to the reason for adding spots. */
+  message?: string;
+}) {
   if (status === 'signed-in') return null;
   return (
     <View style={styles.center}>
@@ -26,7 +37,7 @@ export function AccountGate({ status, next, action }: { status: AuthStatus; next
         <EmptyState
           icon="person-circle-outline"
           title="Sign in first"
-          message={`${action} needs an account, so campers know who to thank. Browsing never does.`}
+          message={message ?? `${action} needs an account, so campers know who to thank. Browsing never does.`}
           actionLabel="Sign in"
           onAction={() => router.push({ pathname: '/sign-in', params: { next } })}
         />

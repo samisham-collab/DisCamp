@@ -133,6 +133,14 @@ describe('spotRowSchema (database rows)', () => {
     expect(phoneOf(`+${'1'.repeat(25)}`)).toBeUndefined();
   });
 
+  it('marks your own spot that is hidden for review, and nothing else', () => {
+    const hidden = spotRowSchema.parse(makeRow({ hidden: true }));
+    expect(hidden.hidden).toBe(true);
+    for (const value of [false, null, undefined]) {
+      expect(spotRowSchema.parse(makeRow({ hidden: value }))).not.toHaveProperty('hidden');
+    }
+  });
+
   it('handles empty optional columns', () => {
     const result = spotRowSchema.safeParse(
       makeRow({
@@ -146,7 +154,8 @@ describe('spotRowSchema (database rows)', () => {
       }),
     );
     if (!result.success) throw new Error(JSON.stringify(result.error.issues));
-    expect(result.data.cost.hookups).toEqual([]);
+    // Hookups nobody reported stay unknown; empty lists are just empty.
+    expect(result.data.cost.hookups).toBeNull();
     expect(result.data.amenities).toEqual([]);
     expect(result.data.sources).toEqual([]);
     expect(result.data.cost.notes).toBeUndefined();

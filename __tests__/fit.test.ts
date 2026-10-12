@@ -79,6 +79,17 @@ describe('fitFor', () => {
     ).toBe('fits');
   });
 
+  it('treats a trailer 40 ft or longer as a big rig', () => {
+    const easyRoad = { clearanceTier: 1 as const };
+    const long = { ...preset('Truck + 25 ft trailer'), lengthFt: 45 };
+    const short = { ...preset('Truck + 25 ft trailer'), lengthFt: 39 };
+    const notForBigRigs = makeSpot({ access: easyRoad, fit: { maxTrailerFt: 50, bigRig: false, turnaround: true } });
+    expect(fitFor(notForBigRigs, long).status).toBe('no');
+    expect(fitFor(notForBigRigs, short).status).toBe('fits');
+    const noTurnaround = makeSpot({ access: easyRoad, fit: { maxTrailerFt: 50, bigRig: true, turnaround: false } });
+    expect(fitFor(noTurnaround, long).reasons).toContain('No turnaround');
+  });
+
   it('reports unknown instead of guessing when data is missing', () => {
     const result = fitFor(
       makeSpot({ access: { clearanceTier: 1 }, fit: { maxTrailerFt: null } }),
@@ -143,6 +154,8 @@ describe('Smoky Gardens seed', () => {
   it('asks for a camper report before promising big rigs a fit', () => {
     const result = fitFor(smoky, preset('40 ft Class A'));
     expect(result.status).toBe('unknown');
-    expect(result.reasons).toEqual(expect.arrayContaining(['Turnaround not reported', 'Max length not reported']));
+    expect(result.reasons).toEqual(
+      expect.arrayContaining(['Big-rig fit not reported', 'Turnaround not reported', 'Max length not reported']),
+    );
   });
 });

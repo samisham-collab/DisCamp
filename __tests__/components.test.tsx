@@ -1,10 +1,12 @@
 import { describe, expect, it, jest } from '@jest/globals';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { KeyboardAvoidingView, Platform, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ErrorBoundary } from '@/app/_layout';
 import { CostMeter, costMeterLabel } from '@/components/CostMeter';
 import { ClearanceGauge } from '@/components/ClearanceGauge';
+import { KeyboardSafe } from '@/components/KeyboardSafe';
 import { Banner, Pills, Stepper } from '@/components/ui';
 
 const metrics = { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } };
@@ -104,5 +106,31 @@ describe('ErrorBoundary', () => {
     expect(screen.getByText('Something went wrong')).toBeTruthy();
     fireEvent.press(screen.getByText('Try again'));
     expect(retry).toHaveBeenCalled();
+  });
+});
+
+describe('KeyboardSafe', () => {
+  it('does nothing on iPhone, where the scroll view handles the keyboard', () => {
+    const { UNSAFE_queryByType } = render(
+      <KeyboardSafe>
+        <Text>Form</Text>
+      </KeyboardSafe>,
+    );
+    expect(UNSAFE_queryByType(KeyboardAvoidingView)).toBeNull();
+    expect(screen.getByText('Form')).toBeTruthy();
+  });
+
+  it('pads the form above the keyboard on Android, measured from below the header', () => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    const { UNSAFE_getByType } = render(
+      <KeyboardSafe>
+        <Text>Form</Text>
+      </KeyboardSafe>,
+    );
+    const avoiding = UNSAFE_getByType(KeyboardAvoidingView);
+    expect(avoiding.props.behavior).toBe('padding');
+    const frame = avoiding.parent as unknown as { props: { onLayout: () => void } };
+    act(() => frame.props.onLayout());
+    expect(screen.getByText('Form')).toBeTruthy();
   });
 });

@@ -9,6 +9,8 @@ export function timeAgo(iso: string | null, now: Date = new Date()): string | nu
   const then = Date.parse(iso);
   if (Number.isNaN(then)) return null;
   const diff = now.getTime() - then;
+  // In the future: a clock was off when it was saved, so its age is unknown.
+  if (diff < -MINUTE) return null;
   if (diff < MINUTE) return 'just now';
   if (diff < HOUR) return `${Math.floor(diff / MINUTE)} min ago`;
   if (diff < DAY) return `${Math.floor(diff / HOUR)} hr ago`;

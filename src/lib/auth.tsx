@@ -6,7 +6,10 @@ import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 
+import { NETWORK_TIMEOUT_MS, REMOTE_TIMEOUT_MS, TERMS_VERSION } from '../config';
+import { acceptTerms as sendAcceptTerms, ModerationError } from '../data/moderation';
 import { signInWith, type SignInResult } from './authFlows';
+import { DeadlineError, withDeadline } from './deadline';
 import { enabledProviders, type AuthProviderId } from './authProviders';
 import { checkDisplayName } from './displayName';
 import { describeError, log } from './log';
@@ -20,6 +23,11 @@ export interface AuthUser {
   email: string | null;
   /** The provider used to sign in: "apple", "google", "azure" or "github". */
   provider: string | null;
+  /**
+   * Signed in with Apple at some point. Deleting the account then needs one
+   * more step in the iPhone's settings (Apple TN3194), which the app explains.
+   */
+  apple: boolean;
 }
 
 export type ActionResult = { ok: true } | { ok: false; message: string };
@@ -31,6 +39,14 @@ interface AuthContextValue {
   user: AuthUser | null;
   /** The public name on spots this camper adds. Null until it loads. */
   displayName: string | null;
+  /**
+   * Has this camper agreed to the current terms of use? Null while their
+   * profile loads. Campers agree once before their first spot.
+   */
+  termsAccepted: boolean | null;
+  acceptTerms: () => Promise<ActionResult>;
+  /** Reads the profile again (after the server says the terms changed, say). */
+  reloadProfile: () => void;
   providers: AuthProviderId[];
   signIn: (provider: AuthProviderId) => Promise<SignInResult>;
   signOut: () => Promise<ActionResult>;
@@ -44,12 +60,24 @@ function toUser(session: Session | null): AuthUser | null {
   if (!session?.user) return null;
   const { id, email, app_metadata } = session.user;
   const provider = typeof app_metadata?.provider === 'string' ? app_metadata.provider : null;
-  return { id, email: email ?? null, provider };
+  const providers: unknown = app_metadata?.providers;
+  const apple = provider === 'apple' || (Array.isArray(providers) && providers.includes('apple'));
+  return { id, email: email ?? null, provider, apple };
+}
+
+interface Profile {
+  /** Whose profile it is, so it never shows for the wrong account. */
+  userId: string;
+  name: string | null;
+  termsVersion: number | null;
 }
 
 const OFFLINE = /network request failed|failed to fetch|network error|load failed/i;
 
 function failure(action: string, error: unknown): ActionResult {
+  if (error instanceof DeadlineError) {
+    return { ok: false, message: 'The server took too long to answer. Try again when you have better signal.' };
+  }
   const message = describeError(error && typeof error === 'object' && 'message' in error ? error.message : error);
   log.warn(`${action} failed`, { error: message });
   return {
@@ -58,6 +86,17 @@ function failure(action: string, error: unknown): ActionResult {
       ? "You're offline or the server can't be reached. Try again when you have signal."
       : `${action} didn't work. Please try again.`,
   };
+}
+
+async function signedInHere(client: SupabaseClient): Promise<boolean> {
+  try {
+    const { data, error } = await client.auth.getSession();
+    // Couldn't read it (say, an expired token it can't renew offline): it's
+    // still there, so the camper is still signed in.
+    return data.session != null || error != null;
+  } catch {
+    return true;
+  }
 }
 
 interface Props {
@@ -72,8 +111,7 @@ export function AuthProvider({ children, client: clientProp, providers: provider
   const [providers] = useState(() => providersProp ?? enabledProviders());
   const [status, setStatus] = useState<AuthStatus>(client ? 'loading' : 'disabled');
   const [user, setUser] = useState<AuthUser | null>(null);
-  // Tagged with whose name it is, so a name never shows for the wrong account.
-  const [profile, setProfile] = useState<{ userId: string; name: string } | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   // Bumped after each sign-in, to reload the name (Apple's first sign-in sets it).
   const [profileVersion, setProfileVersion] = useState(0);
 
@@ -89,7 +127,12 @@ export function AuthProvider({ children, client: clientProp, providers: provider
       // Keep the same object while it's the same person, so screens don't
       // re-render on every token refresh.
       setUser((prev) =>
-        prev && next && prev.id === next.id && prev.email === next.email && prev.provider === next.provider
+        prev &&
+        next &&
+        prev.id === next.id &&
+        prev.email === next.email &&
+        prev.provider === next.provider &&
+        prev.apple === next.apple
           ? prev
           : next,
       );
@@ -113,25 +156,41 @@ export function AuthProvider({ children, client: clientProp, providers: provider
   }, [client]);
 
   const userId = user?.id ?? null;
-  const displayName = profile && profile.userId === userId ? profile.name : null;
+  const mine = profile && profile.userId === userId ? profile : null;
+  const displayName = mine?.name ?? null;
+  const termsAccepted = mine ? mine.termsVersion != null && mine.termsVersion >= TERMS_VERSION : null;
 
   useEffect(() => {
     if (!client || !userId) return undefined;
     let active = true;
     void (async () => {
       try {
-        const { data, error } = await client
-          .from('profiles')
-          .select('display_name')
-          .eq('id', userId)
-          .retry(false)
-          .maybeSingle();
+        const { data, error } = await withDeadline(
+          async (signal) =>
+            client
+              .from('profiles')
+              .select('display_name, terms_version')
+              .eq('id', userId)
+              .retry(false)
+              .abortSignal(signal)
+              .maybeSingle(),
+          REMOTE_TIMEOUT_MS,
+        );
         if (error) throw error;
-        const name = (data as { display_name?: unknown } | null)?.display_name;
-        if (active && typeof name === 'string') setProfile({ userId, name });
+        const row = (data ?? {}) as { display_name?: unknown; terms_version?: unknown };
+        if (active) {
+          setProfile({
+            userId,
+            name: typeof row.display_name === 'string' ? row.display_name : null,
+            termsVersion: typeof row.terms_version === 'number' ? row.terms_version : null,
+          });
+        }
       } catch (error) {
-        // The account screen shows "Camper" until the name loads.
-        log.warn('Could not load the display name', { error: describeError(error) });
+        // The account screen shows "Camper" until the name loads. Not knowing
+        // whether the terms were agreed to, the app asks again; agreeing twice
+        // is harmless.
+        log.warn('Could not load the profile', { error: describeError(error) });
+        if (active) setProfile({ userId, name: null, termsVersion: null });
       }
     })();
     return () => {
@@ -154,7 +213,11 @@ export function AuthProvider({ children, client: clientProp, providers: provider
     try {
       // "local": this phone only. Other phones stay signed in.
       const { error } = await client.auth.signOut({ scope: 'local' });
-      return error ? failure('Signing out', error) : { ok: true };
+      if (!error) return { ok: true };
+      // Offline, Supabase can't tell the server, but it still forgets the
+      // session on this phone: that's signed out, as far as the camper goes.
+      if (!(await signedInHere(client))) return { ok: true };
+      return failure('Signing out', error);
     } catch (error) {
       return failure('Signing out', error);
     }
@@ -163,7 +226,12 @@ export function AuthProvider({ children, client: clientProp, providers: provider
   const deleteAccount = useCallback(async (): Promise<ActionResult> => {
     if (!client) return { ok: false, message: 'Deleting an account needs the DisCamp server.' };
     try {
-      const { error } = await client.rpc('delete_my_account');
+      // A longer wait than usual: giving up early on a deletion that then
+      // goes through would leave the camper unsure whether it happened.
+      const { error } = await withDeadline(
+        async (signal) => client.rpc('delete_my_account').abortSignal(signal),
+        NETWORK_TIMEOUT_MS,
+      );
       if (error) return failure('Deleting your account', error);
     } catch (error) {
       return failure('Deleting your account', error);
@@ -180,13 +248,31 @@ export function AuthProvider({ children, client: clientProp, providers: provider
       if (!check.ok) return { ok: false, message: check.message };
       if (!client || !userId) return { ok: false, message: 'Sign in to change your name.' };
       try {
-        const { error } = await client
-          .from('profiles')
-          .update({ display_name: check.name })
-          .eq('id', userId)
-          .retry(false);
-        if (error) return failure('Saving your name', error);
-        setProfile({ userId, name: check.name });
+        const { error } = await withDeadline(
+          async (signal) =>
+            client
+              .from('profiles')
+              .update({ display_name: check.name })
+              .eq('id', userId)
+              .retry(false)
+              .abortSignal(signal),
+          REMOTE_TIMEOUT_MS,
+        );
+        if (error) {
+          if (error.message === 'blocked_words') {
+            return { ok: false, message: "Pick a name without words that aren't allowed on DisCamp." };
+          }
+          if (error.message === 'banned') return { ok: false, message: "Your account can't change its name." };
+          if (error.message === 'name_under_review') {
+            return {
+              ok: false,
+              message:
+                'Other campers reported your name, so it shows as "Camper" until DisCamp reviews it. You can change it after that.',
+            };
+          }
+          return failure('Saving your name', error);
+        }
+        setProfile((p) => ({ userId, name: check.name, termsVersion: p?.userId === userId ? p.termsVersion : null }));
         return { ok: true };
       } catch (error) {
         return failure('Saving your name', error);
@@ -195,9 +281,48 @@ export function AuthProvider({ children, client: clientProp, providers: provider
     [client, userId],
   );
 
+  const acceptTerms = useCallback(async (): Promise<ActionResult> => {
+    if (!client || !userId) return { ok: false, message: 'Sign in first.' };
+    try {
+      await sendAcceptTerms(client, TERMS_VERSION);
+    } catch (error) {
+      return { ok: false, message: error instanceof ModerationError ? error.message : describeError(error) };
+    }
+    setProfile((p) => ({ userId, name: p?.userId === userId ? p.name : null, termsVersion: TERMS_VERSION }));
+    return { ok: true };
+  }, [client, userId]);
+
+  const reloadProfile = useCallback(() => setProfileVersion((v) => v + 1), []);
+
   const value = useMemo(
-    () => ({ client, status, user, displayName, providers, signIn, signOut, deleteAccount, rename }),
-    [client, status, user, displayName, providers, signIn, signOut, deleteAccount, rename],
+    () => ({
+      client,
+      status,
+      user,
+      displayName,
+      termsAccepted,
+      acceptTerms,
+      reloadProfile,
+      providers,
+      signIn,
+      signOut,
+      deleteAccount,
+      rename,
+    }),
+    [
+      client,
+      status,
+      user,
+      displayName,
+      termsAccepted,
+      acceptTerms,
+      reloadProfile,
+      providers,
+      signIn,
+      signOut,
+      deleteAccount,
+      rename,
+    ],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

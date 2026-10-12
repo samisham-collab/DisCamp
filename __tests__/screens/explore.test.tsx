@@ -12,7 +12,7 @@ import { getSupabase } from '@/lib/supabase';
 import { fakeClient, type QueryResult } from '../../test/fakeSupabase';
 import { makeRow, preset } from '../../test/fixtures';
 import { GOODLAND } from '../../test/mocks/expoLocation';
-import { holdMapReady, mapMethods, markerMethods, releaseMapReady } from '../../test/mocks/reactNativeMaps';
+import { holdMapReady, lastMap, mapMethods, markerMethods, releaseMapReady } from '../../test/mocks/reactNativeMaps';
 import { renderApp } from '../../test/renderApp';
 
 // Pinned to Smoky Gardens only: see test/mocks/seedSpots.ts.
@@ -78,6 +78,37 @@ describe('Explore screen', () => {
       ]),
       expect.objectContaining({ animated: true }),
     );
+  });
+
+  it('shows the area around spots at the same place, instead of zooming all the way in', async () => {
+    jest.mocked(getSupabase).mockReturnValueOnce(
+      fakeClient(async () => ({
+        data: [
+          makeRow({ id: 'one', name: 'One', latitude: 40.1, longitude: -105.2 }),
+          makeRow({ id: 'two', name: 'Two', latitude: 40.1001, longitude: -105.2001 }),
+        ],
+        error: null,
+      })),
+    );
+    await renderApp('/');
+    await screen.findByTestId('marker-two');
+    mapMethods.fitToCoordinates.mockClear();
+    fireEvent.press(screen.getByLabelText('Show all spots'));
+    expect(mapMethods.fitToCoordinates).not.toHaveBeenCalled();
+    expect(mapMethods.animateToRegion).toHaveBeenLastCalledWith(
+      expect.objectContaining({ latitudeDelta: 0.05, longitudeDelta: 0.05 }),
+      400,
+    );
+  });
+
+  it('comes back from the list to where the map was', async () => {
+    await renderApp('/');
+    const moved = { latitude: 44.1, longitude: -110.6, latitudeDelta: 1, longitudeDelta: 1 };
+    fireEvent(screen.getByTestId('spot-map'), 'regionChangeComplete', moved);
+    fireEvent.press(screen.getByRole('radio', { name: 'List' }));
+    fireEvent.press(screen.getByRole('radio', { name: 'Map' }));
+    await screen.findByTestId('spot-map');
+    expect(lastMap.initialRegion).toEqual(moved);
   });
 
   it('closes the summary card', async () => {

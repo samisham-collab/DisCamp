@@ -2,12 +2,13 @@
 
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { act, fireEvent, screen, waitFor, within } from 'expo-router/testing-library';
+import { router } from 'expo-router';
 import { ScrollView } from 'react-native';
 
 import { STORAGE_KEYS } from '@/config';
 import { kvStore } from '@/lib/kvStore';
 
-import { ALEX, fakeBackend, SAM } from '../../test/fakeSupabase';
+import { ALEX, fakeBackend, SAM, type QueryResult } from '../../test/fakeSupabase';
 import { makeRow } from '../../test/fixtures';
 import { connectServer, resetServer, spyOnAlerts } from '../../test/helpers';
 import { GOODLAND } from '../../test/mocks/expoLocation';
@@ -143,6 +144,30 @@ describe('Adding a spot', () => {
       directions: 'Left at the cattle guard.',
       phone: '(360) 497-1103',
     });
+  });
+
+  it('sends hookups as "not sure" unless the camper picks some or None', async () => {
+    const backend = signedIn();
+    await renderApp('/spot/new');
+    await fillRequired();
+    const hookups = () => within(screen.getByLabelText('Hookups'));
+    fireEvent.press(hookups().getByText('Electric'));
+    fireEvent.press(hookups().getByText('None'));
+    fireEvent.press(screen.getByText('Add spot'));
+    await waitFor(() => expect(backend.writes('spots', 'insert')).toHaveLength(1));
+    expect(backend.writes('spots', 'insert')[0]?.payload).toMatchObject({ hookups: [] });
+  });
+
+  it('leaves hookups unreported when none are picked', async () => {
+    const backend = signedIn();
+    await renderApp('/spot/new');
+    await fillRequired();
+    fireEvent.press(within(screen.getByLabelText('Hookups')).getByText('None'));
+    fireEvent.press(within(screen.getByLabelText('Hookups')).getByText('Water'));
+    fireEvent.press(within(screen.getByLabelText('Hookups')).getByText('Water'));
+    fireEvent.press(screen.getByText('Add spot'));
+    await waitFor(() => expect(backend.writes('spots', 'insert')).toHaveLength(1));
+    expect(backend.writes('spots', 'insert')[0]?.payload).toMatchObject({ hookups: null });
   });
 
   it('shows what to fix, and updates as fields are fixed', async () => {
@@ -287,6 +312,48 @@ describe('Adding a spot', () => {
     expect([...backend.spots.values()].filter((r) => r.name === 'Bluff Pull-off')).toHaveLength(1);
   });
 
+  it('stays put if the camper leaves while it saves, and starts the next spot fresh', async () => {
+    const backend = signedIn();
+    let land: () => void = () => undefined;
+    backend.intercept = (query) => {
+      if (query.op !== 'insert') return undefined;
+      backend.intercept = null;
+      return new Promise<QueryResult>((resolve) => (land = () => void backend.run(query).then(resolve)));
+    };
+    const app = await renderApp('/spot/new');
+    await fillRequired();
+    fireEvent.press(screen.getByText('Add spot'));
+    act(() => router.back());
+    await waitFor(() => expect(app.getPathname()).toBe('/'));
+    await act(async () => {
+      land();
+      await jest.advanceTimersByTimeAsync(400);
+    });
+    // Saved, but the camper isn't pulled away from Explore.
+    expect([...backend.spots.values()].some((r) => r.name === 'Bluff Pull-off')).toBe(true);
+    expect(app.getPathname()).toBe('/');
+    expect(JSON.parse((await kvStore.getItem(STORAGE_KEYS.spotDraft)) ?? '{}')).toMatchObject({
+      name: '',
+      clientId: '',
+    });
+  });
+
+  it('never reuses the id of a draft another camper left on this phone', async () => {
+    const backend = signedIn();
+    const theirs = '00000000-0000-4000-8000-00000000a1e7';
+    await kvStore.setItem(
+      STORAGE_KEYS.spotDraft,
+      JSON.stringify({ clientId: theirs, ownerId: ALEX.id, name: 'Left Behind' }),
+    );
+    await renderApp('/spot/new');
+    expect((await screen.findByLabelText('Name, required')).props.value).toBe('Left Behind');
+    fireEvent.changeText(field('Land manager, required'), 'BLM');
+    fireEvent.changeText(field('GPS location, required'), '46.653, -121.614');
+    fireEvent.press(screen.getByText('Add spot'));
+    await waitFor(() => expect(backend.writes('spots', 'insert')).toHaveLength(1));
+    expect(backend.writes('spots', 'insert')[0]?.payload?.id).not.toBe(theirs);
+  });
+
   it('asks a signed-out camper to sign in first', async () => {
     connectServer(fakeBackend());
     const app = await renderApp('/spot/new');
@@ -389,6 +456,25 @@ describe('Your spots', () => {
     expect(screen.getByLabelText('Checking your sign-in')).toBeTruthy();
   });
 
+  it('waits for the spots to load before saying a spot to edit is gone', async () => {
+    const backend = signedIn();
+    let release: () => void = () => undefined;
+    backend.intercept = (query) =>
+      query.table === 'spots_api'
+        ? new Promise<QueryResult>((resolve) => {
+            release = () => {
+              backend.intercept = null;
+              void backend.run(query).then(resolve);
+            };
+          })
+        : undefined;
+    await renderApp('/spot/edit/sams-spot');
+    expect(await screen.findByLabelText('Loading spot')).toBeTruthy();
+    expect(screen.queryByText('Spot not found')).toBeNull();
+    await act(async () => release());
+    expect((await screen.findByLabelText('Name, required')).props.value).toBe('Sam Flat');
+  });
+
   it('says when the spot to edit is gone', async () => {
     signedIn();
     await renderApp('/spot/edit/nope');
@@ -409,6 +495,26 @@ describe('Your spots', () => {
     await waitFor(() => expect(app.getPathname()).toBe('/'));
     expect(backend.spots.has('sams-spot')).toBe(false);
     expect(screen.queryByTestId('marker-sams-spot')).toBeNull();
+  });
+
+  it("doesn't move a camper who left before a slow delete finished", async () => {
+    const alerts = spyOnAlerts();
+    const backend = signedIn();
+    let land: () => void = () => undefined;
+    const app = await renderApp('/account');
+    act(() => router.push('/spot/sams-spot'));
+    fireEvent.press(await screen.findByText('Delete spot'));
+    backend.intercept = (query) => {
+      if (query.op !== 'delete') return undefined;
+      backend.intercept = null;
+      return new Promise<QueryResult>((resolve) => (land = () => void backend.run(query).then(resolve)));
+    };
+    await act(async () => alerts.press('Delete'));
+    act(() => router.back());
+    await waitFor(() => expect(app.getPathname()).toBe('/account'));
+    await act(async () => land());
+    expect(backend.spots.has('sams-spot')).toBe(false);
+    expect(app.getPathname()).toBe('/account');
   });
 
   it("explains why a spot others have reported on can't be deleted", async () => {

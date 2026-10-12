@@ -66,7 +66,9 @@ const withCommas = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','
 export function formatDistance(miles: number): string {
   if (!Number.isFinite(miles) || miles < 0) return '';
   if (miles < 0.1) return 'Under 0.1 mi';
-  if (miles < 10) return `${miles.toFixed(1)} mi`;
+  // Rounded first, so 9.96 reads "10 mi", not "10.0 mi".
+  const tenths = Math.round(miles * 10) / 10;
+  if (tenths < 10) return `${tenths.toFixed(1)} mi`;
   return `${withCommas(Math.round(miles))} mi`;
 }
 
@@ -75,7 +77,8 @@ export function formatDistanceSpoken(miles: number): string {
   if (!Number.isFinite(miles) || miles < 0) return '';
   if (miles < 0.1) return 'under a tenth of a mile';
   // One decimal under 10 miles, without a spoken ".0": "1 mile", "4.2 miles".
-  const amount = miles < 10 ? String(Number(miles.toFixed(1))) : withCommas(Math.round(miles));
+  const tenths = Math.round(miles * 10) / 10;
+  const amount = tenths < 10 ? String(tenths) : withCommas(Math.round(miles));
   return `${amount} ${amount === '1' ? 'mile' : 'miles'}`;
 }
 
@@ -85,7 +88,8 @@ export function formatCoordinates(c: Coordinates): string {
 }
 
 const SINGLE_POINT_DELTA = 0.25;
-const MIN_DELTA = 0.05;
+/** The closest the map zooms when framing spots (about 3 miles across). */
+export const MIN_DELTA = 0.05;
 const PADDING_FACTOR = 1.4;
 
 /**
@@ -97,7 +101,12 @@ export function regionForCoordinates(coords: Coordinates[], fallback: Region): R
   const first = valid[0];
   if (!first) return fallback;
   if (valid.length === 1) {
-    return { ...first, latitudeDelta: SINGLE_POINT_DELTA, longitudeDelta: SINGLE_POINT_DELTA };
+    return {
+      latitude: first.latitude,
+      longitude: first.longitude,
+      latitudeDelta: SINGLE_POINT_DELTA,
+      longitudeDelta: SINGLE_POINT_DELTA,
+    };
   }
   let minLat = first.latitude;
   let maxLat = first.latitude;

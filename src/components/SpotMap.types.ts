@@ -11,6 +11,8 @@ export interface SpotMapHandle {
   /** Zoom to show every row on the map. */
   fitToRows: () => void;
   centerOn: (at: Coordinates) => void;
+  /** Where the map is now (after the camper's last pan or zoom), if known. */
+  currentRegion: () => Region | null;
 }
 
 export interface SpotMapProps {

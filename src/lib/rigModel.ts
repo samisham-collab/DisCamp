@@ -17,6 +17,18 @@ export function defaultLengthFor(setup: Rig['setup']): number {
   return setup === 'bigrig' ? 40 : 25;
 }
 
+/**
+ * A change to the rig. Switching to a big rig makes it at least big-rig
+ * length (40 ft), so a 25 ft trailer doesn't become a "25 ft big rig".
+ */
+export function changeRig(prev: Rig, patch: Partial<Rig>): Rig {
+  const next = { ...prev, ...patch };
+  if (patch.setup === 'bigrig' && prev.setup !== 'bigrig' && patch.lengthFt == null) {
+    next.lengthFt = Math.max(prev.lengthFt, defaultLengthFor('bigrig'));
+  }
+  return next;
+}
+
 /** Bring any rig into the valid range: called on every change and on load. */
 export function normalizeRig(rig: Rig): Rig {
   const clearanceIn = clamp(roundTo(rig.clearanceIn, CLEARANCE_RANGE.step), CLEARANCE_RANGE.min, CLEARANCE_RANGE.max);
@@ -25,7 +37,8 @@ export function normalizeRig(rig: Rig): Rig {
     ? clamp(roundTo(rig.lengthFt || defaultLengthFor(rig.setup), LENGTH_RANGE.step), LENGTH_RANGE.min, LENGTH_RANGE.max)
     : 0;
   return {
-    name: rig.name.slice(0, MAX_RIG_NAME_LENGTH),
+    // By character, so an emoji at the end isn't cut in half.
+    name: Array.from(rig.name).slice(0, MAX_RIG_NAME_LENGTH).join(''),
     clearanceIn,
     drivetrain: rig.drivetrain,
     setup: rig.setup,

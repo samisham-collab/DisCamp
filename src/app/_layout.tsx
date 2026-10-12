@@ -11,12 +11,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui';
 import { SpotsProvider } from '@/data/spots';
 import { AuthProvider } from '@/lib/auth';
+import { initCrashReports } from '@/lib/crashReports';
 import { LocationProvider } from '@/lib/location';
 import { log } from '@/lib/log';
 import { PrefsProvider, usePrefs } from '@/lib/prefs';
 import { ServerProvider } from '@/lib/server';
 import { RigProvider, useRig } from '@/lib/rig';
 import { colors } from '@/theme';
+
+// Before anything renders, so a crash on the first screen is reported too.
+initCrashReports();
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -71,6 +75,7 @@ function AppStack() {
         <Stack.Screen name="spot/new" options={{ title: 'Add a spot', headerBackTitle: 'Back' }} />
         <Stack.Screen name="spot/edit/[id]" options={{ title: 'Edit spot', headerBackTitle: 'Back' }} />
         <Stack.Screen name="sign-in" options={{ title: 'Sign in', presentation: 'modal' }} />
+        <Stack.Screen name="report/[kind]/[id]" options={{ title: 'Report', presentation: 'modal' }} />
         <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" options={{ title: 'Not found' }} />
       </Stack>

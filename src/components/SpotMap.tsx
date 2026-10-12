@@ -4,9 +4,9 @@
 
 import { memo, useCallback, useEffect, useImperativeHandle, useRef, useState, type ComponentRef } from 'react';
 import { StyleSheet } from 'react-native';
-import MapView, { Marker, type MapPressEvent } from 'react-native-maps';
+import MapView, { Marker, type MapPressEvent, type Region as MapRegion } from 'react-native-maps';
 
-import { regionForCoordinates } from '../lib/geo';
+import { MIN_DELTA, regionForCoordinates, type Region } from '../lib/geo';
 import type { SpotRow } from '../lib/spotRows';
 import { SpotPin } from './Fit';
 import type { SpotMapProps } from './SpotMap.types';
@@ -84,6 +84,7 @@ export function SpotMap({
 }: SpotMapProps) {
   const mapRef = useRef<MapView>(null);
   const lastMarkerTap = useRef(0);
+  const region = useRef<Region | null>(null);
 
   useImperativeHandle(
     ref,
@@ -91,8 +92,11 @@ export function SpotMap({
       fitToRows: () => {
         const coords = rows.map((r) => ({ latitude: r.spot.latitude, longitude: r.spot.longitude }));
         if (coords.length === 0) return;
-        if (coords.length === 1) {
-          mapRef.current?.animateToRegion(regionForCoordinates(coords, initialRegion), 400);
+        // One spot, or several at almost the same place: fitting to them
+        // would zoom all the way in, so show the area around them instead.
+        const around = regionForCoordinates(coords, initialRegion);
+        if (coords.length === 1 || (around.latitudeDelta <= MIN_DELTA && around.longitudeDelta <= MIN_DELTA)) {
+          mapRef.current?.animateToRegion(around, 400);
           return;
         }
         mapRef.current?.fitToCoordinates(coords, {
@@ -103,6 +107,7 @@ export function SpotMap({
       centerOn: (at) => {
         mapRef.current?.animateToRegion({ ...at, latitudeDelta: 0.3, longitudeDelta: 0.3 }, 400);
       },
+      currentRegion: () => region.current,
     }),
     [rows, initialRegion, bottomInset],
   );
@@ -161,6 +166,9 @@ export function SpotMap({
       legalLabelInsets={padding}
       onPress={onMapPress}
       onMapReady={onMapReady}
+      onRegionChangeComplete={(next: MapRegion) => {
+        region.current = next;
+      }}
       testID="spot-map"
     >
       {rows.map((row) => (
