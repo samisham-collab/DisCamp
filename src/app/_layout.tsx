@@ -76,6 +76,8 @@ function AppStack() {
         <Stack.Screen name="spot/edit/[id]" options={{ title: 'Edit spot', headerBackTitle: 'Back' }} />
         <Stack.Screen name="sign-in" options={{ title: 'Sign in', presentation: 'modal' }} />
         <Stack.Screen name="report/[kind]/[id]" options={{ title: 'Report', presentation: 'modal' }} />
+        <Stack.Screen name="checkin/[id]" options={{ title: 'Report a change', presentation: 'modal' }} />
+        <Stack.Screen name="rules" options={{ title: 'Community rules', presentation: 'modal' }} />
         <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" options={{ title: 'Not found' }} />
       </Stack>

@@ -51,4 +51,10 @@ describe('getSupabase', () => {
     });
     expect(mod.getSupabase()).toBeNull();
   });
+
+  it('gives photo uploads longer than other requests', () => {
+    const mod = loadWith({});
+    expect(mod.timeLimitFor('https://x.supabase.co/storage/v1/object/spot-photos/a.jpg')).toBe(90_000);
+    expect(mod.timeLimitFor('https://x.supabase.co/rest/v1/spots_api')).toBe(30_000);
+  });
 });

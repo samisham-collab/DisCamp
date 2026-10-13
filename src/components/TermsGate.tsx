@@ -17,9 +17,9 @@ import { Banner, Button, Card } from './ui';
 export const COMMUNITY_RULES: readonly string[] = [
   'Share real places where camping is allowed. No private land without permission, and no closed areas.',
   'Be accurate. No fake spots, spam or advertising.',
-  'Nothing offensive: no hate, harassment, threats, sexual content or other people’s private information, in spots or in names.',
+  'Nothing offensive: no hate, harassment, threats, sexual content or other people’s private information, in spots, photos, notes or names. Leave faces and license plates out of photos.',
   'DisCamp has zero tolerance for objectionable content and abusive campers. We remove it and ban accounts that post it.',
-  'Spots you add are public, so other campers can use and improve them.',
+  'Spots, photos and notes you add are public, so other campers can use and improve them.',
   `You're ${MINIMUM_AGE} or older.`,
 ];
 

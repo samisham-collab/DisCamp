@@ -16,11 +16,14 @@ import {
 } from 'react-native';
 
 import { ClearanceGauge } from '@/components/ClearanceGauge';
+import { confirmedLabel, SpotCheckins } from '@/components/SpotCheckins';
+import { SpotPhotos } from '@/components/SpotPhotos';
 import { CostMeter } from '@/components/CostMeter';
 import { FitBanner } from '@/components/Fit';
 import { siteTypeLabel } from '@/components/SpotSummary';
 import { ActionButton, Banner, Button, Card, Chip, EmptyState, Row, SectionTitle } from '@/components/ui';
 import { useSpot, useSpots } from '@/data/spots';
+import { CHANGE_LABELS } from '@/data/community';
 import { deleteSpot } from '@/data/spotWrites';
 import { useAuth } from '@/lib/auth';
 import { costForRig, describeRvFee, formatFee, formatHookups, knownHookups } from '@/lib/cost';
@@ -39,7 +42,7 @@ import { useRig } from '@/lib/rig';
 import { useBlockCamper } from '@/lib/useBlockCamper';
 import { useStillHere } from '@/lib/useStillHere';
 import { rigDisplayName } from '@/lib/rigModel';
-import { formatDay } from '@/lib/time';
+import { formatDay, timeAgo } from '@/lib/time';
 import type { Coordinates, Reservations, Rig, Spot } from '@/types';
 import { colors, TOUCH_TARGET } from '@/theme';
 
@@ -201,7 +204,17 @@ export default function SpotScreen() {
             {addedOn ? ` on ${addedOn}` : ''}
           </Text>
         ) : null}
+        <Text style={styles.meta}>{confirmedLabel(spot)}</Text>
       </View>
+
+      {(spot.alerts ?? []).map((alert) => (
+        <Banner
+          key={`${alert.kind}-${alert.at}`}
+          tone="warning"
+          icon="alert-circle-outline"
+          message={`${CHANGE_LABELS[alert.kind]}: reported ${timeAgo(alert.at) ?? 'recently'}. Check before you go.`}
+        />
+      ))}
 
       {spot.hidden ? (
         <Banner
@@ -261,6 +274,8 @@ export default function SpotScreen() {
           ) : null}
         </View>
       </View>
+
+      <SpotPhotos spot={spot} />
 
       {towing && <CostCard spot={spot} rig={rig} />}
 
@@ -342,6 +357,8 @@ export default function SpotScreen() {
           ))}
         </View>
       )}
+
+      <SpotCheckins spot={spot} />
 
       {!mine ? (
         <Card>

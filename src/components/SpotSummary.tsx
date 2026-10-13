@@ -3,9 +3,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 
+import { CHANGE_LABELS } from '../data/community';
 import { formatFee } from '../lib/cost';
 import { COMPASS_WORDS, formatDistance, formatDistanceSpoken } from '../lib/geo';
 import type { SpotRow } from '../lib/spotRows';
+import { timeAgo } from '../lib/time';
 import { colors, radius, shadow, TOUCH_TARGET } from '../theme';
 import type { Spot } from '../types';
 import { CostMeter } from './CostMeter';
@@ -33,10 +35,26 @@ function metaLine(row: SpotRow): string {
   return [siteTypeLabel(row.spot), row.spot.landManager, distanceLine(row)].filter(Boolean).join(' · ');
 }
 
+/** The newest change a camper reported, like "Gate locked or road closed, 2 days ago". */
+function changeLine(spot: Spot): string | null {
+  const latest = spot.alerts?.[0];
+  if (!latest) return null;
+  const ago = timeAgo(latest.at);
+  return `${CHANGE_LABELS[latest.kind]}${ago ? `, ${ago}` : ''}`;
+}
+
+/** "Confirmed 3 days ago", when a camper has said it's still good. */
+function confirmedLine(spot: Spot): string | null {
+  const ago = timeAgo(spot.lastConfirmedAt ?? null);
+  return ago ? `Confirmed ${ago}` : null;
+}
+
 function spokenSummary(row: SpotRow): string {
   const { spot, fit, cost } = row;
+  const change = changeLine(spot);
   return [
     spot.name,
+    change ? `Camper reported: ${change}` : confirmedLine(spot),
     fit.headline,
     `Cost for your rig: ${formatFee(cost.feeUsd)}`,
     spot.access.impassableWhenWet ? 'Road is impassable when wet' : null,
@@ -55,6 +73,29 @@ function WetRoadFlag({ spot }: { spot: Spot }) {
     <View style={styles.flag}>
       <Ionicons name="rainy-outline" size={16} color={colors.orangeDark} />
       <Text style={styles.flagText}>Impassable when wet</Text>
+    </View>
+  );
+}
+
+/** A change campers reported (it outranks everything else), or when it was last confirmed. */
+function CheckinFlag({ spot }: { spot: Spot }) {
+  const change = changeLine(spot);
+  if (change) {
+    return (
+      <View style={styles.flag}>
+        <Ionicons name="alert-circle-outline" size={16} color={colors.orangeDark} />
+        <Text style={styles.flagText} numberOfLines={2}>
+          {change}
+        </Text>
+      </View>
+    );
+  }
+  const confirmed = confirmedLine(spot);
+  if (!confirmed) return null;
+  return (
+    <View style={styles.flag}>
+      <Ionicons name="checkmark-circle-outline" size={16} color={colors.pine} />
+      <Text style={styles.confirmed}>{confirmed}</Text>
     </View>
   );
 }
@@ -92,6 +133,7 @@ export function SpotSummaryCard({
         </Pressable>
       </View>
       <FitBadge fit={row.fit} />
+      <CheckinFlag spot={row.spot} />
       <WetRoadFlag spot={row.spot} />
       <View style={styles.costBlock}>
         <Text style={styles.costLabel}>Cost for your rig: {formatFee(row.cost.feeUsd)}</Text>
@@ -117,6 +159,7 @@ export function SpotListItem({ row, onPress }: { row: SpotRow; onPress: () => vo
         <Text style={styles.itemTitle}>{spot.name}</Text>
         <Text style={styles.meta}>{metaLine(row)}</Text>
         <FitBadge fit={fit} />
+        <CheckinFlag spot={spot} />
         <WetRoadFlag spot={spot} />
         <View style={styles.costBlock}>
           <Text style={styles.costLabel}>{formatFee(cost.feeUsd)}</Text>
@@ -153,7 +196,8 @@ const styles = StyleSheet.create({
   },
   meta: { fontSize: 14, color: colors.muted },
   flag: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  flagText: { fontSize: 14, fontWeight: '600', color: colors.orangeDark },
+  flagText: { flexShrink: 1, fontSize: 14, fontWeight: '600', color: colors.orangeDark },
+  confirmed: { fontSize: 14, color: colors.body },
   costBlock: { gap: 6 },
   costLabel: { fontSize: 14, fontWeight: '600', color: colors.body },
   item: {

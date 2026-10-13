@@ -28,13 +28,14 @@ every type below, and the app needs no App Tracking Transparency prompt.
 | Contact Info > Email Address        | Yes                                                           | Yes                 | No                 | App Functionality |
 | Contact Info > Name                 | Yes (the display name)                                        | Yes                 | No                 | App Functionality |
 | Identifiers > User ID               | Yes (account ID)                                              | Yes                 | No                 | App Functionality |
-| User Content > Other User Content   | Yes (spots and reports)                                       | Yes                 | No                 | App Functionality |
+| User Content > Photos or Videos     | Yes (photos campers add to spots)                             | Yes                 | No                 | App Functionality |
+| User Content > Other User Content   | Yes (spots, check-ins and reports)                            | Yes                 | No                 | App Functionality |
 | Location > Precise Location         | Yes (only when a camper places a spot with "Use my location") | Yes                 | No                 | App Functionality |
 | Diagnostics > Crash Data            | Yes (Sentry)                                                  | No                  | No                 | App Functionality |
 | Diagnostics > Other Diagnostic Data | Yes (Sentry error reports)                                    | No                  | No                 | App Functionality |
 
 Not collected: phone number, physical address, payment info, contacts,
-photos, browsing or search history, purchases, usage data, advertising data,
+browsing or search history, purchases, usage data, advertising data,
 health, financial info, sensitive info, coarse location (distances are worked
 out on the phone).
 
@@ -47,7 +48,8 @@ These match the privacy manifest in `app.json` (`ios.privacyManifests`).
 
 Answer the questionnaire like this:
 
-- User-generated content: **Yes**. (Campers post spots and display names.
+- User-generated content: **Yes**. (Campers post spots, photos, check-in notes
+  and display names.
   DisCamp has terms, a word filter, reporting, blocking and 24-hour review; see
   MODERATION.md.)
 - Messaging or chat between users: **No**.
@@ -68,22 +70,25 @@ Paste into **App Review Information > Notes** and fill in the brackets:
 > DisCamp is a free map of dispersed campsites. Browsing needs no account.
 >
 > To test camper features, sign in from the Account tab with Sign in with Apple
-> (your own Apple Account works; no demo account is needed). Before a first spot,
-> the app shows its community rules and asks you to agree.
+> (your own Apple Account works; no demo account is needed). Before a camper
+> first posts (a spot, a photo or a check-in), the app shows its community rules
+> and asks them to agree. The camera is used only when "Take a photo" is tapped;
+> photos are shrunk and stripped of location data before they're sent.
 >
 > User-generated content (Guideline 1.2):
 >
 > - Terms: shown and agreed to before posting (Explore > Add spot). Full terms:
 >   [terms URL]
-> - Filter: offensive words are blocked in spot text and display names, in the app
->   and again on the server.
+> - Filter: offensive words are blocked in spot text, check-in notes and display
+>   names, in the app and again on the server.
 > - Report: on any spot's page, scroll to "Something wrong?" > "Report this spot"
->   or "Report the name".
+>   or "Report the name". To report a photo, tap it under Photos > Report.
 > - Block: on a spot added by another camper (for example "[demo spot name]"),
->   "Block [name]" hides their spots.
+>   "Block [name]" hides their spots and photos; tapping their photo also
+>   offers Block.
 >   Blocked campers are listed under Account > Blocked campers.
 > - Every report emails the developer, who reviews it within 24 hours. Three
->   reports hide a spot automatically until reviewed.
+>   reports hide a spot or photo automatically until reviewed.
 > - Contact: Account > Help and contact, or [support email].
 >
 > Account deletion (5.1.1(v)): Account > Delete account. For accounts that used
@@ -96,15 +101,17 @@ Paste into **App Review Information > Notes** and fill in the brackets:
 
 App Review checks that Report and Block work. Starter spots have no camper
 behind them, so they only show **Report this spot**. Before submitting, sign in
-with a second account (say, GitHub) and add one real spot, so reviewers can
-also find **Report the name** and **Block**. Mention its name in the notes.
+with a second account (say, GitHub) and add one real spot with a photo, so
+reviewers can also find **Report the name**, a photo to report, and **Block**.
+Mention its name in the notes.
 
 ## Before each submission
 
 - [ ] `EXPO_PUBLIC_SUPPORT_EMAIL` set on expo.dev for production (the build
       stops without it)
 - [ ] `docs/_config.yml` filled in and the pages published
-- [ ] Supabase: migrations 0001–0005 and the seed run, all four sign-ins on,
+- [ ] Supabase: migrations 0001–0006 and the seed run (0006 also makes the
+      `spot-photos` Storage bucket), all four sign-ins on,
       the report-alert webhook working (send yourself a test report)
 - [ ] A TestFlight build passes the test list on a real iPhone
 - [ ] One spot added by a second account, for reviewers (see above)

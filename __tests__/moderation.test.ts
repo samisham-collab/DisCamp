@@ -59,6 +59,24 @@ describe('reports', () => {
     expect(backend.flags).toHaveLength(2);
   });
 
+  it('sends a report about a check-in, and never about your own', async () => {
+    const backend = signedIn();
+    backend.checkins.push(
+      { id: 4, spot_id: 'alex-spot', camper_id: ALEX.id, kind: 'trash', note: 'x', created_at: '2026-10-01T00:00:00Z' },
+      { id: 5, spot_id: 'alex-spot', camper_id: SAM.id, kind: 'trash', note: 'y', created_at: '2026-10-01T00:00:00Z' },
+    );
+    await expect(sendReport(backend.client, { kind: 'checkin', id: '4' }, 'offensive', '')).resolves.toBe('sent');
+    expect(backend.writes('flags', 'insert')[0]?.payload).toEqual({ checkin_id: 4, reason: 'offensive' });
+    await expect(sendReport(backend.client, { kind: 'checkin', id: '4' }, 'spam', '')).resolves.toBe('already');
+    await expect(sendReport(backend.client, { kind: 'checkin', id: '5' }, 'spam', '')).rejects.toMatchObject({
+      kind: 'own',
+    });
+    await expect(sendReport(backend.client, { kind: 'checkin', id: '9' }, 'spam', '')).rejects.toMatchObject({
+      kind: 'gone',
+      message: "That's no longer on DisCamp.",
+    });
+  });
+
   it('keeps details to 500 characters', async () => {
     const backend = signedIn();
     await sendReport(backend.client, { kind: 'spot', id: 'alex-spot' }, 'other', 'x'.repeat(600));
@@ -69,7 +87,7 @@ describe('reports', () => {
     const alex = signedIn(ALEX);
     await expect(sendReport(alex.client, { kind: 'spot', id: 'alex-spot' }, 'fake', '')).rejects.toMatchObject({
       kind: 'own',
-      message: "You can't report your own spot or name.",
+      message: "You can't report your own spot, photo, check-in or name.",
     });
     const sam = signedIn();
     await expect(sendReport(sam.client, { kind: 'spot', id: 'gone' }, 'fake', '')).rejects.toMatchObject({
@@ -195,12 +213,12 @@ describe('messages', () => {
   });
 
   it('points a banned camper to support when there is a support email', () => {
-    expect(bannedMessage()).toBe("Your account can't add, change or report spots.");
+    expect(bannedMessage()).toBe("Your account can't post or report anything on DisCamp.");
     jest.isolateModules(() => {
       process.env.EXPO_PUBLIC_SUPPORT_EMAIL = 'help@discamp.test';
       const fresh = jest.requireActual<ModerationModule>('@/data/moderation');
       expect(fresh.bannedMessage()).toBe(
-        "Your account can't add, change or report spots. If you think this is a mistake, email help@discamp.test.",
+        "Your account can't post or report anything on DisCamp. If you think this is a mistake, email help@discamp.test.",
       );
       delete process.env.EXPO_PUBLIC_SUPPORT_EMAIL;
     });

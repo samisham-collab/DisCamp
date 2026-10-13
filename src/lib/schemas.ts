@@ -50,6 +50,9 @@ const webUrl = z
   .url()
   .refine((u) => /^https?:\/\//i.test(u), 'Only http(s) links are allowed');
 
+export const changeKind = z.enum(['road_damage', 'gate_closed', 'trash', 'closed', 'other']);
+export const checkinKind = z.enum(['still_good', ...changeKind.options]);
+
 export const spotSchema: z.ZodType<Spot> = z.object({
   id: z
     .string()
@@ -98,6 +101,11 @@ export const spotSchema: z.ZodType<Spot> = z.object({
   addedBy: shortText(40).optional(),
   createdAt: z.string().datetime({ offset: true }).optional(),
   hidden: z.literal(true).optional(),
+  lastConfirmedAt: z.string().datetime({ offset: true }).optional(),
+  alerts: z
+    .array(z.object({ kind: changeKind, at: z.string().datetime({ offset: true }) }))
+    .max(3)
+    .optional(),
 });
 
 /** Postgres `numeric` can arrive as a string; accept both. */
@@ -172,6 +180,27 @@ function addedByCamper(
   };
 }
 
+const alertSchema = z.object({ kind: changeKind, at: z.string() });
+
+/** When a spot was last confirmed, and the change reports since; bad items are dropped. */
+function checkinsSummary(
+  lastConfirmed: string | null | undefined,
+  alerts: unknown,
+): Pick<Spot, 'lastConfirmedAt' | 'alerts'> {
+  const at = lastConfirmed ? toIsoTime(lastConfirmed) : undefined;
+  const list = (Array.isArray(alerts) ? alerts : [])
+    .map((a) => alertSchema.safeParse(a))
+    .flatMap((res) => {
+      const when = res.success ? toIsoTime(res.data.at) : undefined;
+      return res.success && when ? [{ kind: res.data.kind, at: when }] : [];
+    })
+    .slice(0, 3);
+  return {
+    ...(at ? { lastConfirmedAt: at } : {}),
+    ...(list.length > 0 ? { alerts: list } : {}),
+  };
+}
+
 /**
  * One row of the `spots_api` view in Supabase, converted to a Spot.
  * Core fields (id, location, site type) must be valid or the row is skipped.
@@ -216,6 +245,9 @@ export const spotRowSchema = z
     created_at: z.string().nullable().optional(),
     // Added in migration 0004: true on your own spot while it's hidden for review.
     hidden: z.boolean().nullable().optional(),
+    // Added in migration 0006.
+    last_confirmed_at: z.string().nullable().optional(),
+    alerts: z.unknown().optional(),
   })
   .transform((r) => {
     const fee = (v: number | null) => (v != null && v >= 0 && v <= 10_000 ? v : null);
@@ -264,6 +296,7 @@ export const spotRowSchema = z
         .slice(0, 10),
       ...addedByCamper(r.created_by, r.added_by, r.created_at),
       ...(r.hidden === true ? { hidden: true as const } : {}),
+      ...checkinsSummary(r.last_confirmed_at, r.alerts),
     };
   })
   .pipe(spotSchema);

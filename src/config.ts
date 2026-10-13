@@ -25,6 +25,8 @@ export const REMOTE_TIMEOUT_MS = 10_000;
  * renewal, signing out, deleting an account), which have no limit of their own.
  */
 export const NETWORK_TIMEOUT_MS = 30_000;
+/** Photo uploads (about 300 KB) get longer, for weak signal at a campsite. */
+export const UPLOAD_TIMEOUT_MS = 90_000;
 
 /**
  * Supabase returns at most this many rows per request (its "Max rows" API

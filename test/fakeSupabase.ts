@@ -1,17 +1,19 @@
-// A small in-memory stand-in for Supabase: the auth calls and query chains
-// DisCamp uses, with the same ownership and moderation rules as the real
-// database (migrations 0003 and 0004), so screen tests can sign in, add,
-// edit, delete, report and block.
+// A small in-memory stand-in for Supabase: the auth calls, query chains and
+// Storage calls DisCamp uses, with the same ownership and moderation rules as
+// the real database (migrations 0003, 0004 and 0006), so screen tests can
+// sign in, add, edit, delete, report, block, add photos and check in.
 
 import { jest } from '@jest/globals';
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
 
 import { TERMS_VERSION } from '@/config';
+import { hasBlockedWords } from '@/lib/wordFilter';
 
 import { makeRow } from './fixtures';
 
 export type QueryError = { message: string; code?: string; details?: string | null };
 export type QueryResult = { data: unknown; error: QueryError | null };
+export type StorageResult = { data: unknown; error: { message: string; statusCode?: string } | null };
 
 /** Every `.retry(...)` setting the app asked for, newest last. */
 export const retries: boolean[] = [];
@@ -53,6 +55,9 @@ export const NEWBIE: FakeUser = {
 type AuthEvent = 'INITIAL_SESSION' | 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED' | 'USER_UPDATED';
 type Listener = (event: AuthEvent, session: Session | null) => void;
 type Row = Record<string, unknown>;
+
+/** Storage's rule for photo file names: "<camper id>/<photo id>.jpg". */
+const PHOTO_PATH = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.jpg$/;
 
 function sessionFor(user: FakeUser): Session {
   return {
@@ -110,6 +115,9 @@ class FakeQuery implements PromiseLike<QueryResult> {
     return this;
   }
   order() {
+    return this;
+  }
+  limit() {
     return this;
   }
   retry(enabled: boolean) {
@@ -211,6 +219,8 @@ export interface FakeFlag {
   reporter: string;
   spotId?: string;
   camperId?: string;
+  photoId?: string;
+  checkinId?: number;
   reason: string;
   details?: string;
   status: 'open' | 'actioned' | 'dismissed';
@@ -230,6 +240,20 @@ export class FakeBackend {
   readonly flags: FakeFlag[] = [];
   /** Who each camper has blocked. */
   readonly blocks = new Map<string, Set<string>>();
+  /** Files in the spot-photos bucket, by path, with who uploaded them. */
+  readonly files = new Map<string, { owner: string; bytes: number }>();
+  /** Rows of spot_photos, by id, oldest first. */
+  readonly photos = new Map<string, Row>();
+  /** Rows of checkins, oldest first. */
+  readonly checkins: Row[] = [];
+  /**
+   * Answers a Storage call before the default rules do (return undefined to
+   * fall through), like `intercept` for queries.
+   */
+  storageIntercept:
+    ((call: { op: 'upload' | 'remove'; paths: string[] }) => Promise<StorageResult> | undefined) | null = null;
+  /** Every Storage call the app made, oldest first. */
+  readonly storageCalls: { op: 'upload' | 'remove'; paths: string[] }[] = [];
   /** Every query the app made, oldest first. */
   readonly queries: FakeQuery[] = [];
   /**
@@ -259,6 +283,7 @@ export class FakeBackend {
       },
       rpc: this.rpc,
       auth: this.auth,
+      storage: { from: (bucket: string) => this.bucket(bucket) },
     } as unknown as SupabaseClient;
   }
 
@@ -335,6 +360,8 @@ export class FakeBackend {
     }
 
     if (query.table === 'flags') return this.answerFlag(query, uid);
+    if (query.table === 'spot_photos' || query.table === 'spot_photos_api') return this.answerPhoto(query, uid);
+    if (query.table === 'checkins' || query.table === 'checkins_api') return this.answerCheckin(query, uid);
     if (query.table === 'blocks') return this.answerBlock(query, uid);
 
     if (query.table === 'spots') {
@@ -415,7 +442,10 @@ export class FakeBackend {
       return { data: null, error: { message: 'permission denied for table flags', code: '42501' } };
     }
     if (this.banned.has(uid)) return { data: null, error: { message: 'banned', code: 'P0001' } };
-    const { spot_id: spotId, camper_id: camperId, reason, details } = query.payload ?? {};
+    const { spot_id: spotId, camper_id: camperId, photo_id: photoId, checkin_id: checkinId } = query.payload ?? {};
+    const { reason, details } = query.payload ?? {};
+    if (typeof photoId === 'string') return this.flagPhoto(uid, photoId, String(reason), details);
+    if (typeof checkinId === 'number') return this.flagCheckin(uid, checkinId, String(reason), details);
     const spot = typeof spotId === 'string' ? this.spots.get(spotId) : undefined;
     if (typeof spotId === 'string' && !spot) {
       return {
@@ -441,6 +471,203 @@ export class FakeBackend {
     // 3 different campers: hidden until reviewed, or the name reset.
     if (spot && this.reporters({ spotId: String(spotId) }) >= 3) spot.hidden = true;
     if (typeof camperId === 'string' && this.reporters({ camperId }) >= 3) this.profiles.set(camperId, 'Camper');
+    return { data: null, error: null };
+  }
+
+  private flagPhoto(uid: string, photoId: string, reason: string, details: unknown): QueryResult {
+    const photo = this.photos.get(photoId);
+    if (!photo) {
+      return {
+        data: null,
+        error: { message: 'insert or update on table "flags" violates foreign key', code: '23503' },
+      };
+    }
+    if (photo.created_by === uid) return { data: null, error: { message: 'own_content', code: 'P0001' } };
+    if (this.flags.some((f) => f.reporter === uid && f.status === 'open' && f.photoId === photoId)) {
+      return { data: null, error: { message: 'duplicate key value violates unique constraint', code: '23505' } };
+    }
+    this.flags.push({
+      reporter: uid,
+      photoId,
+      reason,
+      ...(typeof details === 'string' ? { details } : {}),
+      status: 'open',
+    });
+    const reporters = new Set(
+      this.flags.filter((f) => f.photoId === photoId && f.status === 'open').map((f) => f.reporter),
+    );
+    if (reporters.size >= 3) photo.hidden = true;
+    return { data: null, error: null };
+  }
+
+  private flagCheckin(uid: string, checkinId: number, reason: string, details: unknown): QueryResult {
+    const checkin = this.checkins.find((r) => r.id === checkinId);
+    if (!checkin) {
+      return {
+        data: null,
+        error: { message: 'insert or update on table "flags" violates foreign key', code: '23503' },
+      };
+    }
+    if (checkin.camper_id === uid) return { data: null, error: { message: 'own_content', code: 'P0001' } };
+    if (this.flags.some((f) => f.reporter === uid && f.status === 'open' && f.checkinId === checkinId)) {
+      return { data: null, error: { message: 'duplicate key value violates unique constraint', code: '23505' } };
+    }
+    this.flags.push({
+      reporter: uid,
+      checkinId,
+      reason,
+      ...(typeof details === 'string' ? { details } : {}),
+      status: 'open',
+    });
+    const reporters = new Set(
+      this.flags.filter((f) => f.checkinId === checkinId && f.status === 'open').map((f) => f.reporter),
+    );
+    if (reporters.size >= 3) checkin.hidden = true;
+    return { data: null, error: null };
+  }
+
+  /** The spot-photos bucket, as supabase-js's storage.from(bucket) shows it. */
+  private bucket(bucket: string) {
+    const publicUrl = (path: string) => `https://fake.supabase.test/storage/v1/object/public/${bucket}/${path}`;
+    return {
+      getPublicUrl: (path: string) => ({ data: { publicUrl: publicUrl(path) } }),
+      upload: (path: string, body: ArrayBuffer) => {
+        const call = { op: 'upload' as const, paths: [path] };
+        this.storageCalls.push(call);
+        const intercepted = this.storageIntercept?.(call);
+        if (intercepted) return intercepted;
+        return Promise.resolve(this.answerUpload(path, body));
+      },
+      remove: (paths: string[]) => {
+        const call = { op: 'remove' as const, paths };
+        this.storageCalls.push(call);
+        const intercepted = this.storageIntercept?.(call);
+        if (intercepted) return intercepted;
+        const uid = this.auth.userId;
+        // Your own files, and not while a photo on a spot uses one.
+        const listed = new Set([...this.photos.values()].map((r) => r.path));
+        const removed = paths.filter((path) => this.files.get(path)?.owner === uid && uid != null && !listed.has(path));
+        for (const path of removed) this.files.delete(path);
+        return Promise.resolve({ data: removed.map((name) => ({ name })), error: null });
+      },
+    };
+  }
+
+  /** Storage's upload rules (migration 0006's policies on storage.objects). */
+  private answerUpload(path: string, body: ArrayBuffer): StorageResult {
+    const uid = this.auth.userId;
+    const denied = { data: null, error: { message: 'new row violates row-level security policy', statusCode: '403' } };
+    if (!uid || !path.startsWith(`${uid}/`) || !PHOTO_PATH.test(path) || this.postingBlock(uid)) return denied;
+    if (this.files.has(path))
+      return { data: null, error: { message: 'The resource already exists', statusCode: '409' } };
+    this.files.set(path, { owner: uid, bytes: body.byteLength });
+    return { data: { path }, error: null };
+  }
+
+  private visibleSpot(id: unknown, uid: string | null): Row | undefined {
+    const spot = typeof id === 'string' ? this.spots.get(id) : undefined;
+    if (!spot) return undefined;
+    if (spot.hidden && spot.created_by !== uid) return undefined;
+    if (this.blockedBy(uid).has(String(spot.created_by))) return undefined;
+    return spot;
+  }
+
+  private answerPhoto(query: FakeQuery, uid: string | null): QueryResult {
+    if (query.table === 'spot_photos_api') {
+      const blocked = this.blockedBy(uid);
+      const rows = [...this.photos.values()]
+        .filter((r) => !r.hidden || (uid != null && r.created_by === uid))
+        .filter((r) => !blocked.has(String(r.created_by)) && this.visibleSpot(r.spot_id, uid))
+        .map((r) => ({ ...r, added_by: this.profiles.get(String(r.created_by)) ?? null, hidden: r.hidden === true }))
+        .filter((r) => this.matches(r, query.filters));
+      return this.shape(rows, query);
+    }
+    if (!uid) return { data: null, error: { message: 'permission denied for table spot_photos', code: '42501' } };
+    if (query.op === 'delete') {
+      const reported = (r: Row) => this.flags.some((f) => f.photoId === r.id && f.status === 'open');
+      const gone = [...this.photos.values()].filter(
+        (r) => this.matches(r, query.filters) && r.created_by === uid && r.hidden !== true && !reported(r),
+      );
+      for (const r of gone) this.photos.delete(String(r.id));
+      return this.shape(
+        gone.map((r) => ({ id: r.id })),
+        query,
+      );
+    }
+    if (query.op !== 'insert') {
+      return { data: null, error: { message: 'permission denied for table spot_photos', code: '42501' } };
+    }
+    const refused = this.postingBlock(uid);
+    if (refused) return { data: null, error: refused };
+    const { id, spot_id: spotId, path, width, height } = query.payload ?? {};
+    const fail = (message: string) => ({ data: null, error: { message, code: 'P0001' } });
+    if (path !== `${uid}/${String(id)}.jpg`) return fail('photo_path');
+    if (this.files.get(String(path))?.owner !== uid) return fail('photo_missing');
+    if (!this.visibleSpot(spotId, uid)) return fail('spot_gone');
+    if (this.photos.has(String(id))) return { data: null, error: { message: 'duplicate key value', code: '23505' } };
+    const mine = [...this.photos.values()].filter((r) => r.created_by === uid && r.spot_id === spotId);
+    if (mine.length >= 3) return fail('photo_limit_spot');
+    this.photos.set(String(id), {
+      id,
+      spot_id: spotId,
+      path,
+      width,
+      height,
+      created_by: uid,
+      created_at: new Date().toISOString(),
+      hidden: false,
+    });
+    return this.shape([{ id }], query);
+  }
+
+  private answerCheckin(query: FakeQuery, uid: string | null): QueryResult {
+    if (query.table === 'checkins_api') {
+      const blocked = this.blockedBy(uid);
+      const rows = this.checkins
+        .filter((r) => !r.hidden && !blocked.has(String(r.camper_id)) && this.visibleSpot(r.spot_id, uid))
+        .map(({ hidden: _hidden, ...r }) => ({ ...r, camper_name: this.profiles.get(String(r.camper_id)) ?? null }))
+        .filter((r) => this.matches(r, query.filters))
+        .reverse();
+      return this.shape(rows, query);
+    }
+    if (!uid || query.op !== 'insert') {
+      return { data: null, error: { message: 'permission denied for table checkins', code: '42501' } };
+    }
+    const refused = this.postingBlock(uid);
+    if (refused) return { data: null, error: refused };
+    const { spot_id: spotId, kind, note } = query.payload ?? {};
+    const fail = (message: string) => ({ data: null, error: { message, code: 'P0001' } });
+    if (typeof note === 'string' && hasBlockedWords(note)) return fail('blocked_words');
+    const spot = this.visibleSpot(spotId, uid);
+    if (!spot) return fail('spot_gone');
+    if (kind === 'still_good' && spot.created_by === uid) return fail('own_spot');
+    if (this.checkins.some((r) => r.camper_id === uid && r.spot_id === spotId && r.kind === kind)) {
+      return fail('checkin_recent');
+    }
+    const at = new Date().toISOString();
+    this.checkins.push({
+      id: this.checkins.length + 1,
+      spot_id: spotId,
+      camper_id: uid,
+      kind,
+      note: typeof note === 'string' ? note : null,
+      created_at: at,
+      hidden: false,
+    });
+    // As moderation.after_checkin and the spots_api view do.
+    spot.report_count = Number(spot.report_count ?? 0) + 1;
+    if (kind === 'still_good') {
+      spot.last_confirmed_at = at;
+      spot.alerts = [];
+      const others = new Set(
+        this.checkins
+          .filter((r) => r.spot_id === spotId && r.kind === 'still_good' && r.camper_id !== spot.created_by)
+          .map((r) => r.camper_id),
+      );
+      if (others.size >= 2) spot.verified = true;
+    } else {
+      spot.alerts = [{ kind, at }, ...((spot.alerts as Row[] | undefined) ?? [])].slice(0, 3);
+    }
     return { data: null, error: null };
   }
 

@@ -20,6 +20,24 @@
 // app.json (extra.eas.projectId); updates are on from then on.
 
 import type { ConfigContext, ExpoConfig } from 'expo/config';
+import { AndroidConfig, withAndroidManifest, type ConfigPlugin } from 'expo/config-plugins';
+
+/**
+ * Android 7 to 9 only let the camera save the photo it takes with storage
+ * access, so "Take a photo" asks for it there. Newer Android never needs it:
+ * app.json removes the rest of storage access, and this keeps the one
+ * permission for Android 9 and older.
+ */
+const withOldAndroidCamera: ConfigPlugin = (base) =>
+  withAndroidManifest(base, (mod) => {
+    AndroidConfig.Manifest.ensureToolsAvailable(mod.modResults);
+    const manifest = mod.modResults.manifest;
+    const name = 'android.permission.WRITE_EXTERNAL_STORAGE';
+    const others = (manifest['uses-permission'] ?? []).filter((p) => p.$['android:name'] !== name);
+    const legacy = { 'android:name': name, 'android:maxSdkVersion': '28', 'tools:replace': 'android:maxSdkVersion' };
+    manifest['uses-permission'] = [...others, { $: legacy as { 'android:name': string } }];
+    return mod;
+  });
 
 export default function appConfig({ config }: ConfigContext): ExpoConfig {
   const env = process.env;
@@ -44,7 +62,7 @@ export default function appConfig({ config }: ConfigContext): ExpoConfig {
   const extra = config.extra as { eas?: { projectId?: unknown } } | undefined;
   const projectId = typeof extra?.eas?.projectId === 'string' ? extra.eas.projectId : undefined;
 
-  return {
+  return withOldAndroidCamera({
     ...config,
     name: config.name ?? 'DisCamp',
     slug: config.slug ?? 'discamp',
@@ -56,5 +74,5 @@ export default function appConfig({ config }: ConfigContext): ExpoConfig {
       ['react-native-maps', { androidGoogleMapsApiKey: androidMapsKey }],
       ...sentryPlugin,
     ],
-  };
+  });
 }

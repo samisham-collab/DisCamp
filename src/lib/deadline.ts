@@ -45,8 +45,13 @@ export async function withDeadline<T>(run: (signal: AbortSignal) => Promise<T>, 
  * network layer has no time limit of its own, so a stalled connection would
  * otherwise wait forever. The caller's own signal still works.
  */
-export function fetchWithTimeout(timeoutMs: number, base: typeof fetch = fetch): typeof fetch {
+export function fetchWithTimeout(
+  timeoutMs: number | ((url: string) => number),
+  base: typeof fetch = fetch,
+): typeof fetch {
   return (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const limit = typeof timeoutMs === 'function' ? timeoutMs(url) : timeoutMs;
     const controller = new AbortController();
     const outer = init?.signal;
     const abort = () => controller.abort();
@@ -54,7 +59,7 @@ export function fetchWithTimeout(timeoutMs: number, base: typeof fetch = fetch):
       if (outer.aborted) controller.abort();
       else outer.addEventListener('abort', abort);
     }
-    const timer = setTimeout(abort, timeoutMs);
+    const timer = setTimeout(abort, limit);
     return base(input, { ...init, signal: controller.signal }).finally(() => {
       clearTimeout(timer);
       outer?.removeEventListener('abort', abort);

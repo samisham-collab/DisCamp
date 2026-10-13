@@ -169,8 +169,11 @@ describe('SpotsProvider', () => {
     await waitFor(() => expect(result.current.spots.map((s) => s.id)).toEqual(['b', 'h']));
     // Signing out with no signal: the reload fails, but Sam's hidden spot goes.
     backend.intercept = () => Promise.resolve({ data: null, error: { message: 'Network request failed' } });
+    const asked = backend.queries.length;
     act(() => backend.auth.setUser(null));
     expect(result.current.spots.map((s) => s.id)).toEqual(['b']);
+    // The reload starts a moment later; wait for it to finish, not just to be due.
+    await waitFor(() => expect(backend.queries.length).toBeGreaterThan(asked));
     await waitFor(() => expect(result.current.refreshing).toBe(false));
   });
 

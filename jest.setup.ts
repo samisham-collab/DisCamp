@@ -20,6 +20,10 @@ jest.mock('expo-secure-store', () => jest.requireActual('./test/mocks/expoSecure
 jest.mock('expo-web-browser', () => jest.requireActual('./test/mocks/expoWebBrowser'));
 jest.mock('expo-apple-authentication', () => jest.requireActual('./test/mocks/expoAppleAuthentication'));
 jest.mock('expo-crypto', () => jest.requireActual('./test/mocks/expoCrypto'));
+jest.mock('expo-image-picker', () => jest.requireActual('./test/mocks/expoImagePicker'));
+jest.mock('expo-image-manipulator', () => jest.requireActual('./test/mocks/expoImageManipulator'));
+jest.mock('expo-file-system', () => jest.requireActual('./test/mocks/expoFileSystem'));
+jest.mock('expo-image', () => jest.requireActual('./test/mocks/expoImage'));
 // Expo builds sign-in redirect links from app.json, which tests don't load.
 jest.mock('expo-linking', () => ({
   ...jest.requireActual<Record<string, unknown>>('expo-linking'),

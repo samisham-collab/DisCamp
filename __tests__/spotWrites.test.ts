@@ -145,7 +145,7 @@ describe('saving spots', () => {
     backend.banned.add(SAM.id);
     await expect(createSpot(backend.client, input, newId())).rejects.toMatchObject({
       kind: 'banned',
-      message: "Your account can't add, change or report spots.",
+      message: "Your account can't post or report anything on DisCamp.",
     });
     expect(toWriteError({ message: 'blocked_words' }, 'save').message).toBe(
       "Some words aren't allowed on DisCamp. Change them, then try again.",

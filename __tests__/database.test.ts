@@ -94,6 +94,28 @@ const seenBy = (uid: string | null) =>
     : sql('select coalesce(string_agg(name, $$,$$ order by name), $$$$) from public.spots_api;', 'anon')
   ).split(',');
 
+/** A photo id (and file name) the way the app makes them. */
+const photoId = (n: number) => `0000000${n}`.slice(-8) + '-0000-4000-8000-00000000f070';
+
+/** What Supabase Storage does when a camper uploads: a row in storage.objects, as them. */
+const upload = (uid: string, id: string) =>
+  asCamper(
+    uid,
+    `insert into storage.objects (bucket_id, name, owner_id) values ('spot-photos', '${uid}/${id}.jpg', '${uid}')`,
+  );
+
+const addPhoto = (uid: string, id: string, spotId: string, path = `${uid}/${id}.jpg`) =>
+  asCamper(
+    uid,
+    `insert into public.spot_photos (id, spot_id, path, width, height) values ('${id}', '${spotId}', '${path}', 1600, 1200)`,
+  );
+
+const checkIn = (uid: string, spotId: string, kind: string, note?: string) =>
+  asCamper(
+    uid,
+    `insert into public.checkins (spot_id, kind${note ? ', note' : ''}) values ('${spotId}', '${kind}'${note ? `, '${note}'` : ''})`,
+  );
+
 (DB_URL ? describe : describe.skip)('database (Postgres + PostGIS)', () => {
   it('applies every migration and the seed, each twice in a row, without errors', () => {
     expect(MIGRATIONS).toEqual([
@@ -102,6 +124,7 @@ const seenBy = (uid: string | null) =>
       '0003_accounts.sql',
       '0004_moderation.sql',
       '0005_fixes.sql',
+      '0006_photos_checkins.sql',
     ]);
     sql('drop schema if exists moderation cascade; drop schema if exists public cascade; create schema public;');
     // Recreate what a new Supabase project has: the API roles, default
@@ -125,6 +148,21 @@ const seenBy = (uid: string | null) =>
         "$$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$; " +
         'grant usage on schema auth to anon, authenticated, service_role; ' +
         'grant execute on function auth.uid() to anon, authenticated, service_role;',
+    );
+    // And Supabase Storage's tables, as far as the migrations use them: the
+    // Storage service writes storage.objects as the signed-in camper, so row-
+    // level security decides who may upload what.
+    sql(
+      'drop schema if exists storage cascade; create schema storage; ' +
+        'create table storage.buckets (id text primary key, name text not null, public boolean default false, ' +
+        'file_size_limit bigint, allowed_mime_types text[]); ' +
+        'create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text references storage.buckets (id), ' +
+        'name text not null, owner_id text, created_at timestamptz default now(), unique (bucket_id, name)); ' +
+        'alter table storage.objects enable row level security; ' +
+        'create function storage.foldername(name text) returns text[] language sql immutable as ' +
+        "$$ select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1] $$; " +
+        'grant usage on schema storage to anon, authenticated, service_role; ' +
+        'grant all on storage.objects, storage.buckets to anon, authenticated, service_role;',
     );
     sql('grant usage on schema public to anon, authenticated, service_role;');
     sql('alter default privileges in schema public grant all on tables to anon, authenticated, service_role;');
@@ -768,6 +806,225 @@ const seenBy = (uid: string | null) =>
     expect(sql(`select count(*) from public.flags where spot_id = '${id}';`)).toBe('3');
     expect(sql(`select hidden_at is not null from public.spots where id = '${id}';`)).toBe('t');
     sql(`delete from public.spots where id = '${id}';`);
+  });
+
+  it('stores photos in the camper’s own folder and shows them to everyone', () => {
+    for (const uid of [TRAIL, PAT, ROBIN]) acceptTerms(uid);
+    const spot = asCamper(TRAIL, `${addSpot('Photo Flat')} returning id`);
+    expect(
+      sql(
+        "select public, file_size_limit, array_to_string(allowed_mime_types, ',') from storage.buckets where id = 'spot-photos';",
+      ),
+    ).toBe('t|3145728|image/jpeg');
+
+    const first = photoId(1);
+    upload(TRAIL, first);
+    addPhoto(TRAIL, first, spot);
+    expect(sql(`select added_by, width, hidden from public.spot_photos_api where id = '${first}';`, 'anon')).toBe(
+      'trailhound|1600|f',
+    );
+    expect(sql(`select created_by from public.spot_photos where id = '${first}';`)).toBe(TRAIL);
+
+    // A camper's name shows once they post a photo.
+    asCamper(ROBIN, `update public.profiles set display_name = 'Robin' where id = '${ROBIN}'`);
+    expect(sql(`select count(*) from public.profiles where id = '${ROBIN}';`, 'anon')).toBe('0');
+    const robins = photoId(2);
+    upload(ROBIN, robins);
+    addPhoto(ROBIN, robins, 'smoky-gardens');
+    expect(sql(`select added_by from public.spot_photos_api where id = '${robins}';`, 'anon')).toBe('Robin');
+
+    // Only into your own folder, only your own upload, and only once you may post.
+    expect(
+      fails(() =>
+        asCamper(
+          PAT,
+          `insert into storage.objects (bucket_id, name, owner_id) values ('spot-photos', '${TRAIL}/${photoId(3)}.jpg', '${PAT}')`,
+        ),
+      ),
+    ).toBe(true);
+    expect(errorOf(() => addPhoto(PAT, photoId(4), spot))).toMatch(/photo_missing/);
+    expect(errorOf(() => addPhoto(PAT, photoId(5), spot, `${TRAIL}/${photoId(5)}.jpg`))).toMatch(/photo_path/);
+    expect(fails(() => upload('77777777-7777-4777-8777-777777777777', photoId(6)))).toBe(true);
+    expect(
+      fails(() =>
+        sql(
+          `insert into public.spot_photos (id, spot_id, path, width, height) values ('${photoId(7)}', '${spot}', 'x/y.jpg', 1, 1);`,
+          'anon',
+        ),
+      ),
+    ).toBe(true);
+    // The camper can't set who or when, or hide anything.
+    expect(fails(() => asCamper(PAT, `update public.spot_photos set width = 1 where id = '${first}'`))).toBe(true);
+
+    // Up to 3 a spot.
+    for (const n of [8, 9]) {
+      upload(TRAIL, photoId(n));
+      addPhoto(TRAIL, photoId(n), spot);
+    }
+    upload(TRAIL, photoId(10));
+    expect(errorOf(() => addPhoto(TRAIL, photoId(10), spot))).toMatch(/photo_limit_spot/);
+
+    // Campers delete their own photos only.
+    expect(asCamper(PAT, `delete from public.spot_photos where id = '${first}' returning id`)).toBe('');
+    expect(asCamper(TRAIL, `delete from public.spot_photos where id = '${photoId(9)}' returning id`)).toBe(photoId(9));
+    expect(
+      asCamper(TRAIL, `delete from storage.objects where name = '${TRAIL}/${photoId(9)}.jpg' returning name`),
+    ).toBe(`${TRAIL}/${photoId(9)}.jpg`);
+    expect(asCamper(PAT, `delete from storage.objects where name like '${TRAIL}/%' returning name`)).toBe('');
+    // A listed photo's file stays put until the photo is deleted (so a reported one can be reviewed).
+    expect(asCamper(TRAIL, `delete from storage.objects where name = '${TRAIL}/${first}.jpg' returning name`)).toBe('');
+
+    // Only files named like a photo, and up to 25 a day.
+    expect(
+      fails(() =>
+        asCamper(
+          PAT,
+          `insert into storage.objects (bucket_id, name, owner_id) values ('spot-photos', '${PAT}/movie.mp4', '${PAT}')`,
+        ),
+      ),
+    ).toBe(true);
+    sql(
+      `insert into storage.objects (bucket_id, name, owner_id) select 'spot-photos', '${PAT}/' || gen_random_uuid() || '.jpg', '${PAT}' from generate_series(1, 25);`,
+    );
+    expect(fails(() => upload(PAT, photoId(13)))).toBe(true);
+    sql(`delete from storage.objects where owner_id = '${PAT}';`);
+    upload(PAT, photoId(13));
+  });
+
+  it('hides a photo 3 campers report until the moderator reviews it, and blocks hide photos', () => {
+    acceptTerms(SAM);
+    const photo = photoId(1);
+    expect(
+      errorOf(() => asCamper(TRAIL, `insert into public.flags (photo_id, reason) values ('${photo}', 'spam')`)),
+    ).toMatch(/own_content/);
+    for (const uid of [SAM, PAT, ROBIN]) {
+      asCamper(uid, `insert into public.flags (photo_id, reason) values ('${photo}', 'offensive')`);
+      // Not deletable once it has a report waiting, so the report can't vanish with it.
+      expect(asCamper(TRAIL, `delete from public.spot_photos where id = '${photo}' returning id`)).toBe('');
+    }
+    expect(sql(`select count(*) from public.spot_photos_api where id = '${photo}';`, 'anon')).toBe('0');
+    expect(asCamper(TRAIL, `select hidden from public.spot_photos_api where id = '${photo}'`)).toBe('t');
+    // Not deletable while it's under review.
+    expect(asCamper(TRAIL, `delete from public.spot_photos where id = '${photo}' returning id`)).toBe('');
+    expect(
+      sql(`select kind, reporters, photo_path, photo_hidden from moderation.queue where photo_id = '${photo}';`),
+    ).toBe(`photo|3|${TRAIL}/${photo}.jpg|t`);
+    sql(`select moderation.restore_photo('${photo}');`);
+    expect(sql(`select count(*) from public.spot_photos_api where id = '${photo}';`, 'anon')).toBe('1');
+    expect(sql(`select count(*) from moderation.queue where photo_id = '${photo}';`)).toBe('0');
+    sql(`select moderation.hide_photo('${photo}', 'Not a photo of the spot');`);
+    expect(sql(`select hidden_reason from public.spot_photos where id = '${photo}';`)).toBe('Not a photo of the spot');
+    sql(`select moderation.restore_photo('${photo}');`);
+
+    // Blocking a camper hides their photos for you only.
+    asCamper(PAT, `insert into public.blocks (blocked_id) values ('${TRAIL}')`);
+    expect(asCamper(PAT, `select count(*) from public.spot_photos_api where id = '${photo}'`)).toBe('0');
+    expect(asCamper(SAM, `select count(*) from public.spot_photos_api where id = '${photo}'`)).toBe('1');
+    asCamper(PAT, `delete from public.blocks where blocked_id = '${TRAIL}'`);
+    sql('delete from public.flags;');
+  });
+
+  it('takes "Still good" and change reports: alerts, last confirmed and confirming a spot', () => {
+    const spot = asCamper(TRAIL, `${addSpot('Check Flat')} returning id`);
+    const api = (uid: string | null = null) =>
+      uid
+        ? asCamper(
+            uid,
+            `select verified, report_count, last_confirmed_at is not null, alerts::text from public.spots_api where id = '${spot}'`,
+          )
+        : sql(
+            `select verified, report_count, last_confirmed_at is not null, alerts::text from public.spots_api where id = '${spot}';`,
+            'anon',
+          );
+    expect(api()).toBe('f|0|f|[]');
+
+    checkIn(PAT, spot, 'gate_closed', 'Locked with a chain');
+    expect(api()).toMatch(/^f\|1\|f\|\[\{"at": ".+", "kind": "gate_closed"\}\]$/);
+    expect(errorOf(() => checkIn(PAT, spot, 'gate_closed'))).toMatch(/checkin_recent/);
+    expect(errorOf(() => checkIn(PAT, spot, 'trash', 'Fucking mess'))).toMatch(/blocked_words/);
+    expect(
+      fails(() => sql(`insert into public.checkins (spot_id, kind) values ('${spot}', 'still_good');`, 'anon')),
+    ).toBe(true);
+    expect(fails(() => checkIn(PAT, spot, 'party'))).toBe(true);
+
+    // A later "Still good" clears the alert and sets the date.
+    checkIn(ROBIN, spot, 'still_good');
+    expect(api()).toBe('f|2|t|[]');
+    // The camper who added it can't confirm it (but can report changes); two others do.
+    expect(errorOf(() => checkIn(TRAIL, spot, 'still_good'))).toMatch(/own_spot/);
+    expect(api()).toBe('f|2|t|[]');
+    checkIn(SAM, spot, 'still_good');
+    expect(api()).toBe('t|3|t|[]');
+
+    // An edit needs confirming again, by "Still good"s after it.
+    asCamper(TRAIL, `update public.spots set stay_limit_days = 14 where id = '${spot}'`);
+    expect(api()).toMatch(/^f\|3\|t/);
+    checkIn(PAT, spot, 'still_good');
+    expect(api()).toMatch(/^f\|4\|t/);
+
+    // Check-ins are public, with names; on-site reports keep the spot from
+    // being deleted by its camper.
+    expect(
+      sql(
+        `select camper_name, kind, note from public.checkins_api where spot_id = '${spot}' and kind = 'gate_closed';`,
+        'anon',
+      ),
+    ).toBe('Camper|gate_closed|Locked with a chain');
+    expect(asCamper(TRAIL, `delete from public.spots where id = '${spot}' returning id`)).toBe('');
+
+    // Blocked campers' check-ins disappear for the blocker; the moderator can hide one.
+    asCamper(SAM, `insert into public.blocks (blocked_id) values ('${PAT}')`);
+    expect(
+      asCamper(SAM, `select count(*) from public.checkins_api where spot_id = '${spot}' and camper_id = '${PAT}'`),
+    ).toBe('0');
+    asCamper(SAM, `delete from public.blocks where blocked_id = '${PAT}'`);
+
+    // Check-ins can be reported (not your own); 3 campers hide one until reviewed.
+    const note = sql(`select id from public.checkins where spot_id = '${spot}' and kind = 'gate_closed';`);
+    const report = (uid: string, reason = 'offensive') =>
+      asCamper(uid, `insert into public.flags (checkin_id, reason) values (${note}, '${reason}')`);
+    expect(errorOf(() => report(PAT))).toMatch(/own_content/);
+    for (const uid of [SAM, ROBIN, TRAIL]) report(uid);
+    expect(errorOf(() => report(SAM))).toMatch(/duplicate key|flags_one_open_per_checkin/);
+    expect(sql(`select count(*) from public.checkins_api where id = ${note};`, 'anon')).toBe('0');
+    expect(
+      sql(
+        `select kind, camper_id, reporters, checkin_kind, checkin_note, checkin_hidden from moderation.queue where checkin_id = ${note};`,
+      ),
+    ).toBe(`checkin|${PAT}|3|gate_closed|Locked with a chain|t`);
+    sql(`select moderation.restore_checkin(${note});`);
+    expect(sql(`select count(*) from public.checkins_api where id = ${note};`, 'anon')).toBe('1');
+    expect(sql(`select count(*) from moderation.queue where checkin_id = ${note};`)).toBe('0');
+    report(SAM, 'spam');
+    sql(`select moderation.hide_checkin(${note});`);
+    // Hidden from its camper too, but still theirs: they can't report it.
+    expect(errorOf(() => report(PAT))).toMatch(/own_content/);
+    expect(sql(`select count(*) from public.checkins_api where id = ${note};`, 'anon')).toBe('0');
+    expect(sql(`select count(*) from public.flags where checkin_id = ${note} and status = 'open';`)).toBe('0');
+    expect(fails(() => asCamper(PAT, `select moderation.hide_checkin(${note})`))).toBe(true);
+  });
+
+  it('takes down a banned camper’s photos and check-ins with their spots', () => {
+    const photo = photoId(11);
+    upload(PAT, photo);
+    addPhoto(PAT, photo, 'smoky-gardens');
+    checkIn(PAT, 'smoky-gardens', 'trash', 'Bags left by the fire ring');
+    sql(`select moderation.ban('${PAT}', 'Spam');`);
+    expect(sql(`select count(*) from public.spot_photos_api where id = '${photo}';`, 'anon')).toBe('0');
+    expect(sql(`select count(*) from public.checkins_api where camper_id = '${PAT}';`, 'anon')).toBe('0');
+    expect(errorOf(() => checkIn(PAT, 'smoky-gardens', 'still_good'))).toMatch(/banned/);
+    expect(fails(() => upload(PAT, photoId(12)))).toBe(true);
+    sql(`select moderation.unban('${PAT}');`);
+    sql(`update public.spot_photos set hidden_at = null, hidden_reason = null where created_by = '${PAT}';`);
+    sql(`update public.checkins set hidden_at = null where camper_id = '${PAT}';`);
+    sql(`update public.spots set hidden_at = null, hidden_reason = null where created_by = '${PAT}';`);
+    for (const fn of ['hide_photo(null, null)', 'restore_photo(null)', 'hide_checkin(null)', 'restore_checkin(null)']) {
+      expect(fails(() => asCamper(SAM, `select moderation.${fn}`))).toBe(true);
+    }
+    for (const table of ['spot_photos', 'checkins']) {
+      expect(sql(`select relrowsecurity from pg_class where oid = 'public.${table}'::regclass;`)).toBe('t');
+      expect(fails(() => sql(`truncate public.${table};`, 'authenticated'))).toBe(true);
+    }
   });
 
   it('deletes an account but keeps the spots it added, without a name', () => {

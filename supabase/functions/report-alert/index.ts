@@ -1,6 +1,6 @@
-// Supabase Edge Function: emails you each new report, so you can act within
-// the 24 hours App Review expects. A Database Webhook on inserts into
-// public.flags calls it (setup in MODERATION.md). Email goes out through
+// Supabase Edge Function: emails you each new report (a spot, a photo or a
+// name), so you can act within the 24 hours App Review expects. A Database
+// Webhook on inserts into public.flags calls it (setup in MODERATION.md). Email goes out through
 // Resend's API.
 //
 // Secrets (Supabase dashboard > Edge Functions > Secrets):
@@ -37,7 +37,33 @@ async function lookUp(flag: FlagRecord): Promise<FlagContext> {
   let spotName: string | null = null;
   let camperId = flag.camper_id;
   let hidden = false;
-  if (flag.spot_id) {
+  let photoUrl: string | null = null;
+  let checkinKind: string | null = null;
+  let checkinNote: string | null = null;
+  if (flag.checkin_id != null) {
+    const [checkin] = await rest<
+      { spot_id: string; camper_id: string | null; kind: string; note: string | null; hidden_at: string | null }[]
+    >(`checkins?select=spot_id,camper_id,kind,note,hidden_at&id=${eq(String(flag.checkin_id))}`);
+    if (checkin) {
+      const [spot] = await rest<{ name: string }[]>(`spots?select=name&id=${eq(checkin.spot_id)}`);
+      spotName = spot?.name ?? null;
+      checkinKind = checkin.kind;
+      checkinNote = checkin.note;
+    }
+    camperId = checkin?.camper_id ?? null;
+    hidden = checkin?.hidden_at != null;
+  } else if (flag.photo_id) {
+    const [photo] = await rest<
+      { spot_id: string; path: string; created_by: string | null; hidden_at: string | null }[]
+    >(`spot_photos?select=spot_id,path,created_by,hidden_at&id=${eq(flag.photo_id)}`);
+    if (photo) {
+      const [spot] = await rest<{ name: string }[]>(`spots?select=name&id=${eq(photo.spot_id)}`);
+      spotName = spot?.name ?? null;
+      photoUrl = `${env('SUPABASE_URL')}/storage/v1/object/public/spot-photos/${photo.path}`;
+    }
+    camperId = photo?.created_by ?? null;
+    hidden = photo?.hidden_at != null;
+  } else if (flag.spot_id) {
     const [spot] = await rest<{ name: string; created_by: string | null; hidden_at: string | null }[]>(
       `spots?select=name,created_by,hidden_at&id=${eq(flag.spot_id)}`,
     );
@@ -52,7 +78,13 @@ async function lookUp(flag: FlagRecord): Promise<FlagContext> {
   }
   // Who counts toward hiding it, the same way as moderation.open_reporters:
   // campers with an open report, minus any whose earlier report was dismissed.
-  const target = flag.spot_id ? `spot_id=${eq(flag.spot_id)}` : `camper_id=${eq(flag.camper_id ?? '')}`;
+  const target = flag.photo_id
+    ? `photo_id=${eq(flag.photo_id)}`
+    : flag.checkin_id != null
+      ? `checkin_id=${eq(String(flag.checkin_id))}`
+      : flag.spot_id
+        ? `spot_id=${eq(flag.spot_id)}`
+        : `camper_id=${eq(flag.camper_id ?? '')}`;
   const flags = await rest<{ reporter_id: string | null; status: string }[]>(
     `flags?select=reporter_id,status&status=in.(open,dismissed)&${target}`,
   );
@@ -62,7 +94,7 @@ async function lookUp(flag: FlagRecord): Promise<FlagContext> {
       .filter((f) => f.status === 'open' && f.reporter_id && !dismissed.has(f.reporter_id))
       .map((f) => f.reporter_id),
   ).size;
-  return { spotName, camperId, camperName, reporters, hidden };
+  return { spotName, camperId, camperName, reporters, hidden, photoUrl, checkinKind, checkinNote };
 }
 
 Deno.serve(async (req) => {

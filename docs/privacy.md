@@ -10,7 +10,7 @@ Effective {{ site.privacy_effective }}
 DisCamp is a free map of dispersed campsites, run by {{ site.owner }} ("we"). This policy explains what DisCamp
 collects, why, who else handles it, and the choices you have. Questions: **{{ site.support_email }}**.
 
-**In short:** browsing DisCamp needs no account and sends nothing about you. If you sign in to add spots, we keep your
+**In short:** browsing DisCamp needs no account and sends nothing about you. If you sign in to add spots or photos, we keep your
 email address, your display name and what you post. Your location stays on your phone unless you choose to use it as a
 spot's location. We don't show ads, track you across apps, or sell or share your information for advertising.
 
@@ -28,16 +28,22 @@ You can sign in with Apple, Google, Microsoft or GitHub. We then receive and kee
   with Apple and choose "Hide My Email", we only get Apple's relay address.
 - **An account ID**, a random identifier for your account.
 - **Your display name.** It starts as the first name (or username) the sign-in service shares, and you can change it
-  any time in **Account**. It shows on spots you add.
+  any time in **Account**. It shows on spots, photos and check-ins you add.
 - **When you agreed to the terms of use**, so we know you've seen them.
 
 ## What you post
 
 - **Spots you add or edit** are public: anyone using DisCamp can see them, along with your display name and the date.
   A spot's location is wherever you put the pin.
-- **Reports you send** about a spot or a name, with the reason and any note. Only we see them; the camper you report
+- **Photos you add** to a spot are public, with your display name and the date. Before a photo leaves your phone,
+  DisCamp shrinks it and saves it fresh, which strips the hidden details photos carry (location, camera and time,
+  called EXIF). DisCamp asks for the camera only when you tap "Take a photo"; choosing from your library opens your
+  phone's own picker, and only the photo you pick reaches the app.
+- **Check-ins** ("Still good", or a change like a washed-out road) are public, with your display name, the date and
+  any note you write.
+- **Reports you send** about a spot, a photo, a check-in or a name, with the reason and any note. Only we see them; the camper you report
   isn't told who reported them.
-- **Campers you block.** Only you (and the app, to hide their spots from you) see this list.
+- **Campers you block.** Only you (and the app, to hide their spots and photos from you) see this list.
 
 ## Your location
 
@@ -55,7 +61,7 @@ fix bugs.
 
 ## How we use information
 
-To run DisCamp: show spots and who added them, let you edit your own spots, keep your sign-in, review reports and
+To run DisCamp: show spots, photos and check-ins and who added them, let you edit your own spots, keep your sign-in, review reports and
 remove content or accounts that break the [terms of use](../terms/), prevent abuse, fix bugs, and answer you when you
 contact us. We don't use your information for advertising, and we don't sell it or share it with anyone for their own
 marketing.
@@ -64,7 +70,7 @@ marketing.
 
 These companies process information for us, only to provide their service:
 
-- **Supabase** hosts our database and sign-in. It keeps standard server logs (such as IP address and time of
+- **Supabase** hosts our database, sign-in and photos. It keeps standard server logs (such as IP address and time of
   request) for security, for a limited time.
 - **Apple, Google, Microsoft and GitHub**, when you choose to sign in with them. Their own privacy policies cover what
   they do.
@@ -80,9 +86,10 @@ such as reporting child sexual abuse material to the authorities.
 
 We keep your account information until you delete your account. You can do that any time in the app: **Account >
 Delete account**. Deleting your account removes your sign-in, email address, display name and block list right away.
-Spots you added stay on the map without your name, so other campers can keep using them; you can delete spots you
-added before deleting your account (except while one is being reviewed after reports). Reports you sent are kept
-without your account ID. Reports about your name are removed; reports about a spot stay with the spot. Copies may
+Spots, photos and check-ins you added stay without your name, so other campers can keep using them; you can delete
+spots and photos you added before deleting your account (except while one has reports waiting for review). Reports you sent are kept
+without your account ID. Reports about your name are removed; reports about a spot or photo stay with it. A photo removed after review is
+hidden right away, and we delete its file when we review it. Copies may
 remain in our host's backups for up to 30 days before they're overwritten.
 
 If we ban an account for breaking the [terms of use](../terms/), we keep a scrambled, one-way code (a hash) of its
@@ -100,7 +107,7 @@ someone under 13 made an account, we'll delete it. If you think that's happened,
 ## Security
 
 Your sign-in is kept in your phone's secure storage (the iPhone Keychain or Android Keystore). Connections to our
-servers are encrypted. Our database only lets each camper change their own spots and account. No system is perfect,
+servers are encrypted. Our database only lets each camper change their own spots, photos and account. No system is perfect,
 so we can't promise absolute security, but we'll tell you promptly if your information is affected by a breach.
 
 ## Your rights

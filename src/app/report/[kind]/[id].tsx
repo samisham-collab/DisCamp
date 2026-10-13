@@ -1,6 +1,6 @@
-// Report a spot, or the name of the camper who added one. Reports go to the
-// moderator (an email per report), who acts within 24 hours. After reporting
-// a camper's spot or name, the camper can also block them.
+// Report a spot, a photo, a check-in, or the name of the camper who added
+// one. Reports go to the moderator (an email per report), who acts within 24
+// hours. After reporting something a camper posted, you can also block them.
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -19,6 +19,16 @@ import { colors } from '@/theme';
 import { KeyboardSafe } from '@/components/KeyboardSafe';
 
 const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const CHECKIN_ID = /^[1-9][0-9]{0,17}$/;
+
+/** What the link points at, if it's something that can be reported. */
+function reportTarget(kind: string | undefined, id: string): ReportTarget | null {
+  if (kind === 'spot' && id) return { kind, id };
+  if ((kind === 'camper' || kind === 'photo') && UUID.test(id)) return { kind, id };
+  if (kind === 'checkin' && CHECKIN_ID.test(id)) return { kind, id };
+  return null;
+}
 
 function close() {
   if (router.canGoBack()) router.back();
@@ -31,7 +41,13 @@ function closeToExplore() {
 }
 
 export default function ReportScreen() {
-  const params = useLocalSearchParams<{ kind?: string | string[]; id?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    kind?: string | string[];
+    id?: string | string[];
+    // Photos and check-ins: who posted it, to offer blocking them afterwards.
+    owner?: string | string[];
+    name?: string | string[];
+  }>();
   const kind = first(params.kind);
   const id = first(params.id) ?? '';
   const { status, client, user } = useAuth();
@@ -48,23 +64,31 @@ export default function ReportScreen() {
   const [camper, setCamper] = useState<{ id: string; name: string | null } | null>(null);
   const [blocked, setBlocked] = useState(false);
 
-  if (kind !== 'spot' && kind !== 'camper') {
+  const target = reportTarget(kind, id);
+  if (!target) {
     return (
       <View style={styles.center}>
         <EmptyState
           icon="flag-outline"
           title="Nothing to report"
-          message="This link doesn't point to a spot or camper."
+          message="This link doesn't point to a spot, photo, check-in or camper."
         />
       </View>
     );
   }
-  const target: ReportTarget = { kind, id };
-  const spot = kind === 'spot' ? spots.find((s) => s.id === id) : undefined;
-  // Whose spot or name it is, to offer blocking them afterwards.
-  const camperId = kind === 'camper' ? id : spot?.createdBy;
-  const camperName = (kind === 'camper' ? spots.find((s) => s.createdBy === id)?.addedBy : spot?.addedBy) ?? null;
-  const next = `/report/${kind}/${id}`;
+  const spot = target.kind === 'spot' ? spots.find((s) => s.id === id) : undefined;
+  // Whose spot, photo, check-in or name it is, to offer blocking them afterwards.
+  const owner = first(params.owner);
+  const postedBy = owner && UUID.test(owner) ? owner : undefined;
+  const posted = target.kind === 'photo' || target.kind === 'checkin';
+  const camperId = target.kind === 'camper' ? id : posted ? postedBy : spot?.createdBy;
+  const camperName =
+    (target.kind === 'camper'
+      ? spots.find((s) => s.createdBy === id)?.addedBy
+      : posted
+        ? first(params.name)?.trim().slice(0, 40) || undefined
+        : spot?.addedBy) ?? null;
+  const next = `/report/${target.kind}/${id}`;
 
   if (status !== 'signed-in') {
     return (
@@ -97,7 +121,7 @@ export default function ReportScreen() {
         </View>
         {canBlock ? (
           <>
-            <Text style={styles.body}>Don&apos;t want to see spots from {who}?</Text>
+            <Text style={styles.body}>Don&apos;t want to see spots and photos from {who}?</Text>
             <Button
               label={`Block ${who}`}
               icon="eye-off-outline"
@@ -107,7 +131,7 @@ export default function ReportScreen() {
             />
           </>
         ) : null}
-        {blocked ? <Banner tone="info" message={`Blocked. You won't see spots from ${who}.`} /> : null}
+        {blocked ? <Banner tone="info" message={`Blocked. You won't see spots or photos from ${who}.`} /> : null}
         <Button label="Done" onPress={blocked ? closeToExplore : close} />
       </ScrollView>
     );
@@ -136,14 +160,18 @@ export default function ReportScreen() {
     }
   };
 
-  const subject =
-    kind === 'spot'
-      ? spot
-        ? `“${spot.name}”`
-        : 'this spot'
-      : camperName
-        ? `the name “${camperName}”`
-        : 'this camper’s name';
+  const subject = {
+    spot: spot ? `“${spot.name}”` : 'this spot',
+    photo: 'this photo',
+    checkin: 'this check-in',
+    camper: camperName ? `the name “${camperName}”` : 'this camper’s name',
+  }[target.kind];
+  const title = {
+    spot: 'Report this spot',
+    photo: 'Report this photo',
+    checkin: 'Report this check-in',
+    camper: 'Report this name',
+  }[target.kind];
 
   return (
     <KeyboardSafe>
@@ -155,7 +183,7 @@ export default function ReportScreen() {
       >
         <View style={styles.introLeft}>
           <Text style={styles.title} accessibilityRole="header">
-            {kind === 'spot' ? 'Report this spot' : 'Report this name'}
+            {title}
           </Text>
           <Text style={styles.bodyLeft}>
             Tell us what&apos;s wrong with {subject}. Reports are private: nobody else sees who sent them.
@@ -164,7 +192,7 @@ export default function ReportScreen() {
 
         <ChoiceField
           label="What's wrong?"
-          options={REPORT_REASONS[kind]}
+          options={REPORT_REASONS[target.kind]}
           value={reason}
           onChange={(value) => setReason(value)}
           allowNotSure={false}

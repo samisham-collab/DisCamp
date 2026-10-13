@@ -37,7 +37,7 @@ export function useBlockCamper() {
       const who = camper.name ?? 'this camper';
       Alert.alert(
         `Block ${who}?`,
-        `You won't see spots ${who} adds. They aren't told. You can unblock them any time in Account.`,
+        `You won't see spots or photos ${who} adds. They aren't told. You can unblock them any time in Account.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {

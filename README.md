@@ -29,8 +29,10 @@ It ships with six starter spots from public listings:
 - **Sign in** with Apple, Google, Microsoft or GitHub (Account tab, or "Add spot"). Only needed to add spots.
 - **Add a spot**: drop a pin on a satellite map (or use your location, or paste GPS), then rate access, who fits and cost. Only the name, land manager and location are required; anything else can stay "Not sure". The draft is saved as you type. New spots show for everyone right away, marked "not yet confirmed".
 - **Your spots**: edit or delete the spots you added (deleting stops once other campers have reported on a spot). The Account tab lists them, and lets you change your display name, sign out or delete your account.
-- **Community rules**: before a first spot, campers agree to the terms of use. A word filter keeps offensive words out of spots and names.
-- **Report and block**: every spot page has **Report this spot**, and for spots campers added, **Report the name** and **Block**. Blocked campers' spots disappear for you; Account lists them. Each report emails you, and 3 reports hide a spot until you review it. [MODERATION.md](MODERATION.md) is the routine.
+- **Community rules**: before they first post, campers agree to the terms of use. A word filter keeps offensive words out of spots, notes and names.
+- **Photos**: campers add up to 3 photos per spot, from the camera or their library. Each photo is shrunk to 1,600 pixels and saved fresh before it's sent, which strips its location and camera details. Tap a photo to see it full size, delete your own, or report or block someone else's.
+- **Still good?**: one tap tells other campers a spot is still as described, and the spot shows when it was last confirmed. Two campers (other than the one who added it) saying "Still good" mark a spot confirmed. **Something changed** reports a washout, a locked gate, trash or a closure; it shows as a warning on the spot until someone says it's still good.
+- **Report and block**: every spot page has **Report this spot**, and for spots campers added, **Report the name** and **Block**. Blocked campers' spots and photos disappear for you; Account lists them. Photos can be reported too. Each report emails you, and 3 reports hide a spot or photo until you review it. [MODERATION.md](MODERATION.md) is the routine.
 - **Help and contact**: the Account tab shows the support email and links to the privacy policy, terms and support page.
 - Works with **no backend**: then it shows the starter spots, and sign-in and adding spots are turned off. Supabase is optional (see below).
 
@@ -101,9 +103,10 @@ update public.spots set verified = true where id = 'smoky-gardens';
    3. `supabase/migrations/0003_accounts.sql` adds accounts: profiles, who added each spot, and exactly what signed-in campers may change.
    4. `supabase/migrations/0004_moderation.sql` adds moderation: terms of use, the word filter, reports, blocking, hidden spots, bans and your moderator tools.
    5. `supabase/migrations/0005_fixes.sql` lets hookups be "not reported" and sharpens the word filter (1.4.1).
-   6. `supabase/seed.sql` adds the starter spots.
+   6. `supabase/migrations/0006_photos_checkins.sql` adds photos (and their Storage bucket), "Still good" check-ins and change reports (1.5.0). See "Photos" below.
+   7. `supabase/seed.sql` adds the starter spots.
 
-   Already ran some for an earlier version? Run only the ones after it (for 1.3: 0004 and 0005; for 1.4.0: just 0005), then the seed.
+   Already ran some for an earlier version? Run only the ones after it (for 1.3: 0004 to 0006; for 1.4.0: 0005 and 0006; for 1.4.1: just 0006), then the seed.
 
 3. Copy your **Project URL** and **publishable key** from the project's API settings.
 4. For your phone: `cp .env.example .env`, put both values in `.env`, and restart `npx expo start`.
@@ -112,6 +115,23 @@ update public.spots set verified = true where id = 'smoky-gardens';
 The app then reads spots from the database. If it can't reach it, it shows the last saved copy (or the starter spots) and a banner with Retry. Never put the secret (service role) key in the app or in `.env`.
 
 To let campers sign in and add spots, set up sign-in next.
+
+### Photos
+
+Migration 0006 also makes the **spot-photos** Storage bucket and its rules. Check it worked: in **Storage**, a public bucket called `spot-photos` is listed, and its policies show three for spot photos (upload, see and delete).
+
+If 0006 printed a warning that Storage was not set up (some projects don't let the SQL Editor change Storage's tables), set it up in the dashboard instead:
+
+1. **Storage > New bucket**: name `spot-photos`, turn on **Public bucket**, set the file size limit to 3 MB and the allowed MIME types to `image/jpeg`.
+2. On the bucket's **Policies**, add three policies "For full customization", each for the `authenticated` role:
+   - **INSERT**, named "Campers upload spot photos to their folder", with this check:
+     `bucket_id = 'spot-photos' and (storage.foldername(name))[1] = (select auth.uid()::text) and name ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}\.jpg$' and moderation.camper_status((select auth.uid())) = 'ok' and moderation.photo_files_today((select auth.uid())) < 25`
+   - **SELECT**, named "Campers see their own spot photo files", using:
+     `bucket_id = 'spot-photos' and owner_id = (select auth.uid()::text)`
+   - **DELETE**, named "Campers delete their own spot photos", using:
+     `bucket_id = 'spot-photos' and owner_id = (select auth.uid()::text) and not moderation.photo_listed(name)`
+
+Photos are public files: anyone with a photo's address can open it, which is what lets them show on spot pages. File names are random, so they can't be guessed. Campers can only upload files named like a photo into their own folder, up to 25 a day, and can't delete a file while a photo on a spot uses it (so a reported photo's file stays for you to review). When you remove a photo after a report, delete its file too (MODERATION.md says how). The free plan's 1 GB of Storage holds about 3,000 photos.
 
 ## Sign-in
 
@@ -190,7 +210,9 @@ src/
     (tabs)/rig.tsx          My Rig
     (tabs)/account.tsx      Account: name, your spots, blocked campers, help, sign out, delete account
     spot/[id].tsx           Spot page (edit and delete if you added it; report and block otherwise)
-    report/[kind]/[id].tsx  Report a spot or a camper's name
+    report/[kind]/[id].tsx  Report a spot, a photo or a camper's name
+    checkin/[id].tsx        Report a change at a spot (washout, locked gate, trash, closed)
+    rules.tsx               The community rules on their own, before a first photo or check-in
     spot/new.tsx            Add a spot
     spot/edit/[id].tsx      Edit a spot you added
     sign-in.tsx             Sign in with Apple, Google, Microsoft or GitHub
@@ -203,6 +225,7 @@ src/
   data/spotsRepository.ts   Server queries and the offline copy
   data/spotWrites.ts        Adding, editing and deleting spots on the server
   data/moderation.ts        Reports, blocks and agreeing to the terms, on the server
+  data/community.ts         Photos and check-ins on the server
   lib/fit.ts                Rig-fit rules and the C1–C7 clearance tiers
   lib/cost.ts               Cost meter levels and the fee that applies to your rig
   lib/geo.ts                Distances, directions, map regions
@@ -216,8 +239,12 @@ src/
   lib/secureStorage.ts      Keeps the sign-in session in the phone's keychain
   lib/spotDraft.ts          The add/edit form as data: checks and conversions
   lib/wordFilter.ts         The word filter (and the database's copy of it)
+  lib/photoPicker.ts        Takes or picks a photo, shrinks it and strips its details
+  lib/usePostingGate.ts     Before posting: signed in and agreed to the rules
   lib/crashReports.ts       Sentry crash reports, scrubbed of anything personal
-  components/TermsGate.tsx  Community rules and "I agree", before a first spot
+  components/TermsGate.tsx  Community rules and "I agree", before a first post
+  components/SpotPhotos.tsx A spot's photos: thumbnails, add, full-size view
+  components/SpotCheckins.tsx "Were you here?": Still good, Something changed, recent check-ins
   config.ts                 App-wide settings (timeouts, storage keys, support and legal links)
   theme.ts                  Colors and sizes
 supabase/migrations/        Database schema, one numbered file per change
@@ -242,7 +269,8 @@ test/                       Test helpers and stand-ins for native modules
 ## Security
 
 - Visitors can only read. Signed-in campers can change only their own spots and account, enforced by grants, row-level security and triggers in the database (see "What the database allows"). Reports, blocks and moderator tools are out of reach of the app. The database test checks every rule on each push.
-- iPhone asks for location only while the app is in use; the unused "always" and motion permission messages, background location and Android's storage and overlay permissions are removed.
+- The camera is asked for only when a camper taps "Take a photo"; choosing from the library uses the phone's own picker, which needs no permission. DisCamp never records sound, so Android's microphone permission is removed. Android 9 and older keep one storage permission, because their camera needs it to save the photo it takes.
+- iPhone asks for location only while the app is in use; the unused "always" and motion permission messages, background location, Android's overlay permission and (on Android 10 and newer) storage access are removed.
 - Every row from the server is validated. A bad field becomes "not reported"; a broken row is skipped; links can only be web links.
 - `npm audit` lists advisories in packages Expo uses at build time (its command-line tools and config plugins). They don't ship inside the app. Keep Expo up to date with `npx expo install --fix` to pick up their fixes.
 
@@ -250,7 +278,7 @@ test/                       Test helpers and stand-ins for native modules
 
 - **Maps:** v1 uses `react-native-maps` (Apple Maps on iPhone, Google Maps on Android) because it runs in Expo Go for free. The plan's MapLibre + OpenFreeMap switch comes with offline maps; only `src/components/SpotMap.tsx` touches the map.
 - **Lots of spots:** the app loads every spot in one request, and Supabase returns at most 1,000 rows per request. Before you get close, switch to loading spots for the visible map area (the app logs a warning if it ever hits the limit).
-- **Next up:** TestFlight on a real iPhone, then the App Store. After launch, Sprint 3: photos, "Still good?" check-ins and change reports. The product plan's MVP backlog lists the rest, sprint by sprint.
+- **Next up:** 1.6.0: cleanup tasks ("Litter in area") with before and after photos, your review queue in the app, and Embers, the points campers earn. Then TestFlight on a real iPhone and the App Store. The product plan's MVP backlog lists the rest, sprint by sprint.
 
 ## Put it on GitHub
 

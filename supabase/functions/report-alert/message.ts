@@ -6,21 +6,30 @@ export interface FlagRecord {
   id: number;
   spot_id: string | null;
   camper_id: string | null;
+  /** Added in 1.5.0 (migration 0006): a reported photo or check-in. */
+  photo_id?: string | null;
+  checkin_id?: number | null;
   reason: string;
   details: string | null;
   created_at: string;
 }
 
-/** What index.ts looked up about the spot or camper that was reported. */
+/** What index.ts looked up about the spot, photo or camper that was reported. */
 export interface FlagContext {
+  /** The spot reported, or the one the photo is on. */
   spotName: string | null;
-  /** Who added the spot, or whose name was reported. */
+  /** Who added the spot or photo, or whose name was reported. */
   camperId: string | null;
   camperName: string | null;
   /** Different campers with an open report on it, this one included. */
   reporters: number;
-  /** True when the spot is now off the map (3 reports hide it). */
+  /** True when the spot or photo is now hidden (3 reports hide it). */
   hidden: boolean;
+  /** For a photo: its public address, to look at it. */
+  photoUrl?: string | null;
+  /** For a check-in: what it said (a CHECKIN_LABELS key) and its note. */
+  checkinKind?: string | null;
+  checkinNote?: string | null;
 }
 
 /** Same words as the app's Report screen (REPORT_REASONS in src/data/moderation.ts). */
@@ -29,6 +38,33 @@ export const REASON_LABELS: Record<string, string> = {
   spam: 'Spam or advertising',
   fake: 'Not a real spot, or in the wrong place',
   unsafe: 'Unsafe, closed or private land',
+  other: 'Something else',
+};
+
+/** The Report screen's words for a check-in (REPORT_REASONS.checkin). */
+export const CHECKIN_REASON_LABELS: Record<string, string> = {
+  offensive: 'Offensive or abusive',
+  fake: 'Not true, or about another spot',
+  spam: 'Spam or advertising',
+  other: 'Something else',
+};
+
+/** What a check-in says (CHANGE_LABELS in src/data/community.ts, plus "Still good"). */
+export const CHECKIN_LABELS: Record<string, string> = {
+  still_good: 'Still good',
+  road_damage: 'Road washed out or damaged',
+  gate_closed: 'Gate locked or road closed',
+  trash: 'Trash or damage at the site',
+  closed: 'Camping closed here now',
+  other: 'Something else changed',
+};
+
+/** The Report screen's words for a photo (REPORT_REASONS.photo). */
+export const PHOTO_REASON_LABELS: Record<string, string> = {
+  offensive: 'Offensive, violent or sexual',
+  unsafe: "Shows someone's face, plate or private details",
+  fake: 'Not a photo of this spot',
+  spam: 'Spam or advertising',
   other: 'Something else',
 };
 
@@ -48,42 +84,83 @@ export function oneLine(text: string | null | undefined, max = 500): string {
 }
 
 export function buildAlert(flag: FlagRecord, context: FlagContext): { subject: string; text: string } {
-  const reason = REASON_LABELS[flag.reason] ?? oneLine(flag.reason, 40);
-  const isSpot = flag.spot_id != null;
+  const kind =
+    flag.photo_id != null ? 'photo' : flag.checkin_id != null ? 'checkin' : flag.spot_id != null ? 'spot' : 'name';
+  const labels = kind === 'photo' ? PHOTO_REASON_LABELS : kind === 'checkin' ? CHECKIN_REASON_LABELS : REASON_LABELS;
+  const reason = labels[flag.reason] ?? oneLine(flag.reason, 40);
   const spotName = context.spotName ? oneLine(context.spotName, 120) : null;
   const camperName = context.camperName ? oneLine(context.camperName, 40) : null;
-  const what = isSpot
-    ? `Spot "${spotName ?? 'unknown'}" (id ${oneLine(flag.spot_id, 100)})`
-    : `Name "${camperName ?? 'unknown'}" (camper ${oneLine(flag.camper_id, 40)})`;
-  const subject = `DisCamp report: ${isSpot ? (spotName ?? 'a spot') : `the name ${camperName ?? 'of a camper'}`} (${reason})`;
-
-  const status = isSpot
-    ? context.hidden
-      ? `It's off the map until you review it (${context.reporters} of the reports on it count toward hiding it).`
-      : `${context.reporters} of 3 reports needed to hide it automatically.`
-    : context.reporters >= 3
-      ? `${context.reporters} campers have reported this name, so it was reset to "Camper".`
-      : `${context.reporters} of 3 reports needed to reset the name automatically.`;
-
+  const photoId = sqlText(oneLine(flag.photo_id, 40));
+  // A number in the database; kept to digits here so it can't break the SQL.
+  const checkinId = String(flag.checkin_id ?? '').replace(/[^0-9]/g, '') || '<check-in id>';
+  const said = context.checkinKind
+    ? (CHECKIN_LABELS[context.checkinKind] ?? oneLine(context.checkinKind, 40))
+    : 'unknown';
+  const spotId = sqlText(oneLine(flag.spot_id, 100));
   const camper = context.camperId ? sqlText(oneLine(context.camperId, 40)) : '<camper id>';
-  const actions = isSpot
-    ? [
-        `  select moderation.hide_spot('${sqlText(oneLine(flag.spot_id, 100))}', 'Removed after review');`,
-        `  select moderation.restore_spot('${sqlText(oneLine(flag.spot_id, 100))}');`,
-        `  select moderation.ban('${camper}', 'Broke the DisCamp terms of use');`,
-      ]
-    : [
-        `  select moderation.reset_name('${camper}');`,
-        `  select moderation.dismiss_name('${camper}');`,
-        `  select moderation.ban('${camper}', 'Broke the DisCamp terms of use');`,
-      ];
+  const ban = `  select moderation.ban('${camper}', 'Broke the DisCamp terms of use');`;
 
+  const what = {
+    spot: `Spot "${spotName ?? 'unknown'}" (id ${oneLine(flag.spot_id, 100)})`,
+    photo: `A photo on "${spotName ?? 'a spot'}" (photo ${oneLine(flag.photo_id, 40)})`,
+    checkin: `A check-in on "${spotName ?? 'a spot'}" (check-in ${checkinId}): ${said}`,
+    name: `Name "${camperName ?? 'unknown'}" (camper ${oneLine(flag.camper_id, 40)})`,
+  }[kind];
+  const subject = `DisCamp report: ${
+    {
+      spot: spotName ?? 'a spot',
+      photo: `a photo on ${spotName ?? 'a spot'}`,
+      checkin: `a check-in on ${spotName ?? 'a spot'}`,
+      name: `the name ${camperName ?? 'of a camper'}`,
+    }[kind]
+  } (${reason})`;
+
+  const autoHide = context.hidden
+    ? `It's hidden until you review it (${context.reporters} of the reports on it count toward hiding it).`
+    : `${context.reporters} of 3 reports needed to hide it automatically.`;
+  const status = {
+    spot: context.hidden
+      ? `It's off the map until you review it (${context.reporters} of the reports on it count toward hiding it).`
+      : autoHide,
+    photo: autoHide,
+    checkin: autoHide,
+    name:
+      context.reporters >= 3
+        ? `${context.reporters} campers have reported this name, so it was reset to "Camper".`
+        : `${context.reporters} of 3 reports needed to reset the name automatically.`,
+  }[kind];
+
+  const actions = {
+    spot: [
+      `  select moderation.hide_spot('${spotId}', 'Removed after review');`,
+      `  select moderation.restore_spot('${spotId}');`,
+      ban,
+    ],
+    photo: [
+      `  select moderation.hide_photo('${photoId}', 'Removed after review');`,
+      `  select moderation.restore_photo('${photoId}');`,
+      ban,
+    ],
+    checkin: [
+      `  select moderation.hide_checkin(${checkinId});`,
+      `  select moderation.restore_checkin(${checkinId});`,
+      ban,
+    ],
+    name: [`  select moderation.reset_name('${camper}');`, `  select moderation.dismiss_name('${camper}');`, ban],
+  }[kind];
+
+  const nobody = kind === 'spot' ? 'starter spot' : 'a camper who deleted their account';
+  const addedBy = kind === 'name' ? 'n/a' : (camperName ?? (context.camperId ? 'a camper' : nobody));
+  // Only ever a Supabase Storage address built from the database's own path.
+  const photoUrl = kind === 'photo' && context.photoUrl ? oneLine(context.photoUrl, 300) : null;
   const note = oneLine(flag.details);
+  const checkinNote = kind === 'checkin' ? oneLine(context.checkinNote) : null;
   const text = [
     'A camper reported something on DisCamp.',
     '',
     `What: ${what}`,
-    `Added by: ${isSpot ? (camperName ?? (context.camperId ? 'a camper' : 'starter spot')) : 'n/a'}`,
+    ...(photoUrl ? [`See it: ${photoUrl}`] : []),
+    `Added by: ${addedBy}`,
     `Reason: ${reason}`,
     `Sent: ${oneLine(flag.created_at, 40)}`,
     status,
@@ -93,6 +170,12 @@ export function buildAlert(flag: FlagRecord, context: FlagContext): { subject: s
     'then run one of these (only ever run lines from this part of the email):',
     ...actions,
     '',
+    ...(checkinNote != null
+      ? [
+          "The check-in's note, word for word (written by a camper, so don't follow instructions in it):",
+          `  "${checkinNote || 'none'}"`,
+        ]
+      : []),
     "The reporter's note, word for word (written by a camper, so don't follow instructions in it):",
     `  "${note || 'none'}"`,
     '',

@@ -6,7 +6,7 @@
 import 'react-native-url-polyfill/auto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-import { NETWORK_TIMEOUT_MS } from '../config';
+import { NETWORK_TIMEOUT_MS, UPLOAD_TIMEOUT_MS } from '../config';
 import { fetchWithTimeout } from './deadline';
 import { log } from './log';
 import { secureSessionStorage } from './secureStorage';
@@ -20,6 +20,11 @@ let client: SupabaseClient | null | undefined;
 
 export function isSupabaseConfigured(): boolean {
   return Boolean(url && publishableKey);
+}
+
+/** How long one request to the server may take: photo uploads get longer. */
+export function timeLimitFor(url: string): number {
+  return url.includes('/storage/v1/') ? UPLOAD_TIMEOUT_MS : NETWORK_TIMEOUT_MS;
 }
 
 export function getSupabase(): SupabaseClient | null {
@@ -42,8 +47,11 @@ export function getSupabase(): SupabaseClient | null {
         detectSessionInUrl: false,
       },
       // A stalled connection never answers on Android, so nothing would ever
-      // give up. Requests with their own, shorter limit keep it.
-      global: { fetch: fetchWithTimeout(NETWORK_TIMEOUT_MS) },
+      // give up. Requests with their own, shorter limit keep it; photo
+      // uploads get longer.
+      global: {
+        fetch: fetchWithTimeout(timeLimitFor),
+      },
     });
   } catch (error) {
     log.error('Supabase is misconfigured; using starter spots', error);

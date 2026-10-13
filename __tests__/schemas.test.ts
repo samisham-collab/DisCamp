@@ -141,6 +141,33 @@ describe('spotRowSchema (database rows)', () => {
     }
   });
 
+  it('reads when campers last confirmed a spot, and what changed since', () => {
+    const spot = spotRowSchema.parse(
+      makeRow({
+        last_confirmed_at: '2026-10-01 12:00:00+00',
+        alerts: [
+          { kind: 'gate_closed', at: '2026-10-03T08:00:00Z' },
+          { kind: 'still_good', at: '2026-10-03T08:00:00Z' },
+          { kind: 'trash', at: 'yesterday' },
+          { kind: 'trash', at: '2026-10-02T08:00:00Z' },
+          'nope',
+          { kind: 'other', at: '2026-10-02T07:00:00Z' },
+          { kind: 'closed', at: '2026-10-02T06:00:00Z' },
+        ],
+      }),
+    );
+    expect(spot.lastConfirmedAt).toBe('2026-10-01T12:00:00.000Z');
+    expect(spot.alerts).toEqual([
+      { kind: 'gate_closed', at: '2026-10-03T08:00:00.000Z' },
+      { kind: 'trash', at: '2026-10-02T08:00:00.000Z' },
+      { kind: 'other', at: '2026-10-02T07:00:00.000Z' },
+    ]);
+    const quiet = spotRowSchema.parse(makeRow({ last_confirmed_at: null, alerts: [] }));
+    expect(quiet).not.toHaveProperty('lastConfirmedAt');
+    expect(quiet).not.toHaveProperty('alerts');
+    expect(spotRowSchema.parse(makeRow({ alerts: 'nope' }))).not.toHaveProperty('alerts');
+  });
+
   it('handles empty optional columns', () => {
     const result = spotRowSchema.safeParse(
       makeRow({

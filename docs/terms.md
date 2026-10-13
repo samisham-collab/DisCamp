@@ -8,7 +8,7 @@ permalink: /terms/
 Version 1, effective {{ site.terms_effective }}
 
 DisCamp is a free map of dispersed campsites, run by {{ site.owner }} ("we"). By using DisCamp you agree to these
-terms and to our [privacy policy](../privacy/). Before you add your first spot, the app asks you to agree to them; if
+terms and to our [privacy policy](../privacy/). Before you post anything, the app asks you to agree to them; if
 they change in a way that matters, it asks again.
 
 If you got DisCamp from Apple's App Store, Apple's
@@ -23,25 +23,26 @@ under yours.
 
 ## Community rules
 
-DisCamp works because campers look out for each other. When you add a spot, pick a display name, or report something:
+DisCamp works because campers look out for each other. When you add a spot, a photo or a check-in, pick a display name, or report something:
 
 1. **Share real places where camping is allowed.** No private land without permission, closed areas, or places where
    camping is prohibited.
 2. **Be accurate.** No fake spots, spam, advertising or misleading information.
 3. **Nothing offensive.** No hate speech, harassment, threats, sexual content, graphic violence, or other people's
-   private information, in spots or in names. Don't impersonate anyone.
+   private information, in spots, photos, notes or names. Don't impersonate anyone. Leave other people's faces and
+   license plates out of photos, and only post photos you took or have the right to share.
 4. **Nothing illegal**, and nothing that encourages anyone to break the law or a land manager's rules.
 5. **Report, don't retaliate.** If something breaks these rules, report it in the app or email us. Don't misuse
    reports to target other campers.
 
 **DisCamp has zero tolerance for objectionable content and abusive users.** We review every report within 24 hours.
 We may remove any content and suspend or ban any account that breaks these rules, without warning. Banned campers can't
-add, edit or report spots, and a ban still applies if the account is deleted and made again. A word filter also blocks
+add, edit or report spots, photos or check-ins, and a ban still applies if the account is deleted and made again. A word filter also blocks
 some offensive words automatically.
 
-You can block any camper. You won't see the spots they add, and they aren't told.
+You can block any camper. You won't see the spots, photos or check-ins they add, and they aren't told.
 
-## Your spots
+## Your spots, photos and check-ins
 
 You keep ownership of what you post. By posting it, you give us and other DisCamp users a free, worldwide,
 non-exclusive license to host, store, show, copy, adapt and share it in DisCamp and in places that point people to
@@ -50,6 +51,11 @@ DisCamp, for as long as it's in the app. You confirm you have the right to post 
 Spots are public and help everyone, so they stay on the map if you delete your account, without your name. You can
 delete a spot you added from its page, unless it has been confirmed, other campers have reported on it, or it's being
 reviewed after reports. Other campers may improve or confirm spot information.
+
+Photos and check-ins ("Still good" and change reports) are public too, and also stay without your name if you delete
+your account. You can delete a photo you added from the spot's page, unless it has reports waiting for review. A
+change report shows on the spot until another camper says it's still good, or for 30 days. Other campers confirm the
+spots you add.
 
 ## Camping safely
 

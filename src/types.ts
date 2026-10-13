@@ -53,6 +53,18 @@ export interface SpotCost {
   notes?: string;
 }
 
+/** What a camper can report has changed at a spot. */
+export type ChangeKind = 'road_damage' | 'gate_closed' | 'trash' | 'closed' | 'other';
+/** A check-in: "Still good", or a change. */
+export type CheckinKind = 'still_good' | ChangeKind;
+
+/** A recent change report that no "Still good" has answered yet. */
+export interface SpotAlert {
+  kind: ChangeKind;
+  /** When it was reported (ISO time). */
+  at: string;
+}
+
 export interface SourceLink {
   label: string;
   url: string;
@@ -86,6 +98,10 @@ export interface Spot extends Coordinates {
    * who added a spot ever receives it hidden; it stays off the map.
    */
   hidden?: true;
+  /** When a camper last said "Still good" (ISO time). */
+  lastConfirmedAt?: string;
+  /** Change reports from the last 30 days since then, newest first (up to 3). */
+  alerts?: SpotAlert[];
 }
 
 export interface Rig {

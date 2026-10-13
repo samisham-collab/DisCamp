@@ -11,8 +11,12 @@ import { describeError, log } from '../lib/log';
 
 export type ReportReason = 'offensive' | 'spam' | 'fake' | 'unsafe' | 'other';
 
-/** What a camper can report: a spot, or the name of the camper who added one. */
-export type ReportTarget = { kind: 'spot'; id: string } | { kind: 'camper'; id: string };
+/** What a camper can report: a spot, a photo, a check-in, or the name of the camper who added one. */
+export type ReportTarget =
+  | { kind: 'spot'; id: string }
+  | { kind: 'camper'; id: string }
+  | { kind: 'photo'; id: string }
+  | { kind: 'checkin'; id: string };
 
 export const REPORT_REASONS: Record<ReportTarget['kind'], readonly { value: ReportReason; label: string }[]> = {
   spot: [
@@ -25,6 +29,19 @@ export const REPORT_REASONS: Record<ReportTarget['kind'], readonly { value: Repo
   camper: [
     { value: 'offensive', label: 'Offensive or abusive name' },
     { value: 'spam', label: 'Spam or pretending to be someone' },
+    { value: 'other', label: 'Something else' },
+  ],
+  photo: [
+    { value: 'offensive', label: 'Offensive, violent or sexual' },
+    { value: 'unsafe', label: "Shows someone's face, plate or private details" },
+    { value: 'fake', label: 'Not a photo of this spot' },
+    { value: 'spam', label: 'Spam or advertising' },
+    { value: 'other', label: 'Something else' },
+  ],
+  checkin: [
+    { value: 'offensive', label: 'Offensive or abusive' },
+    { value: 'fake', label: 'Not true, or about another spot' },
+    { value: 'spam', label: 'Spam or advertising' },
     { value: 'other', label: 'Something else' },
   ],
 };
@@ -44,7 +61,7 @@ export class ModerationError extends Error {
 
 /** For a banned camper, everywhere the app explains why a write was refused. */
 export function bannedMessage(): string {
-  return `Your account can't add, change or report spots.${
+  return `Your account can't post or report anything on DisCamp.${
     SUPPORT_EMAIL ? ` If you think this is a mistake, email ${SUPPORT_EMAIL}.` : ''
   }`;
 }
@@ -65,7 +82,7 @@ export function toModerationError(error: unknown, fallback: string): ModerationE
     case 'banned':
       return new ModerationError(bannedMessage(), 'banned');
     case 'own_content':
-      return new ModerationError("You can't report your own spot or name.", 'own');
+      return new ModerationError("You can't report your own spot, photo, check-in or name.", 'own');
     case 'flag_limit':
       return new ModerationError("You've sent a lot of reports today. Try again tomorrow.", 'limit');
     case 'terms_outdated':
@@ -85,7 +102,7 @@ export function toModerationError(error: unknown, fallback: string): ModerationE
     return new ModerationError('Your sign-in has expired. Sign in again, then try again.', 'signed-out');
   }
   // 23503: what was reported is no longer there (deleted in the meantime).
-  if (e.code === '23503') return new ModerationError('That spot or camper is no longer on DisCamp.', 'gone');
+  if (e.code === '23503') return new ModerationError("That's no longer on DisCamp.", 'gone');
   log.error(fallback, error);
   return new ModerationError(`${fallback} Please try again.`, 'server');
 }
@@ -119,7 +136,12 @@ export function sendReport(
       const { error } = await client
         .from('flags')
         .insert({
-          ...(target.kind === 'spot' ? { spot_id: target.id } : { camper_id: target.id }),
+          ...{
+            spot: { spot_id: target.id },
+            photo: { photo_id: target.id },
+            checkin: { checkin_id: Number(target.id) },
+            camper: { camper_id: target.id },
+          }[target.kind],
           reason,
           ...(text ? { details: text } : {}),
         })

@@ -4,7 +4,7 @@
 
 const ID = '[A-Za-z0-9_-]{1,100}';
 const SAFE_NEXT = new RegExp(
-  `^/(?:account|spot/new|spot/edit/${ID}|spot/${ID}|report/spot/${ID}|report/camper/[0-9a-f-]{36})$`,
+  `^/(?:account|spot/new|spot/edit/${ID}|spot/${ID}|report/spot/${ID}|report/camper/[0-9a-f-]{36}|report/photo/[0-9a-f-]{36}|report/checkin/[0-9]{1,18}|checkin/${ID})$`,
 );
 
 export function safeNext(raw: unknown): string | null {

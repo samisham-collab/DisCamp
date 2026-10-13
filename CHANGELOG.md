@@ -2,6 +2,33 @@
 
 All notable changes to DisCamp. Dates are when the version was finished.
 
+## 1.5.0 (2026-10-13)
+
+Sprint 3: photos, "Still good?" check-ins and change reports, so campers can see what a spot looks like and whether it's still as described. Run migration `0006_photos_checkins.sql` along with this version (README "Photos" covers the Storage bucket it makes).
+
+### Added
+
+- **Photos.** Campers add up to 3 photos to a spot, from the camera or the photo library. Each photo is shrunk to 1,600 pixels and saved fresh as a JPEG before it's sent (about 300 KB), which strips its location, camera and time details. Tap a photo to see it full size; delete your own, or report or block someone else's. Photos go live right away; 3 reports hide one until you review it. A photo with reports waiting can't be deleted by its camper, and its file stays until you've reviewed it. If an upload fails, **Try again** sends the same photo without adding it twice.
+- **Still good?** One tap on a spot's page says it's still as described. The spot shows when it was last confirmed, on its page, its map card and its list row. Two campers other than the one who added it saying "Still good" (since its last edit) mark it confirmed. The camper who added a spot can report changes but can't confirm it.
+- **Something changed.** Report a washed-out road, a locked gate, trash or a closure, with an optional note. It shows as a warning on the spot, its map card and its list row until a camper says it's still good. Change reports never edit the spot itself.
+- **Recent check-ins** on each spot, with names. Any other camper's check-in can be reported, then they can be blocked.
+- **Reports for photos and check-ins**: their own reasons, an email for each with a link to the photo and the lines to run, and new moderator tools: `hide_photo`, `restore_photo`, `hide_checkin`, `restore_checkin`. The queue shows photos and check-ins too. A ban takes down a camper's photos and check-ins along with their spots.
+- **Community rules on their own** (`/rules`): campers who haven't agreed yet see them before a first photo or check-in, and come straight back.
+
+### Changed
+
+- The community rules, terms of use and privacy policy cover photos and check-ins. Rule 3 asks campers to leave faces and license plates out of photos. The terms version stays 1: nothing campers agreed to changed in substance.
+- iPhone asks for the camera only when a camper taps "Take a photo", and the library opens Apple's own picker. Android's microphone permission is removed (DisCamp never records sound). Android 9 and older keep the one storage permission their camera needs to save a photo. The privacy manifest and the App Store privacy answers list photos.
+- Blocking a camper hides their photos and check-ins too.
+- Each check-in counts as an on-site report, so a spot with check-ins can't be deleted by its camper (as with reports before).
+- A banned camper sees "Your account can't post or report anything on DisCamp."
+- Photo uploads get 90 seconds before giving up; everything else keeps 30.
+- Storage only takes files named like a photo, in the camper's own folder, up to 25 a day.
+
+### Fixed
+
+- A test of signing out while spots were hidden for review could finish before the reload it started, which made the test suite flaky.
+
 ## 1.4.1 (2026-10-12)
 
 Bug fixes from a review of the whole project. Run migration `0005_fixes.sql` along with this version.

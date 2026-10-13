@@ -75,7 +75,7 @@ describe('Reporting', () => {
     fireEvent.press(screen.getByText('Block Alex'));
     expect(alerts.lastTitle()).toBe('Block Alex?');
     await act(async () => alerts.press('Block'));
-    expect(await screen.findByText("Blocked. You won't see spots from Alex.")).toBeTruthy();
+    expect(await screen.findByText("Blocked. You won't see spots or photos from Alex.")).toBeTruthy();
     expect(backend.blocks.get(SAM.id)?.has(ALEX.id)).toBe(true);
     expect(screen.queryByText('Block Alex')).toBeNull();
 
