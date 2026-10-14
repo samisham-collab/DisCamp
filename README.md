@@ -96,8 +96,16 @@ update public.spots set verified = true where id = 'smoky-gardens';
 
 ## Connect Supabase (optional, free)
 
-1. Create a project on the free plan at [supabase.com](https://supabase.com).
-2. Open **SQL Editor** and run these files in order, each pasted in and run on its own:
+1. Create a project on the free plan at [supabase.com](https://supabase.com). Under **Security**, leave **Enable Data API** and **Automatically expose new tables** on, and **Enable automatic RLS** off: the files below set every table's access themselves.
+2. Load the database. The easy way is one command in Terminal, from the DisCamp folder:
+
+   ```sh
+   bash scripts/setup-database.sh
+   ```
+
+   It installs `psql` if needed (with Homebrew), asks for the **Session pooler** connection string (Supabase > **Connect**) and the database password, then runs each file below that hasn't run yet, in order, and the seed. Each file runs all-or-nothing, and the database keeps a list of the ones that ran, so run it again after any update that adds a migration. It finishes by listing the tables, the number of starter spots, and whether photo storage is ready.
+
+   Or by hand: open **SQL Editor** and run these files in order, each pasted in and run on its own. Check the first and last lines after pasting; long files don't always paste whole, and don't use **Debug with Assistant** on them (it rewrites the SQL).
    1. `supabase/migrations/0001_init.sql` creates the `spots` table.
    2. `supabase/migrations/0002_harden.sql` makes it read-only for the app and adds data checks.
    3. `supabase/migrations/0003_accounts.sql` adds accounts: profiles, who added each spot, and exactly what signed-in campers may change.
@@ -106,7 +114,7 @@ update public.spots set verified = true where id = 'smoky-gardens';
    6. `supabase/migrations/0006_photos_checkins.sql` adds photos (and their Storage bucket), "Still good" check-ins and change reports (1.5.0). See "Photos" below.
    7. `supabase/seed.sql` adds the starter spots.
 
-   Already ran some for an earlier version? Run only the ones after it (for 1.3: 0004 to 0006; for 1.4.0: 0005 and 0006; for 1.4.1: just 0006), then the seed.
+   Already ran some for an earlier version? Run only the ones after it (for 1.3: 0004 to 0006; for 1.4.0: 0005 and 0006; for 1.4.1: just 0006), then the seed. Never rerun an older file after a newer one: newer files change things the older ones made. To switch a database set up by hand over to the script, tell it the last file that ran, for example `bash scripts/setup-database.sh --after 0005`.
 
 3. Copy your **Project URL** and **publishable key** from the project's API settings.
 4. For your phone: `cp .env.example .env`, put both values in `.env`, and restart `npx expo start`.
@@ -254,6 +262,7 @@ docs/                       Privacy policy, terms and support page (GitHub Pages
 store/                      Draft App Store Connect answers
 MODERATION.md               Acting on reports within 24 hours
 scripts/seedSql.ts          The seed generator
+scripts/setup-database.sh   Loads (or updates) the Supabase database from Terminal
 __tests__/                  Tests; screens/ renders the whole app
 test/                       Test helpers and stand-ins for native modules
 ```
