@@ -2,6 +2,20 @@
 
 All notable changes to DisCamp. Dates are when the version was finished.
 
+## 1.5.1 (2026-10-14)
+
+"Still good" changes, from testing 1.5.0. Run migration `0007_still_good_once.sql` along with this version: `bash scripts/setup-database.sh` runs just that file.
+
+### Changed
+
+- **"Still good" works once per spot every 30 days** for each camper (it was once a day). After a tap, the button is replaced by "You said it's still good…", so it can't be tapped twice by mistake.
+- **"Something changed" takes it back.** Reporting a change after saying "Still good" withdraws that "Still good": it no longer counts toward the spot's confirmed date or toward confirming the spot, and the change shows as a warning. The report screen says so first. A taken-back "Still good" still counts toward the 30 days, so the two can't be flipped back and forth. Starter spots you confirmed yourself stay confirmed.
+- Taken-back check-ins are left out of the spot's recent check-ins (their own camper still sees when they can confirm again).
+
+### Added
+
+- `scripts/setup-database.sh` loads or updates the Supabase database from Terminal: it runs each migration that hasn't run yet, all-or-nothing, then the starter spots, and reports what's there. README "Connect Supabase" now starts with it.
+
 ## 1.5.0 (2026-10-13)
 
 Sprint 3: photos, "Still good?" check-ins and change reports, so campers can see what a spot looks like and whether it's still as described. Run migration `0006_photos_checkins.sql` along with this version (README "Photos" covers the Storage bucket it makes).

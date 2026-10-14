@@ -6,10 +6,13 @@ import {
   addPhoto,
   CHANGE_OPTIONS,
   CommunityError,
+  CONFIRM_AGAIN_DAYS,
+  confirmAgainAt,
   deletePhoto,
   listCheckins,
   listPhotos,
   MAX_CHECKIN_NOTE,
+  myLastConfirmation,
   PHOTO_BUCKET,
   sendCheckin,
   toCommunityError,
@@ -307,6 +310,11 @@ describe('check-ins', () => {
     await sendCheckin(backend.client, SPOT, 'still_good');
     await expect(sendCheckin(backend.client, SPOT, 'still_good')).rejects.toMatchObject({
       kind: 'already',
+      message: "You've confirmed this spot in the last 30 days. Thanks!",
+    });
+    await sendCheckin(backend.client, SPOT, 'trash');
+    await expect(sendCheckin(backend.client, SPOT, 'trash')).rejects.toMatchObject({
+      kind: 'already',
       message: "You've already said that about this spot today. Thanks!",
     });
     await expect(sendCheckin(backend.client, SPOT, 'other', 'what the fuck')).rejects.toMatchObject({
@@ -345,6 +353,55 @@ describe('check-ins', () => {
     await expect(listCheckins(backend.client, SPOT)).rejects.toMatchObject({ kind: 'offline' });
     backend.intercept = () => new Promise(() => undefined);
     await expect(listCheckins(backend.client, SPOT, 20)).rejects.toMatchObject({ kind: 'timeout' });
+  });
+});
+
+describe('Still good, once a month', () => {
+  it('finds your latest "Still good", and when you can confirm again', async () => {
+    const backend = server();
+    expect(await myLastConfirmation(backend.client, SPOT, SAM.id)).toBeNull();
+    await sendCheckin(backend.client, SPOT, 'still_good');
+    const mine = await myLastConfirmation(backend.client, SPOT, SAM.id);
+    expect(mine).toEqual({ at: expect.any(String), withdrawn: false });
+    const again = confirmAgainAt(mine);
+    expect(again?.getTime()).toBe(Date.parse(mine!.at) + CONFIRM_AGAIN_DAYS * 86_400_000);
+    expect(confirmAgainAt(mine, new Date(Date.parse(mine!.at) + 31 * 86_400_000))).toBeNull();
+    expect(confirmAgainAt(null)).toBeNull();
+    expect(confirmAgainAt({ at: 'nope', withdrawn: false })).toBeNull();
+  });
+
+  it('takes it back when you report a change, and only you see it then', async () => {
+    const backend = server();
+    await sendCheckin(backend.client, SPOT, 'still_good');
+    backend.auth.setUser(NEWBIE);
+    backend.terms.set(NEWBIE.id, 99);
+    await sendCheckin(backend.client, SPOT, 'still_good');
+    expect(backend.spots.get(SPOT)?.verified).toBe(true);
+
+    backend.auth.setUser(SAM);
+    await sendCheckin(backend.client, SPOT, 'gate_closed');
+    expect(await myLastConfirmation(backend.client, SPOT, SAM.id)).toEqual({ at: expect.any(String), withdrawn: true });
+    const mineList = await listCheckins(backend.client, SPOT);
+    expect(mineList.map((c) => [c.kind, c.withdrawn])).toEqual([
+      ['gate_closed', undefined],
+      ['still_good', undefined],
+      ['still_good', true],
+    ]);
+    // Two confirmations needed; one is left, so the spot isn't confirmed any more.
+    expect(backend.spots.get(SPOT)?.verified).toBe(false);
+
+    backend.auth.setUser(ALEX);
+    expect((await listCheckins(backend.client, SPOT)).map((c) => c.kind)).toEqual(['gate_closed', 'still_good']);
+  });
+
+  it('reports a failed lookup, and ignores rows it cannot read', async () => {
+    const backend = server();
+    answerNext(backend, { data: null, error: { message: 'Failed to fetch' } });
+    await expect(myLastConfirmation(backend.client, SPOT, SAM.id)).rejects.toMatchObject({ kind: 'offline' });
+    answerNext(backend, { data: [{ created_at: 5 }], error: null });
+    await expect(myLastConfirmation(backend.client, SPOT, SAM.id)).resolves.toBeNull();
+    answerNext(backend, { data: null, error: null });
+    await expect(myLastConfirmation(backend.client, SPOT, SAM.id)).resolves.toBeNull();
   });
 });
 

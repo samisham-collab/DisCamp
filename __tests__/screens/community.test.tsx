@@ -73,10 +73,61 @@ describe('Still good', () => {
     expect(await screen.findByText(/Confirmed just now\. Tell other campers/)).toBeTruthy();
     await waitFor(() => expect(textOf()).toContain('you'));
 
-    // Once a day is enough.
-    fireEvent.press(screen.getByText('Still good'));
+    // Once is enough: the button is done, and "Something changed" can take it back.
+    expect(screen.getByText(/You said it's still good just now\. Thanks!/)).toBeTruthy();
+    expect(screen.queryByText('Still good')).toBeNull();
+    expect(screen.getByText('Something changed')).toBeTruthy();
+    expect(alerts.alert).not.toHaveBeenCalled();
+  });
+
+  it('says so when the camper already confirmed it on another phone', async () => {
+    const backend = server();
+    const alerts = spyOnAlerts();
+    backend.checkins.push({
+      id: 1,
+      spot_id: 'alex-spot',
+      camper_id: SAM.id,
+      kind: 'still_good',
+      note: null,
+      created_at: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+    });
+    // The lookup of Sam's last "Still good" fails at first, so the button shows.
+    let failLookup = true;
+    backend.intercept = (query) =>
+      failLookup && query.table === 'checkins_api' && query.filters.some(([column]) => column === 'camper_id')
+        ? Promise.resolve({ data: null, error: { message: 'Failed to fetch' } })
+        : undefined;
+    await renderApp('/spot/alex-spot');
+    fireEvent.press(await screen.findByText('Still good'));
+    failLookup = false;
     await waitFor(() => expect(alerts.lastTitle()).toBe('Already counted'));
-    expect(alerts.alert.mock.calls.at(-1)?.[1]).toBe("You've already said that about this spot today. Thanks!");
+    expect(alerts.alert.mock.calls.at(-1)?.[1]).toBe("You've confirmed this spot in the last 30 days. Thanks!");
+    expect(await screen.findByText(/You said it's still good 3 days ago/)).toBeTruthy();
+  });
+
+  it('takes a "Still good" back when the camper reports a change, then waits 30 days', async () => {
+    const backend = server();
+    backend.terms.set(NEWBIE.id, TERMS_VERSION);
+    const app = await renderApp('/spot/alex-spot');
+    fireEvent.press(await screen.findByText('Still good'));
+    expect(await screen.findByText(/You said it's still good just now/)).toBeTruthy();
+
+    fireEvent.press(screen.getByText('Something changed'));
+    await waitFor(() => expect(app.getPathname()).toBe('/checkin/alex-spot'));
+    expect(await screen.findByText(/This takes back your “Still good” from/)).toBeTruthy();
+    fireEvent.press(screen.getByText('Trash or damage at the site'));
+    fireEvent.press(screen.getByText('Send'));
+    await waitFor(() => expect(app.getPathname()).toBe('/spot/alex-spot'));
+
+    expect(
+      await screen.findByText(/You took back your “Still good”\. You can confirm this spot again on/),
+    ).toBeTruthy();
+    expect(screen.queryByText('Still good')).toBeNull();
+    expect(backend.checkins[0]).toMatchObject({ kind: 'still_good', withdrawn_at: expect.any(String) });
+    // Sam's taken-back "Still good" is left out of the list, and the spot is no longer confirmed.
+    expect((await screen.findAllByText(/Not confirmed by a camper yet/)).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Trash or damage at the site/).length).toBeGreaterThan(0);
+    expect(textOf()).not.toContain('"Still good"');
   });
 
   it('lets other campers confirm the spots you add', async () => {

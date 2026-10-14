@@ -1,5 +1,6 @@
 // Report a change at a spot: a washout, a locked gate, trash, a closure. It
 // shows on the spot (and on the map's card) until a camper says "Still good".
+// It also takes back this camper's own "Still good" on the spot.
 
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
@@ -8,12 +9,13 @@ import { AccessibilityInfo, ScrollView, StyleSheet, Text, View } from 'react-nat
 import { AccountGate } from '@/components/AccountGate';
 import { ChoiceField, TextField } from '@/components/form';
 import { KeyboardSafe } from '@/components/KeyboardSafe';
-import { withCheckin } from '@/components/SpotCheckins';
+import { useMyConfirmation, withCheckin } from '@/components/SpotCheckins';
 import { TermsGate } from '@/components/TermsGate';
 import { Banner, Button, EmptyState } from '@/components/ui';
 import { CHANGE_OPTIONS, MAX_CHECKIN_NOTE, sendCheckin } from '@/data/community';
 import { useSpot, useSpots } from '@/data/spots';
 import { useAuth } from '@/lib/auth';
+import { formatDay } from '@/lib/time';
 import { hasBlockedWords } from '@/lib/wordFilter';
 import { useStillHere } from '@/lib/useStillHere';
 import type { ChangeKind } from '@/types';
@@ -29,7 +31,8 @@ export default function CheckinScreen() {
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const { status, client, termsAccepted } = useAuth();
   const { spot } = useSpot(id);
-  const { saveLocal } = useSpots();
+  const { saveLocal, reload } = useSpots();
+  const { mine } = useMyConfirmation(spot);
   const stillHere = useStillHere();
   const [kind, setKind] = useState<ChangeKind | null>(null);
   const [note, setNote] = useState('');
@@ -64,6 +67,9 @@ export default function CheckinScreen() {
     try {
       await sendCheckin(client, spot.id, kind, note);
       saveLocal(withCheckin(spot, kind, new Date().toISOString()));
+      // Taking back a "Still good" can change when the spot was last
+      // confirmed; the server's copy has it.
+      if (mine && !mine.withdrawn) void reload();
       AccessibilityInfo.announceForAccessibility('Thanks for the update');
       if (stillHere()) close();
     } catch (e) {
@@ -88,6 +94,11 @@ export default function CheckinScreen() {
           <Text style={styles.body}>
             At “{spot.name}”. Other campers see it on the spot until someone says it&apos;s still good.
           </Text>
+          {mine && !mine.withdrawn ? (
+            <Text style={styles.body}>
+              This takes back your &ldquo;Still good&rdquo; from {formatDay(mine.at) ?? 'before'}.
+            </Text>
+          ) : null}
         </View>
         <ChoiceField
           label="What changed"

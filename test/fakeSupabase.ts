@@ -623,9 +623,15 @@ export class FakeBackend {
   private answerCheckin(query: FakeQuery, uid: string | null): QueryResult {
     if (query.table === 'checkins_api') {
       const blocked = this.blockedBy(uid);
+      // Taken-back "Still good"s only for the camper who sent them (0007).
       const rows = this.checkins
         .filter((r) => !r.hidden && !blocked.has(String(r.camper_id)) && this.visibleSpot(r.spot_id, uid))
-        .map(({ hidden: _hidden, ...r }) => ({ ...r, camper_name: this.profiles.get(String(r.camper_id)) ?? null }))
+        .filter((r) => r.withdrawn_at == null || (uid != null && r.camper_id === uid))
+        .map(({ hidden: _hidden, withdrawn_at: withdrawnAt, ...r }) => ({
+          ...r,
+          camper_name: this.profiles.get(String(r.camper_id)) ?? null,
+          withdrawn: withdrawnAt != null,
+        }))
         .filter((r) => this.matches(r, query.filters))
         .reverse();
       return this.shape(rows, query);
@@ -641,10 +647,13 @@ export class FakeBackend {
     const spot = this.visibleSpot(spotId, uid);
     if (!spot) return fail('spot_gone');
     if (kind === 'still_good' && spot.created_by === uid) return fail('own_spot');
-    if (this.checkins.some((r) => r.camper_id === uid && r.spot_id === spotId && r.kind === kind)) {
-      return fail('checkin_recent');
+    const now = Date.now();
+    const recent = (r: Row) =>
+      now - Date.parse(String(r.created_at)) < (kind === 'still_good' ? 30 * 86_400_000 : 20 * 3_600_000);
+    if (this.checkins.some((r) => r.camper_id === uid && r.spot_id === spotId && r.kind === kind && recent(r))) {
+      return fail(kind === 'still_good' ? 'confirmed_recently' : 'checkin_recent');
     }
-    const at = new Date().toISOString();
+    const at = new Date(now).toISOString();
     this.checkins.push({
       id: this.checkins.length + 1,
       spot_id: spotId,
@@ -653,22 +662,48 @@ export class FakeBackend {
       note: typeof note === 'string' ? note : null,
       created_at: at,
       hidden: false,
+      withdrawn_at: null,
     });
     // As moderation.after_checkin and the spots_api view do.
     spot.report_count = Number(spot.report_count ?? 0) + 1;
     if (kind === 'still_good') {
       spot.last_confirmed_at = at;
       spot.alerts = [];
-      const others = new Set(
-        this.checkins
-          .filter((r) => r.spot_id === spotId && r.kind === 'still_good' && r.camper_id !== spot.created_by)
-          .map((r) => r.camper_id),
-      );
-      if (others.size >= 2) spot.verified = true;
+      if (this.confirmations(spot) >= 2) spot.verified = true;
     } else {
       spot.alerts = [{ kind, at }, ...((spot.alerts as Row[] | undefined) ?? [])].slice(0, 3);
+      // A change report takes back this camper's "Still good" here.
+      const mine = this.checkins.filter(
+        (r) => r.spot_id === spotId && r.camper_id === uid && r.kind === 'still_good' && r.withdrawn_at == null,
+      );
+      for (const r of mine) r.withdrawn_at = at;
+      if (mine.length > 0) {
+        const good = this.checkins
+          .filter((r) => r.spot_id === spotId && r.kind === 'still_good' && !r.hidden && r.withdrawn_at == null)
+          .map((r) => String(r.created_at))
+          .sort()
+          .at(-1);
+        spot.last_confirmed_at = good ?? null;
+        if (spot.verified && spot.created_by != null && this.confirmations(spot) < 2) spot.verified = false;
+      }
     }
     return { data: null, error: null };
+  }
+
+  /** moderation.confirmations: campers other than its own whose "Still good" counts. */
+  private confirmations(spot: Row): number {
+    return new Set(
+      this.checkins
+        .filter(
+          (r) =>
+            r.spot_id === spot.id &&
+            r.kind === 'still_good' &&
+            !r.hidden &&
+            r.withdrawn_at == null &&
+            r.camper_id !== spot.created_by,
+        )
+        .map((r) => r.camper_id),
+    ).size;
   }
 
   /** Campers with an open report on a spot or name (moderation.open_reporters, minus dismissals). */

@@ -31,7 +31,7 @@ It ships with six starter spots from public listings:
 - **Your spots**: edit or delete the spots you added (deleting stops once other campers have reported on a spot). The Account tab lists them, and lets you change your display name, sign out or delete your account.
 - **Community rules**: before they first post, campers agree to the terms of use. A word filter keeps offensive words out of spots, notes and names.
 - **Photos**: campers add up to 3 photos per spot, from the camera or their library. Each photo is shrunk to 1,600 pixels and saved fresh before it's sent, which strips its location and camera details. Tap a photo to see it full size, delete your own, or report or block someone else's.
-- **Still good?**: one tap tells other campers a spot is still as described, and the spot shows when it was last confirmed. Two campers (other than the one who added it) saying "Still good" mark a spot confirmed. **Something changed** reports a washout, a locked gate, trash or a closure; it shows as a warning on the spot until someone says it's still good.
+- **Still good?**: one tap tells other campers a spot is still as described, and the spot shows when it was last confirmed. Each camper can do it once per spot every 30 days; afterwards the button shows it's done. Reporting a change afterwards takes their "Still good" back. Two campers (other than the one who added it) saying "Still good" mark a spot confirmed. **Something changed** reports a washout, a locked gate, trash or a closure; it shows as a warning on the spot until someone says it's still good.
 - **Report and block**: every spot page has **Report this spot**, and for spots campers added, **Report the name** and **Block**. Blocked campers' spots and photos disappear for you; Account lists them. Photos can be reported too. Each report emails you, and 3 reports hide a spot or photo until you review it. [MODERATION.md](MODERATION.md) is the routine.
 - **Help and contact**: the Account tab shows the support email and links to the privacy policy, terms and support page.
 - Works with **no backend**: then it shows the starter spots, and sign-in and adding spots are turned off. Supabase is optional (see below).
@@ -112,9 +112,10 @@ update public.spots set verified = true where id = 'smoky-gardens';
    4. `supabase/migrations/0004_moderation.sql` adds moderation: terms of use, the word filter, reports, blocking, hidden spots, bans and your moderator tools.
    5. `supabase/migrations/0005_fixes.sql` lets hookups be "not reported" and sharpens the word filter (1.4.1).
    6. `supabase/migrations/0006_photos_checkins.sql` adds photos (and their Storage bucket), "Still good" check-ins and change reports (1.5.0). See "Photos" below.
-   7. `supabase/seed.sql` adds the starter spots.
+   7. `supabase/migrations/0007_still_good_once.sql` makes "Still good" once per spot every 30 days, and lets a change report take it back (1.5.1).
+   8. `supabase/seed.sql` adds the starter spots.
 
-   Already ran some for an earlier version? Run only the ones after it (for 1.3: 0004 to 0006; for 1.4.0: 0005 and 0006; for 1.4.1: just 0006), then the seed. Never rerun an older file after a newer one: newer files change things the older ones made. To switch a database set up by hand over to the script, tell it the last file that ran, for example `bash scripts/setup-database.sh --after 0005`.
+   Already ran some for an earlier version? Run only the ones after it (for 1.3: 0004 to 0007; for 1.4.0: 0005 to 0007; for 1.4.1: 0006 and 0007; for 1.5.0: just 0007), then the seed. Never rerun an older file after a newer one: newer files change things the older ones made. To switch a database set up by hand over to the script, tell it the last file that ran, for example `bash scripts/setup-database.sh --after 0005`.
 
 3. Copy your **Project URL** and **publishable key** from the project's API settings.
 4. For your phone: `cp .env.example .env`, put both values in `.env`, and restart `npx expo start`.

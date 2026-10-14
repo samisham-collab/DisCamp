@@ -18,6 +18,9 @@ export const PHOTO_BUCKET = 'spot-photos';
 /** Photos one camper can add to one spot (the database holds this too). */
 export const MAX_PHOTOS_PER_SPOT = 3;
 export const MAX_CHECKIN_NOTE = 300;
+/** A camper can say "Still good" about a spot once in this many days (0007). */
+export const CONFIRM_AGAIN_DAYS = 30;
+const DAY_MS = 86_400_000;
 
 export const CHANGE_LABELS: Record<ChangeKind, string> = {
   road_damage: 'Road washed out or damaged',
@@ -67,6 +70,11 @@ export function toCommunityError(error: unknown, fallback: string): CommunityErr
       return new CommunityError(`You can add up to ${MAX_PHOTOS_PER_SPOT} photos to a spot.`, 'limit');
     case 'photo_limit_day':
       return new CommunityError("You've added a lot of photos today. Try again tomorrow.", 'limit');
+    case 'confirmed_recently':
+      return new CommunityError(
+        `You've confirmed this spot in the last ${CONFIRM_AGAIN_DAYS} days. Thanks!`,
+        'already',
+      );
     case 'checkin_recent':
       return new CommunityError("You've already said that about this spot today. Thanks!", 'already');
     case 'own_spot':
@@ -302,6 +310,8 @@ export interface Checkin {
   kind: CheckinKind;
   note?: string;
   createdAt: string;
+  /** Your own "Still good", taken back by a change report you sent later. */
+  withdrawn?: true;
 }
 
 const checkinRowSchema = z.object({
@@ -312,6 +322,7 @@ const checkinRowSchema = z.object({
   kind: checkinKind,
   note: z.string().nullable(),
   created_at: z.string(),
+  withdrawn: z.boolean().nullable().optional(),
 });
 
 /** A spot's latest check-ins, newest first. Rows that don't parse are left out. */
@@ -346,6 +357,7 @@ export function listCheckins(
             kind: r.kind,
             ...(note ? { note } : {}),
             createdAt: toIsoTime(r.created_at) ?? r.created_at,
+            ...(r.withdrawn === true ? { withdrawn: true as const } : {}),
           },
         ];
       });
@@ -353,6 +365,56 @@ export function listCheckins(
     timeoutMs,
     "Couldn't load what campers reported.",
   );
+}
+
+/** A camper's latest "Still good" on a spot. */
+export interface MyConfirmation {
+  at: string;
+  /** Taken back by a change report they sent afterwards. */
+  withdrawn: boolean;
+}
+
+const confirmationRowSchema = z.object({
+  created_at: z.string(),
+  withdrawn: z.boolean().nullable().optional(),
+});
+
+/** This camper's latest "Still good" on a spot (taken back or not), or null for none. */
+export function myLastConfirmation(
+  client: SupabaseClient,
+  spotId: string,
+  camperId: string,
+  timeoutMs: number = REMOTE_TIMEOUT_MS,
+): Promise<MyConfirmation | null> {
+  return withTimeout(
+    async (signal) => {
+      const { data, error } = await client
+        .from('checkins_api')
+        .select('created_at, withdrawn')
+        .eq('spot_id', spotId)
+        .eq('camper_id', camperId)
+        .eq('kind', 'still_good')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .retry(false)
+        .abortSignal(signal);
+      if (error) throw error;
+      const row = confirmationRowSchema.safeParse(Array.isArray(data) ? data[0] : undefined);
+      if (!row.success) return null;
+      return { at: toIsoTime(row.data.created_at) ?? row.data.created_at, withdrawn: row.data.withdrawn === true };
+    },
+    timeoutMs,
+    "Couldn't check your last visit.",
+  );
+}
+
+/** When this camper may say "Still good" here again, or null if they may now. */
+export function confirmAgainAt(mine: MyConfirmation | null | undefined, now: Date = new Date()): Date | null {
+  if (!mine) return null;
+  const at = Date.parse(mine.at);
+  if (Number.isNaN(at)) return null;
+  const again = new Date(at + CONFIRM_AGAIN_DAYS * DAY_MS);
+  return again > now ? again : null;
 }
 
 /** "Still good", or a change. */

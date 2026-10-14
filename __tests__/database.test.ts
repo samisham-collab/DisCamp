@@ -125,6 +125,7 @@ const checkIn = (uid: string, spotId: string, kind: string, note?: string) =>
       '0004_moderation.sql',
       '0005_fixes.sql',
       '0006_photos_checkins.sql',
+      '0007_still_good_once.sql',
     ]);
     sql('drop schema if exists moderation cascade; drop schema if exists public cascade; create schema public;');
     // Recreate what a new Supabase project has: the API roles, default
@@ -1002,6 +1003,61 @@ const checkIn = (uid: string, spotId: string, kind: string, note?: string) =>
     expect(sql(`select count(*) from public.checkins_api where id = ${note};`, 'anon')).toBe('0');
     expect(sql(`select count(*) from public.flags where checkin_id = ${note} and status = 'open';`)).toBe('0');
     expect(fails(() => asCamper(PAT, `select moderation.hide_checkin(${note})`))).toBe(true);
+  });
+
+  it('takes "Still good" once a month per camper, and takes it back with a change report', () => {
+    const spot = asCamper(TRAIL, `${addSpot('Twice Flat')} returning id`);
+    const api = () =>
+      sql(
+        `select verified, report_count, last_confirmed_at is not null, jsonb_array_length(alerts) from public.spots_api where id = '${spot}';`,
+        'anon',
+      );
+    const goodTimes = (who: string | null = null) =>
+      who
+        ? asCamper(who, `select count(*) from public.checkins_api where spot_id = '${spot}' and kind = 'still_good'`)
+        : sql(`select count(*) from public.checkins_api where spot_id = '${spot}' and kind = 'still_good';`, 'anon');
+
+    checkIn(ROBIN, spot, 'still_good');
+    expect(errorOf(() => checkIn(ROBIN, spot, 'still_good'))).toMatch(/confirmed_recently/);
+    checkIn(SAM, spot, 'still_good');
+    expect(api()).toBe('t|2|t|0');
+    expect(goodTimes()).toBe('2');
+
+    // Sam reports a change: his "Still good" is taken back, so the spot has
+    // one confirmation left and isn't confirmed any more.
+    checkIn(SAM, spot, 'gate_closed');
+    expect(api()).toBe('f|3|t|1');
+    expect(goodTimes()).toBe('1');
+    expect(goodTimes(SAM)).toBe('2');
+    expect(
+      asCamper(
+        SAM,
+        `select kind, withdrawn from public.checkins_api where spot_id = '${spot}' and camper_id = '${SAM}' order by id`,
+      ),
+    ).toBe('still_good|t\ngate_closed|f');
+    // Taken back still counts toward the 30 days.
+    expect(errorOf(() => checkIn(SAM, spot, 'still_good'))).toMatch(/confirmed_recently/);
+    expect(fails(() => asCamper(SAM, `update public.checkins set withdrawn_at = null where spot_id = '${spot}'`))).toBe(
+      true,
+    );
+
+    // A month later Sam can confirm it again.
+    sql(`update public.checkins set created_at = created_at - interval '31 days' where spot_id = '${spot}';`);
+    checkIn(SAM, spot, 'still_good');
+    expect(api()).toBe('t|4|t|0');
+    expect(
+      sql(
+        `select count(*) from public.checkins where spot_id = '${spot}' and camper_id = '${SAM}' and kind = 'still_good';`,
+      ),
+    ).toBe('2');
+
+    // A starter spot you confirmed yourself stays confirmed.
+    sql("update public.spots set verified = true where id = 'smoky-gardens';");
+    checkIn(ROBIN, 'smoky-gardens', 'still_good');
+    checkIn(ROBIN, 'smoky-gardens', 'trash');
+    expect(sql("select verified from public.spots where id = 'smoky-gardens';")).toBe('t');
+    sql("update public.spots set verified = false where id = 'smoky-gardens';");
+    expect(fails(() => asCamper(SAM, `select moderation.confirmations('${spot}')`))).toBe(true);
   });
 
   it('takes down a banned camper’s photos and check-ins with their spots', () => {

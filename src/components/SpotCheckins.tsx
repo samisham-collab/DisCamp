@@ -2,16 +2,29 @@
 // campers last confirmed the spot and what they've said recently; other
 // campers' check-ins can be reported. The camper who added a spot can report
 // changes, but other campers confirm it.
+//
+// "Still good" works once per camper per spot every 30 days. After it, the
+// button shows it's done; "Something changed" is still there, and takes the
+// "Still good" back.
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { CHANGE_LABELS, CommunityError, listCheckins, sendCheckin, type Checkin } from '../data/community';
+import {
+  CHANGE_LABELS,
+  CommunityError,
+  confirmAgainAt,
+  listCheckins,
+  myLastConfirmation,
+  sendCheckin,
+  type Checkin,
+  type MyConfirmation,
+} from '../data/community';
 import { useSpots } from '../data/spots';
 import { useAuth } from '../lib/auth';
-import { timeAgo } from '../lib/time';
+import { formatDay, timeAgo } from '../lib/time';
 import { usePostingGate } from '../lib/usePostingGate';
 import type { Spot } from '../types';
 import { colors } from '../theme';
@@ -37,12 +50,55 @@ export function withCheckin(spot: Spot, kind: Checkin['kind'], at: string): Spot
   return { ...spot, alerts: [{ kind, at }, ...(spot.alerts ?? [])].slice(0, 3), reportCount: spot.reportCount + 1 };
 }
 
+/**
+ * The signed-in camper's latest "Still good" on a spot: undefined while it
+ * loads (or signed out), null for none. Loads again when the spot's check-ins
+ * change. `set` shows a new one right away.
+ */
+export function useMyConfirmation(spot: Pick<Spot, 'id' | 'reportCount'> | undefined) {
+  const { client, user } = useAuth();
+  const spotId = spot?.id;
+  const userId = user?.id;
+  const key = client && userId && spotId ? `${userId}:${spotId}` : null;
+  const [state, setState] = useState<{ key: string; value: MyConfirmation | null } | null>(null);
+  // A check-in from this phone (or a reload) changes it: load again then.
+  const reportCount = spot?.reportCount;
+
+  const load = useCallback(() => {
+    if (!client || !userId || !spotId) return () => undefined;
+    const loading = `${userId}:${spotId}`;
+    let active = true;
+    myLastConfirmation(client, spotId, userId).then(
+      (value) => {
+        if (active) setState({ key: loading, value });
+      },
+      // Without signal the button stays; the server still holds the 30 days.
+      () => undefined,
+    );
+    return () => {
+      active = false;
+    };
+  }, [client, userId, spotId]);
+
+  useEffect(() => load(), [load, reportCount]);
+
+  const mine = key && state?.key === key ? state.value : undefined;
+  const set = useCallback(
+    (value: MyConfirmation | null) => {
+      if (key) setState({ key, value });
+    },
+    [key],
+  );
+  return { mine, set, reload: load };
+}
+
 export function SpotCheckins({ spot }: { spot: Spot }) {
   const { client, user } = useAuth();
   const { saveLocal } = useSpots();
   const canPost = usePostingGate();
   const [checkins, setCheckins] = useState<Checkin[] | null>(null);
   const [sending, setSending] = useState(false);
+  const { mine, set: setMine, reload: reloadMine } = useMyConfirmation(spot);
 
   const load = useCallback(() => {
     if (!client) return () => undefined;
@@ -69,11 +125,15 @@ export function SpotCheckins({ spot }: { spot: Spot }) {
     if (!canPost(`/spot/${spot.id}`)) return;
     setSending(true);
     try {
+      const at = new Date().toISOString();
       await sendCheckin(client, spot.id, 'still_good');
-      saveLocal(withCheckin(spot, 'still_good', new Date().toISOString()));
+      setMine({ at, withdrawn: false });
+      saveLocal(withCheckin(spot, 'still_good', at));
       AccessibilityInfo.announceForAccessibility('Thanks! Marked still good.');
     } catch (e) {
       const already = e instanceof CommunityError && e.kind === 'already';
+      // Confirmed from another phone, say: show it as done.
+      if (already) reloadMine();
       Alert.alert(
         already ? 'Already counted' : "Couldn't send that",
         e instanceof Error ? e.message : 'Please try again.',
@@ -83,8 +143,11 @@ export function SpotCheckins({ spot }: { spot: Spot }) {
     }
   };
 
-  const recent = (checkins ?? []).slice(0, 5);
+  // Taken-back "Still good"s only come to their own camper; the list leaves them out.
+  const recent = (checkins ?? []).filter((c) => !c.withdrawn).slice(0, 5);
   const ownSpot = user != null && spot.createdBy === user.id;
+  const again = confirmAgainAt(mine);
+  const againDay = again ? formatDay(again.toISOString()) : null;
 
   return (
     <Card>
@@ -96,7 +159,19 @@ export function SpotCheckins({ spot }: { spot: Spot }) {
           : 'Tell other campers how it is now.'}
       </Text>
       <View style={styles.buttons}>
-        {ownSpot ? null : (
+        {ownSpot ? null : mine && again && !mine.withdrawn ? (
+          <View style={styles.done}>
+            <Ionicons name="checkmark-circle" size={22} color={colors.pine} />
+            <Text style={styles.doneText}>
+              You said it&apos;s still good {timeAgo(mine.at) ?? 'recently'}. Thanks! If it&apos;s different now, report
+              what changed and your &ldquo;Still good&rdquo; is taken back.
+            </Text>
+          </View>
+        ) : mine && again ? (
+          <Text style={styles.body}>
+            You took back your &ldquo;Still good&rdquo;. You can confirm this spot again on {againDay}.
+          </Text>
+        ) : (
           <Button
             label="Still good"
             icon="checkmark-circle-outline"
@@ -167,6 +242,15 @@ export function SpotCheckins({ spot }: { spot: Spot }) {
 const styles = StyleSheet.create({
   body: { fontSize: 15, color: colors.body, lineHeight: 21 },
   buttons: { gap: 8 },
+  done: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'flex-start',
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: colors.pineTint,
+  },
+  doneText: { flex: 1, fontSize: 15, color: colors.ink, lineHeight: 21 },
   list: { gap: 10, marginTop: 4 },
   item: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
   itemText: { flex: 1, gap: 2 },
