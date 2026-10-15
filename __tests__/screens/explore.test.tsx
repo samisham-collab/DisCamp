@@ -2,11 +2,12 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { router } from 'expo-router';
 import { act, fireEvent, screen, waitFor } from 'expo-router/testing-library';
 import * as Location from 'expo-location';
-import { AccessibilityInfo, BackHandler, RefreshControl } from 'react-native';
+import { AccessibilityInfo, BackHandler, RefreshControl, StyleSheet } from 'react-native';
 
 import { STORAGE_KEYS } from '@/config';
 import { SEED_SPOTS } from '@/data/seedSpots';
 import { kvStore } from '@/lib/kvStore';
+import { colors } from '@/theme';
 import { getSupabase } from '@/lib/supabase';
 
 import { fakeClient, type QueryResult } from '../../test/fakeSupabase';
@@ -186,6 +187,20 @@ describe('Explore screen', () => {
       await jest.advanceTimersByTimeAsync(0);
     });
     expect(respond).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows which tab is selected: green, with a line under it', async () => {
+    const app = await renderApp('/');
+    const line = (name: string) => StyleSheet.flatten(screen.getByTestId(`tab-line-${name}`).props.style);
+    expect(line('Explore').backgroundColor).toBe(colors.tabOn);
+    expect(line('Cleanups').backgroundColor).toBe('transparent');
+    fireEvent.press(screen.getByText('Cleanups'));
+    await waitFor(() => expect(app.getPathname()).toBe('/cleanups'));
+    await waitFor(() => expect(line('Cleanups').backgroundColor).toBe(colors.tabOn));
+    expect(line('Explore').backgroundColor).toBe('transparent');
+    // The tab's own label (the screen's title says "Cleanups" too).
+    const labels = screen.getAllByText('Cleanups').map((t) => StyleSheet.flatten(t.props.style));
+    expect(labels).toContainEqual(expect.objectContaining({ color: colors.tabOn, fontWeight: '800', fontSize: 10 }));
   });
 
   it('opens My Rig from the rig chip', async () => {

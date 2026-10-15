@@ -2,6 +2,12 @@
 
 All notable changes to DisCamp. Dates are when the version was finished.
 
+## 1.6.1 (2026-10-15)
+
+### Fixed
+
+- **The bottom tabs show which one you're on.** The selected tab's icon and name turn green, its icon fills in and its name goes bold, with a short green line under it; the others stay gray outlines. Before, the selected and other tabs were nearly the same dark color.
+
 ## 1.6.0 (2026-10-15)
 
 Cleanups, the moderators' review, and Embers (product plan stories 7, 8 and 9). Run migration `0008_cleanups_embers.sql` along with this version: `bash scripts/setup-database.sh` runs just that file. Then make yourself a moderator (README "Moderation").

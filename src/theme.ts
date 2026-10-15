@@ -23,6 +23,9 @@ export const colors = {
   map: '#DCE5D8',
   you: '#2B6CB0',
   overlay: 'rgba(24, 37, 31, 0.45)',
+  /** Bottom tabs: the selected one is green, the rest gray (both 4.5:1 on white). */
+  tabOn: '#1E7A4C',
+  tabOff: '#6B7770',
 } as const;
 
 export const fitColors: Record<FitStatus, { fill: string; tint: string; text: string; icon: string }> = {
