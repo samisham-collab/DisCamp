@@ -116,6 +116,38 @@ const checkIn = (uid: string, spotId: string, kind: string, note?: string) =>
     `insert into public.checkins (spot_id, kind${note ? ', note' : ''}) values ('${spotId}', '${kind}'${note ? `, '${note}'` : ''})`,
   );
 
+/** A cleanup's (or its after photo's) id, the way the app makes them. */
+const cleanupId = (n: number) => `0000000${n}`.slice(-8) + '-0000-4000-8000-00000000c1ea';
+
+/** A file in the camper's folder, as Storage adds it (without its daily limit). */
+const putFile = (uid: string, id: string) =>
+  sql(`insert into storage.objects (bucket_id, name, owner_id) values ('spot-photos', '${uid}/${id}.jpg', '${uid}');`);
+
+/** Where a camper stands, as the app sends it. */
+const at = (longitude: number, latitude: number) => `'SRID=4326;POINT(${longitude} ${latitude})'`;
+const HERE = at(-113.05, 42.32);
+
+/** A cleanup as the app posts it. */
+const postCleanup = (
+  uid: string,
+  id: string,
+  where = HERE,
+  { spot, size = 'small', note, path }: { spot?: string; size?: string; note?: string; path?: string } = {},
+) =>
+  asCamper(
+    uid,
+    `insert into public.cleanup_tasks (id, location, kind, size, before_path${spot ? ', spot_id' : ''}${note ? ', note' : ''}) ` +
+      `values ('${id}', ${where}, 'litter', '${size}', '${path ?? `${uid}/${id}.jpg`}'${spot ? `, '${spot}'` : ''}${note ? `, '${note}'` : ''})`,
+  );
+
+/** A cleaned-up cleanup as the app sends it: after photo, haul shot, where. */
+const sendCleanup = (uid: string, id: string, haul: string, task: string, where: string) =>
+  asCamper(
+    uid,
+    'insert into public.cleanup_completions (id, task_id, after_path, haul_path, location, accuracy_m) ' +
+      `values ('${id}', '${task}', '${uid}/${id}.jpg', '${uid}/${haul}.jpg', ${where}, 12)`,
+  );
+
 (DB_URL ? describe : describe.skip)('database (Postgres + PostGIS)', () => {
   it('applies every migration and the seed, each twice in a row, without errors', () => {
     expect(MIGRATIONS).toEqual([
@@ -126,6 +158,7 @@ const checkIn = (uid: string, spotId: string, kind: string, note?: string) =>
       '0005_fixes.sql',
       '0006_photos_checkins.sql',
       '0007_still_good_once.sql',
+      '0008_cleanups_embers.sql',
     ]);
     sql('drop schema if exists moderation cascade; drop schema if exists public cascade; create schema public;');
     // Recreate what a new Supabase project has: the API roles, default
@@ -1081,6 +1114,368 @@ const checkIn = (uid: string, spotId: string, kind: string, note?: string) =>
       expect(sql(`select relrowsecurity from pg_class where oid = 'public.${table}'::regclass;`)).toBe('t');
       expect(fails(() => sql(`truncate public.${table};`, 'authenticated'))).toBe(true);
     }
+  });
+
+  it('posts cleanups with a before photo, pinned where the camper stands', () => {
+    const spot = asCamper(TRAIL, `${addSpot('Litter Flat')} returning id`);
+    const first = cleanupId(1);
+    // Only with the camper's own photo, already uploaded.
+    expect(errorOf(() => postCleanup(TRAIL, first))).toMatch(/photo_missing/);
+    putFile(TRAIL, first);
+    expect(errorOf(() => postCleanup(TRAIL, first, HERE, { path: `${ROBIN}/${first}.jpg` }))).toMatch(/photo_path/);
+    // Linked only to a spot within 2 km, and no blocked words.
+    expect(errorOf(() => postCleanup(TRAIL, first, HERE, { spot: 'smoky-gardens' }))).toMatch(/spot_too_far/);
+    expect(errorOf(() => postCleanup(TRAIL, first, HERE, { note: 'Shit everywhere' }))).toMatch(/blocked_words/);
+    postCleanup(TRAIL, first, HERE, { spot, size: 'medium', note: '  Cans by the fire ring ' });
+    expect(sql(`select created_by, status, note from public.cleanup_tasks where id = '${first}';`)).toBe(
+      `${TRAIL}|open|Cans by the fire ring`,
+    );
+    // Everyone sees it, with who posted it and the spot it's near.
+    expect(
+      sql(
+        `select posted_by, spot_name, kind, size, status, round(latitude::numeric, 2), hidden from public.cleanup_tasks_api where id = '${first}';`,
+        'anon',
+      ),
+    ).toBe('trailhound|Litter Flat|litter|medium|open|42.32|f');
+    // Trying again after a lost answer finds it there.
+    expect(errorOf(() => postCleanup(TRAIL, first, HERE, { spot }))).toMatch(/duplicate key/);
+    // Not another within 30 m.
+    putFile(SAM, cleanupId(2));
+    expect(errorOf(() => postCleanup(SAM, cleanupId(2), at(-113.0502, 42.3201)))).toMatch(/cleanup_nearby/);
+    // Cleanup photos don't count toward Storage's 25 files a day.
+    const filesToday = () => asCamper(SAM, `select moderation.photo_files_today('${SAM}')`);
+    const before = Number(filesToday());
+    postCleanup(SAM, cleanupId(2), at(-113.06, 42.33));
+    expect(Number(filesToday())).toBe(before - 1);
+    // And a photo already on DisCamp can't be posted again.
+    putFile(SAM, cleanupId(13));
+    expect(
+      errorOf(() => postCleanup(SAM, cleanupId(13), at(-113.2, 42.2), { path: `${SAM}/${cleanupId(2)}.jpg` })),
+    ).toMatch(/photo_path/);
+    // Nobody changes a cleanup from the app, or posts one signed out.
+    expect(fails(() => asCamper(TRAIL, `update public.cleanup_tasks set status = 'done' where id = '${first}'`))).toBe(
+      true,
+    );
+    expect(
+      fails(() =>
+        sql(
+          `insert into public.cleanup_tasks (id, location, kind, size, before_path) values ('${cleanupId(9)}', ${HERE}, 'litter', 'small', 'x');`,
+          'anon',
+        ),
+      ),
+    ).toBe(true);
+    // Campers delete only their own; a cleanup's file stays while it's up.
+    expect(asCamper(SAM, `delete from public.cleanup_tasks where id = '${first}' returning id`)).toBe('');
+    expect(asCamper(TRAIL, `delete from storage.objects where name = '${TRAIL}/${first}.jpg' returning name`)).toBe('');
+    expect(asCamper(SAM, `delete from public.cleanup_tasks where id = '${cleanupId(2)}' returning id`)).toBe(
+      cleanupId(2),
+    );
+    expect(asCamper(SAM, `delete from storage.objects where name = '${SAM}/${cleanupId(2)}.jpg' returning name`)).toBe(
+      `${SAM}/${cleanupId(2)}.jpg`,
+    );
+    // Up to 10 a day.
+    for (let n = 3; n <= 11; n += 1) {
+      putFile(TRAIL, cleanupId(n));
+      postCleanup(TRAIL, cleanupId(n), at(-113.05, 42.32 + n * 0.01));
+    }
+    putFile(TRAIL, cleanupId(12));
+    expect(errorOf(() => postCleanup(TRAIL, cleanupId(12), at(-113.05, 42.5)))).toMatch(/cleanup_limit/);
+    sql(`delete from public.cleanup_tasks where created_by = '${TRAIL}' and id <> '${first}';`);
+
+    for (const table of ['cleanup_tasks', 'cleanup_completions', 'embers']) {
+      expect(sql(`select relrowsecurity from pg_class where oid = 'public.${table}'::regclass;`)).toBe('t');
+      expect(fails(() => sql(`truncate public.${table};`, 'authenticated'))).toBe(true);
+    }
+    for (const view of ['cleanup_tasks_api', 'embers_api']) {
+      expect(
+        sql(`select array_to_string(reloptions, ',') from pg_class where oid = 'public.${view}'::regclass;`),
+      ).toContain('security_invoker=true');
+    }
+    const policies = (table: string) =>
+      sql(`select string_agg(cmd, ',' order by cmd) from pg_policies where tablename = '${table}';`);
+    expect(policies('cleanup_tasks')).toBe('DELETE,INSERT,SELECT');
+    expect(policies('cleanup_completions')).toBe('INSERT,SELECT');
+    expect(policies('embers')).toBe('SELECT');
+  });
+
+  it('takes a cleanup within 150 m with a haul shot, for a moderator to approve or send back', () => {
+    sql('delete from public.embers;');
+    const task = cleanupId(1);
+    const [after1, haul1] = [cleanupId(21), cleanupId(22)];
+    putFile(ROBIN, after1);
+    expect(errorOf(() => sendCleanup(ROBIN, after1, haul1, task, at(-113.05, 42.3205)))).toMatch(/photo_missing/);
+    putFile(ROBIN, haul1);
+    expect(errorOf(() => sendCleanup(ROBIN, after1, after1, task, at(-113.05, 42.3205)))).toMatch(/photo_path/);
+    expect(errorOf(() => sendCleanup(ROBIN, after1, haul1, task, at(-113.05, 42.322)))).toMatch(/cleanup_too_far/);
+    sendCleanup(ROBIN, after1, haul1, task, at(-113.05, 42.3205));
+    expect(sql(`select status from public.cleanup_tasks where id = '${task}';`)).toBe('review');
+    // Robin sees hers waiting; nobody else does, and only moderators see where it was taken.
+    expect(asCamper(ROBIN, `select status from public.cleanup_completions where task_id = '${task}'`)).toBe('pending');
+    expect(sql('select count(*) from public.cleanup_completions;', 'anon')).toBe('0');
+    expect(asCamper(SAM, `select count(*) from public.cleanup_completions where task_id = '${task}'`)).toBe('0');
+    expect(errorOf(() => asCamper(ROBIN, 'select location from public.cleanup_completions'))).toMatch(
+      /permission denied/,
+    );
+    // One waits for review at a time.
+    const [after4, haul4] = [cleanupId(23), cleanupId(24)];
+    putFile(SAM, after4);
+    putFile(SAM, haul4);
+    expect(errorOf(() => sendCleanup(SAM, after4, haul4, task, HERE))).toMatch(/cleanup_in_review/);
+
+    // Only moderators review, in the app.
+    expect(errorOf(() => asCamper(ROBIN, 'select * from public.cleanup_review_queue()'))).toMatch(/not_moderator/);
+    expect(errorOf(() => asCamper(ROBIN, `select public.approve_cleanup('${after1}', 'large')`))).toMatch(
+      /not_moderator/,
+    );
+    expect(errorOf(() => asCamper(ROBIN, `select public.reject_cleanup('${after1}', 'No')`))).toMatch(/not_moderator/);
+    expect(asCamper(ROBIN, 'select public.am_moderator()')).toBe('f');
+    expect(fails(() => asCamper(SAM, `select moderation.add_moderator('${SAM}')`))).toBe(true);
+    sql(`select moderation.add_moderator('${SAM}');`);
+    expect(asCamper(SAM, 'select public.am_moderator()')).toBe('t');
+    expect(
+      asCamper(
+        SAM,
+        'select camper_name, task_size, distance_m between 50 and 60, accuracy_m, tries, spot_name, posted_by_name from public.cleanup_review_queue()',
+      ),
+    ).toBe('Robin|medium|t|12|1|Litter Flat|trailhound');
+
+    // Sent back with a reason: the cleanup opens again, and Robin sees why.
+    expect(errorOf(() => asCamper(SAM, `select public.reject_cleanup('${after1}', '  ')`))).toMatch(/reason_needed/);
+    asCamper(SAM, `select public.reject_cleanup('${after1}', 'The after photo shows another site.')`);
+    expect(sql(`select status from public.cleanup_tasks where id = '${task}';`)).toBe('open');
+    expect(asCamper(ROBIN, `select status, review_note from public.cleanup_completions where id = '${after1}'`)).toBe(
+      'rejected|The after photo shows another site.',
+    );
+    expect(errorOf(() => asCamper(SAM, `select public.approve_cleanup('${after1}')`))).toMatch(/review_done/);
+    // One more try, then no more.
+    const [after2, haul2, after3, haul3] = [cleanupId(25), cleanupId(26), cleanupId(27), cleanupId(28)];
+    for (const id of [after2, haul2, after3, haul3]) putFile(ROBIN, id);
+    sendCleanup(ROBIN, after2, haul2, task, at(-113.0501, 42.3201));
+    asCamper(SAM, `select public.reject_cleanup('${after2}', 'Still bags by the fire ring.')`);
+    expect(errorOf(() => sendCleanup(ROBIN, after3, haul3, task, HERE))).toMatch(/cleanup_tries/);
+
+    // Sam cleans it up. A moderator may approve their own, at the size they see.
+    sendCleanup(SAM, after4, haul4, task, HERE);
+    sql(`update public.profiles set created_at = now() - interval '30 days' where id = '${SAM}';`);
+    expect(errorOf(() => asCamper(SAM, `select public.approve_cleanup('${after4}', 'huge')`))).toMatch(/invalid_size/);
+    asCamper(SAM, `select public.approve_cleanup('${after4}', 'large')`);
+    expect(sql(`select status, done_at is not null from public.cleanup_tasks where id = '${task}';`)).toBe('done|t');
+    expect(
+      sql(`select cleaned_by, after_path, haul_path from public.cleanup_tasks_api where id = '${task}';`, 'anon'),
+    ).toBe(`Sam I.|${SAM}/${after4}.jpg|${SAM}/${haul4}.jpg`);
+    expect(sql(`select count(*) from public.cleanup_completions where task_id = '${task}';`, 'anon')).toBe('1');
+    // 150 Embers for a large cleanup, and 10 for trailhound, who posted it.
+    expect(sql(`select camper_id, reason, amount from public.embers where ref = '${task}' order by amount desc;`)).toBe(
+      `${SAM}|cleanup|150\n${TRAIL}|cleanup_reported|10`,
+    );
+    expect(errorOf(() => asCamper(SAM, `select public.approve_cleanup('${after4}')`))).toMatch(/review_done/);
+    putFile(TRAIL, cleanupId(29));
+    putFile(TRAIL, cleanupId(39));
+    expect(errorOf(() => sendCleanup(TRAIL, cleanupId(29), cleanupId(39), task, HERE))).toMatch(/cleanup_done/);
+    // Its files stay while it's listed.
+    expect(asCamper(SAM, `delete from storage.objects where name = '${SAM}/${haul4}.jpg' returning name`)).toBe('');
+
+    // Found it and cleaned it: the poster earns the cleanup, not the 10 for posting it.
+    const own = cleanupId(30);
+    putFile(TRAIL, own);
+    postCleanup(TRAIL, own, at(-113.04, 42.31));
+    putFile(TRAIL, cleanupId(31));
+    putFile(TRAIL, cleanupId(32));
+    // Not with the before photo as the after photo.
+    expect(errorOf(() => sendCleanup(TRAIL, own, cleanupId(32), own, at(-113.04, 42.31)))).toMatch(/photo_used/);
+    sendCleanup(TRAIL, cleanupId(31), cleanupId(32), own, at(-113.04, 42.31));
+    asCamper(SAM, `select public.approve_cleanup('${cleanupId(31)}')`);
+    expect(sql(`select string_agg(reason || ':' || amount, ',') from public.embers where ref = '${own}';`)).toBe(
+      'cleanup:50',
+    );
+    // Removing a cleanup takes its Embers back.
+    sql(`select moderation.hide_task('${own}', 'Not a real cleanup');`);
+    expect(sql(`select sum(amount) from public.embers where camper_id = '${TRAIL}' and spot_id is null;`)).toBe('0');
+    sql(`select moderation.restore_task('${own}');`);
+
+    // A cleanup taken down can't be approved: hide_task sends back what waits,
+    // and a hidden one is refused.
+    const gone = cleanupId(33);
+    putFile(TRAIL, gone);
+    postCleanup(TRAIL, gone, at(-113.03, 42.3));
+    putFile(ROBIN, cleanupId(34));
+    putFile(ROBIN, cleanupId(35));
+    sendCleanup(ROBIN, cleanupId(34), cleanupId(35), gone, at(-113.03, 42.3));
+    sql(`select moderation.hide_task('${gone}', 'Fake');`);
+    expect(sql(`select status, review_note from public.cleanup_completions where id = '${cleanupId(34)}';`)).toBe(
+      'rejected|This cleanup was taken down after review.',
+    );
+    expect(sql(`select status from public.cleanup_tasks where id = '${gone}';`)).toBe('open');
+    sql(`select moderation.restore_task('${gone}');`);
+    putFile(ROBIN, cleanupId(36));
+    putFile(ROBIN, cleanupId(37));
+    sendCleanup(ROBIN, cleanupId(36), cleanupId(37), gone, at(-113.03, 42.3));
+    sql(`update public.cleanup_tasks set hidden_at = now() where id = '${gone}';`);
+    expect(errorOf(() => asCamper(SAM, `select public.approve_cleanup('${cleanupId(36)}')`))).toMatch(/cleanup_gone/);
+    sql(`update public.cleanup_tasks set hidden_at = null where id = '${gone}';`);
+
+    for (const role of ['anon', 'authenticated']) {
+      for (const fn of ['guard_cleanup_task_write()', 'guard_cleanup_completion_write()']) {
+        expect(sql(`select has_function_privilege('${role}', 'public.${fn}', 'execute');`)).toBe('f');
+      }
+    }
+    for (const fn of [
+      'am_moderator()',
+      'cleanup_review_queue()',
+      'approve_cleanup(uuid, text)',
+      'reject_cleanup(uuid, text)',
+      'my_embers()',
+    ]) {
+      expect(sql(`select has_function_privilege('anon', 'public.${fn}', 'execute');`)).toBe('f');
+      expect(sql(`select has_function_privilege('authenticated', 'public.${fn}', 'execute');`)).toBe('t');
+    }
+    for (const fn of ['hide_task(null, null)', 'restore_task(null)', 'remove_moderator(null)', 'is_moderator(null)']) {
+      expect(fails(() => asCamper(SAM, `select moderation.${fn}`))).toBe(true);
+    }
+  });
+
+  it('keeps Embers in a ledger: once per thing, daily limits, taken back by moderators', () => {
+    sql('delete from public.embers;');
+    sql(`update public.profiles set created_at = '2026-01-01' where id = '${PAT}';`);
+    const spot = asCamper(TRAIL, `${addSpot('Ember Flat')} returning id`);
+    const mine = (uid: string) =>
+      asCamper(
+        uid,
+        `select string_agg(reason || ':' || amount, ',' order by id) from public.embers_api where spot_id = '${spot}'`,
+      );
+    // The first "Still good" and the first change report on a spot.
+    checkIn(PAT, spot, 'still_good');
+    checkIn(PAT, spot, 'road_damage');
+    checkIn(PAT, spot, 'gate_closed');
+    expect(mine(PAT)).toBe('still_good:10,change_report:10');
+    // Taken back by that change report, the "Still good" keeps its Embers;
+    // saying it again a month later earns none.
+    sql(`update public.checkins set created_at = created_at - interval '31 days' where spot_id = '${spot}';`);
+    checkIn(PAT, spot, 'still_good');
+    expect(mine(PAT)).toBe('still_good:10,change_report:10');
+    // Photos: the first 3 on a spot, even if one is deleted.
+    for (const n of [41, 42, 43]) {
+      putFile(PAT, photoId(n));
+      addPhoto(PAT, photoId(n), spot);
+    }
+    // Deleting a photo takes its Embers back, and a new one doesn't earn them again.
+    asCamper(PAT, `delete from public.spot_photos where id = '${photoId(43)}'`);
+    putFile(PAT, photoId(44));
+    addPhoto(PAT, photoId(44), spot);
+    expect(mine(PAT)).toBe('still_good:10,change_report:10,photo:5,photo:5,photo:5,taken_back:-5');
+    expect(asCamper(PAT, 'select total, today, daily_limit from public.my_embers()')).toBe('30|35|300');
+
+    // A spot confirmed by 2 other campers: 50 for the camper who added it, once.
+    checkIn(ROBIN, spot, 'still_good');
+    expect(mine(TRAIL)).toBe('spot_confirmed:50');
+    sql(`update public.spots set verified = false where id = '${spot}';`);
+    sql(`update public.spots set verified = true where id = '${spot}';`);
+    expect(mine(TRAIL)).toBe('spot_confirmed:50');
+    // Removing the spot takes them back.
+    sql(`select moderation.hide_spot('${spot}');`);
+    expect(mine(TRAIL)).toBe('spot_confirmed:50,taken_back:-50');
+    sql(`select moderation.restore_spot('${spot}');`);
+
+    // Up to 100 a day in an account's first two weeks (300 after); the rest is recorded as 0.
+    expect(sql(`select moderation.award('${ROBIN}', 'cleanup', 'test-1', null, 150, now());`)).toBe('90');
+    expect(sql(`select moderation.award('${ROBIN}', 'cleanup', 'test-2', null, 50, now());`)).toBe('0');
+    expect(sql(`select moderation.award('${ROBIN}', 'cleanup', 'test-1', null, 150, now());`)).toBe('0');
+    expect(
+      sql(
+        `select ref, amount, full_amount from public.embers where camper_id = '${ROBIN}' and ref like 'test-%' order by ref;`,
+      ),
+    ).toBe('test-1|90|150\ntest-2|0|50');
+    // Days are Mountain time: 5 am UTC is still the evening before in Colorado.
+    expect(sql(`select moderation.award('${PAT}', 'cleanup', 'test-3', null, 300, '2026-07-01 05:00+00');`)).toBe(
+      '300',
+    );
+    expect(sql("select earned_on from public.embers where ref = 'test-3';")).toBe('2026-06-30');
+    // Check-ins earn at most 50 a day (Pat has 20 from check-ins today).
+    for (let n = 1; n <= 5; n += 1)
+      sql(`select moderation.award('${PAT}', 'change_report', 'test-c${n}', null, 10, now());`);
+    expect(sql(`select sum(amount) from public.embers where camper_id = '${PAT}' and ref like 'test-c%';`)).toBe('30');
+
+    // Moderators take Embers back with what they remove (once); the record
+    // stays, so it can't be earned again.
+    sql(`select moderation.hide_photo('${photoId(41)}');`);
+    sql(`select moderation.hide_photo('${photoId(41)}');`);
+    const damage = sql(`select id from public.checkins where spot_id = '${spot}' and kind = 'road_damage';`);
+    sql(`select moderation.hide_checkin(${damage});`);
+    expect(mine(PAT)).toBe(
+      'still_good:10,change_report:10,photo:5,photo:5,photo:5,taken_back:-5,taken_back:-5,taken_back:-10',
+    );
+    expect(asCamper(PAT, 'select total from public.my_embers()')).toBe('345');
+
+    // Only the camper sees theirs, and nobody writes them.
+    expect(asCamper(SAM, `select count(*) from public.embers_api where spot_id = '${spot}'`)).toBe('0');
+    expect(fails(() => sql('select * from public.embers_api;', 'anon'))).toBe(true);
+    expect(fails(() => sql('select * from public.embers;', 'anon'))).toBe(true);
+    expect(
+      fails(() =>
+        asCamper(
+          PAT,
+          `insert into public.embers (camper_id, reason, ref, amount, full_amount, earned_on) values ('${PAT}', 'cleanup', 'x', 999, 999, current_date)`,
+        ),
+      ),
+    ).toBe(true);
+    expect(fails(() => asCamper(PAT, 'update public.embers set amount = 999'))).toBe(true);
+    expect(fails(() => asCamper(PAT, 'delete from public.embers'))).toBe(true);
+    expect(errorOf(() => sql('update public.embers set amount = amount;'))).toMatch(/embers_append_only/);
+    for (const fn of [
+      'award(null, null, null, null, null, null)',
+      'award_per_spot(null, null, null, null, null, null, null)',
+      'take_back(null, null)',
+    ]) {
+      expect(fails(() => asCamper(PAT, `select moderation.${fn}`))).toBe(true);
+    }
+
+    // Running 0008 again on an empty ledger gives 1.5's photos and check-ins
+    // their Embers, by the same rules (hidden ones earn nothing).
+    sql('delete from public.embers;');
+    sql(`update public.profiles set created_at = '2026-01-01' where id = '${TRAIL}';`);
+    runFile('supabase/migrations/0008_cleanups_embers.sql');
+    expect(mine(PAT)).toBe('still_good:10,change_report:10,photo:5,photo:5');
+    expect(mine(TRAIL)).toBe('spot_confirmed:50');
+    runFile('supabase/migrations/0008_cleanups_embers.sql');
+    expect(mine(PAT)).toBe('still_good:10,change_report:10,photo:5,photo:5');
+  });
+
+  it('takes reports on cleanups: never your own, 3 hide one, and a ban takes them down', () => {
+    const task = cleanupId(50);
+    putFile(PAT, task);
+    postCleanup(PAT, task, at(-113.1, 42.4));
+    const flag = (uid: string) =>
+      asCamper(uid, `insert into public.flags (task_id, reason) values ('${task}', 'fake')`);
+    expect(errorOf(() => flag(PAT))).toMatch(/own_content/);
+    for (const uid of [SAM, ROBIN, TRAIL]) flag(uid);
+    expect(errorOf(() => flag(SAM))).toMatch(/duplicate key/);
+    expect(sql(`select count(*) from public.cleanup_tasks_api where id = '${task}';`, 'anon')).toBe('0');
+    expect(asCamper(PAT, `select hidden from public.cleanup_tasks_api where id = '${task}'`)).toBe('t');
+    expect(
+      sql(`select kind, reporters, task_photo_path, task_hidden from moderation.queue where task_id = '${task}';`),
+    ).toBe(`task|3|${PAT}/${task}.jpg|t`);
+    // Its camper can't delete it while it's reviewed.
+    expect(asCamper(PAT, `delete from public.cleanup_tasks where id = '${task}' returning id`)).toBe('');
+    sql(`select moderation.restore_task('${task}');`);
+    expect(sql(`select count(*) from public.cleanup_tasks_api where id = '${task}';`, 'anon')).toBe('1');
+
+    // A ban takes the camper's cleanups down and sends back what they sent for review.
+    const other = cleanupId(51);
+    putFile(ROBIN, other);
+    postCleanup(ROBIN, other, at(-113.2, 42.5));
+    putFile(PAT, cleanupId(52));
+    putFile(PAT, cleanupId(53));
+    sendCleanup(PAT, cleanupId(52), cleanupId(53), other, at(-113.2, 42.5));
+    sql(`select moderation.ban('${PAT}', 'Spam');`);
+    expect(sql(`select status from public.cleanup_tasks where id = '${other}';`)).toBe('open');
+    expect(sql(`select status, review_note from public.cleanup_completions where id = '${cleanupId(52)}';`)).toBe(
+      'rejected|Camper banned',
+    );
+    expect(sql(`select count(*) from public.cleanup_tasks_api where id = '${task}';`, 'anon')).toBe('0');
+    expect(errorOf(() => postCleanup(PAT, cleanupId(54), at(-113.3, 42.6)))).toMatch(/banned/);
+    sql(`select moderation.unban('${PAT}');`);
+    sql(`update public.cleanup_tasks set hidden_at = null, hidden_reason = null where created_by = '${PAT}';`);
+    sql('delete from public.flags;');
   });
 
   it('deletes an account but keeps the spots it added, without a name', () => {

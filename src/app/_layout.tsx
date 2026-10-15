@@ -9,6 +9,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui';
+import { CleanupsProvider } from '@/data/cleanupsStore';
 import { SpotsProvider } from '@/data/spots';
 import { AuthProvider } from '@/lib/auth';
 import { initCrashReports } from '@/lib/crashReports';
@@ -78,6 +79,10 @@ function AppStack() {
         <Stack.Screen name="report/[kind]/[id]" options={{ title: 'Report', presentation: 'modal' }} />
         <Stack.Screen name="checkin/[id]" options={{ title: 'Report a change', presentation: 'modal' }} />
         <Stack.Screen name="rules" options={{ title: 'Community rules', presentation: 'modal' }} />
+        <Stack.Screen name="cleanup/[id]" options={{ title: 'Cleanup', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="cleanup/new" options={{ title: 'Post a cleanup', presentation: 'modal' }} />
+        <Stack.Screen name="cleanup/send/[id]" options={{ title: 'Send your cleanup', presentation: 'modal' }} />
+        <Stack.Screen name="review" options={{ title: 'Review cleanups', headerBackTitle: 'Back' }} />
         <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" options={{ title: 'Not found' }} />
       </Stack>
@@ -103,7 +108,9 @@ export default function RootLayout() {
           <LocationProvider>
             <AuthProvider>
               <SpotsProvider>
-                <AppStack />
+                <CleanupsProvider>
+                  <AppStack />
+                </CleanupsProvider>
               </SpotsProvider>
             </AuthProvider>
           </LocationProvider>

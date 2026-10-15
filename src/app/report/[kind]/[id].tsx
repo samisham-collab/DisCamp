@@ -1,5 +1,5 @@
-// Report a spot, a photo, a check-in, or the name of the camper who added
-// one. Reports go to the moderator (an email per report), who acts within 24
+// Report a spot, a photo, a check-in, a cleanup, or the name of the camper
+// who added one. Reports go to the moderator (an email per report), who acts within 24
 // hours. After reporting something a camper posted, you can also block them.
 
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -25,7 +25,7 @@ const CHECKIN_ID = /^[1-9][0-9]{0,17}$/;
 /** What the link points at, if it's something that can be reported. */
 function reportTarget(kind: string | undefined, id: string): ReportTarget | null {
   if (kind === 'spot' && id) return { kind, id };
-  if ((kind === 'camper' || kind === 'photo') && UUID.test(id)) return { kind, id };
+  if ((kind === 'camper' || kind === 'photo' || kind === 'task') && UUID.test(id)) return { kind, id };
   if (kind === 'checkin' && CHECKIN_ID.test(id)) return { kind, id };
   return null;
 }
@@ -71,7 +71,7 @@ export default function ReportScreen() {
         <EmptyState
           icon="flag-outline"
           title="Nothing to report"
-          message="This link doesn't point to a spot, photo, check-in or camper."
+          message="This link doesn't point to a spot, photo, check-in, cleanup or camper."
         />
       </View>
     );
@@ -80,7 +80,7 @@ export default function ReportScreen() {
   // Whose spot, photo, check-in or name it is, to offer blocking them afterwards.
   const owner = first(params.owner);
   const postedBy = owner && UUID.test(owner) ? owner : undefined;
-  const posted = target.kind === 'photo' || target.kind === 'checkin';
+  const posted = target.kind === 'photo' || target.kind === 'checkin' || target.kind === 'task';
   const camperId = target.kind === 'camper' ? id : posted ? postedBy : spot?.createdBy;
   const camperName =
     (target.kind === 'camper'
@@ -164,12 +164,14 @@ export default function ReportScreen() {
     spot: spot ? `“${spot.name}”` : 'this spot',
     photo: 'this photo',
     checkin: 'this check-in',
+    task: 'this cleanup',
     camper: camperName ? `the name “${camperName}”` : 'this camper’s name',
   }[target.kind];
   const title = {
     spot: 'Report this spot',
     photo: 'Report this photo',
     checkin: 'Report this check-in',
+    task: 'Report this cleanup',
     camper: 'Report this name',
   }[target.kind];
 

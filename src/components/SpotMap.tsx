@@ -8,10 +8,11 @@ import MapView, { Marker, type MapPressEvent, type Region as MapRegion } from 'r
 
 import { MIN_DELTA, regionForCoordinates, type Region } from '../lib/geo';
 import type { SpotRow } from '../lib/spotRows';
+import { colors } from '../theme';
 import { SpotPin } from './Fit';
 import type { SpotMapProps } from './SpotMap.types';
 
-export type { SpotMapHandle, SpotMapProps } from './SpotMap.types';
+export type { CleanupPin, SpotMapHandle, SpotMapProps } from './SpotMap.types';
 
 /** How long a custom marker keeps re-drawing after its look changes. */
 const MARKER_REDRAW_MS = 500;
@@ -81,6 +82,8 @@ export function SpotMap({
   initialRegion,
   bottomInset,
   onMapReady,
+  cleanups,
+  onOpenCleanup,
 }: SpotMapProps) {
   const mapRef = useRef<MapView>(null);
   const lastMarkerTap = useRef(0);
@@ -173,6 +176,21 @@ export function SpotMap({
     >
       {rows.map((row) => (
         <SpotMarker key={row.spot.id} row={row} selected={row.spot.id === selectedId} onPress={onMarkerPress} />
+      ))}
+      {/* Cleanups: the map's own pins (no custom view, so nothing to redraw). */}
+      {(cleanups ?? []).map((pin) => (
+        <Marker
+          key={`cleanup-${pin.id}`}
+          coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
+          pinColor={colors.orange}
+          zIndex={0}
+          onPress={() => {
+            lastMarkerTap.current = Date.now();
+            onOpenCleanup?.(pin.id);
+          }}
+          accessibilityLabel={pin.label}
+          testID={`cleanup-marker-${pin.id}`}
+        />
       ))}
     </MapView>
   );

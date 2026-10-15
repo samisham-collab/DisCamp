@@ -1,6 +1,7 @@
-// Account: sign in, your display name, the spots you've added, campers
-// you've blocked, help and legal links, sign out and delete your account
-// (App Store rules require deletion inside the app).
+// Account: sign in, your Embers and rank, your display name, the spots
+// you've added, campers you've blocked, help and legal links, sign out and
+// delete your account (App Store rules require deletion inside the app).
+// Moderators also get a way into Review.
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -17,6 +18,7 @@ import {
   View,
 } from 'react-native';
 
+import { EmbersCard, ModeratorCard } from '@/components/EmbersCard';
 import { TextField } from '@/components/form';
 import { HelpCard, LinkRow } from '@/components/HelpCard';
 import { Banner, Button, Card, EmptyState, Row, SectionTitle } from '@/components/ui';
@@ -261,6 +263,9 @@ export default function AccountScreen() {
           <Text style={styles.summaryDetail}>with {providerLabel(auth.user.provider)}</Text>
         </View>
 
+        {auth.client ? <EmbersCard key={auth.user.id} client={auth.client} /> : null}
+        {auth.client ? <ModeratorCard key={`mod-${auth.user.id}`} client={auth.client} /> : null}
+
         <Card>
           <SectionTitle>Your name on DisCamp</SectionTitle>
           <TextField
@@ -270,7 +275,7 @@ export default function AccountScreen() {
               setNameDraft(text);
               setNameError(null);
             }}
-            hint="Shows on spots you add."
+            hint="Shows on spots, photos and cleanups you post."
             error={nameError}
             maxLength={MAX_DISPLAY_NAME + 10}
             autoCapitalize="words"

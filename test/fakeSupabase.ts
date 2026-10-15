@@ -1,12 +1,14 @@
 // A small in-memory stand-in for Supabase: the auth calls, query chains and
 // Storage calls DisCamp uses, with the same ownership and moderation rules as
-// the real database (migrations 0003, 0004 and 0006), so screen tests can
-// sign in, add, edit, delete, report, block, add photos and check in.
+// the real database (migrations 0003, 0004, 0006 and 0008), so screen tests
+// can sign in, add, edit, delete, report, block, add photos, check in, post
+// and send cleanups, review them and read Embers.
 
 import { jest } from '@jest/globals';
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
 
 import { TERMS_VERSION } from '@/config';
+import { distanceMeters } from '@/lib/geo';
 import { hasBlockedWords } from '@/lib/wordFilter';
 
 import { makeRow } from './fixtures';
@@ -58,6 +60,15 @@ type Row = Record<string, unknown>;
 
 /** Storage's rule for photo file names: "<camper id>/<photo id>.jpg". */
 const PHOTO_PATH = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.jpg$/;
+
+/** "SRID=4326;POINT(lng lat)" as the app sends it, or null. */
+function readPoint(text: unknown): { latitude: number; longitude: number } | null {
+  const point = /POINT\((-?[\d.]+) (-?[\d.]+)\)/.exec(String(text ?? ''));
+  return point ? { latitude: Number(point[2]), longitude: Number(point[1]) } : null;
+}
+
+/** Embers for an approved cleanup, by size (migration 0008). */
+const CLEANUP_EMBERS: Record<string, number> = { small: 50, medium: 100, large: 150 };
 
 function sessionFor(user: FakeUser): Session {
   return {
@@ -221,6 +232,7 @@ export interface FakeFlag {
   camperId?: string;
   photoId?: string;
   checkinId?: number;
+  taskId?: string;
   reason: string;
   details?: string;
   status: 'open' | 'actioned' | 'dismissed';
@@ -246,6 +258,14 @@ export class FakeBackend {
   readonly photos = new Map<string, Row>();
   /** Rows of checkins, oldest first. */
   readonly checkins: Row[] = [];
+  /** Cleanups (cleanup_tasks, with latitude and longitude), by id. `hidden: true` = hidden for review. */
+  readonly cleanups = new Map<string, Row>();
+  /** Cleanups sent for review (cleanup_completions), oldest first. */
+  readonly completions: Row[] = [];
+  /** The Embers ledger, oldest first. */
+  readonly embers: Row[] = [];
+  /** Campers who review cleanups. */
+  readonly moderators = new Set<string>();
   /**
    * Answers a Storage call before the default rules do (return undefined to
    * fall through), like `intercept` for queries.
@@ -362,6 +382,15 @@ export class FakeBackend {
     if (query.table === 'flags') return this.answerFlag(query, uid);
     if (query.table === 'spot_photos' || query.table === 'spot_photos_api') return this.answerPhoto(query, uid);
     if (query.table === 'checkins' || query.table === 'checkins_api') return this.answerCheckin(query, uid);
+    if (query.table === 'cleanup_tasks' || query.table === 'cleanup_tasks_api') return this.answerCleanup(query, uid);
+    if (query.table === 'cleanup_completions') return this.answerCompletion(query, uid);
+    if (query.table === 'embers_api') {
+      if (!uid) return { data: null, error: { message: 'permission denied for view embers_api', code: '42501' } };
+      return this.shape(
+        this.embers.filter((r) => r.camper_id === uid && this.matches(r, query.filters)).reverse(),
+        query,
+      );
+    }
     if (query.table === 'blocks') return this.answerBlock(query, uid);
 
     if (query.table === 'spots') {
@@ -423,6 +452,26 @@ export class FakeBackend {
         if (args.version !== TERMS_VERSION) return { data: null, error: { message: 'terms_outdated', code: 'P0001' } };
         this.terms.set(uid, TERMS_VERSION);
         return { data: null, error: null };
+      case 'am_moderator':
+        return { data: this.moderators.has(uid), error: null };
+      case 'cleanup_review_queue':
+        if (!this.moderators.has(uid)) return { data: null, error: { message: 'not_moderator', code: 'P0001' } };
+        return {
+          data: this.completions.filter((c) => c.status === 'pending').map((c) => this.reviewRow(c)),
+          error: null,
+        };
+      case 'approve_cleanup':
+      case 'reject_cleanup':
+        return this.review(name, uid, args);
+      case 'my_embers': {
+        const mine = this.embers.filter((r) => r.camper_id === uid);
+        const total = mine.reduce((sum, r) => sum + Number(r.amount), 0);
+        const day = new Date().toISOString().slice(0, 10);
+        const today = mine
+          .filter((r) => Number(r.amount) > 0 && (r.earned_on ?? String(r.created_at).slice(0, 10)) === day)
+          .reduce((sum, r) => sum + Number(r.amount), 0);
+        return { data: [{ total, today, daily_limit: 300 }], error: null };
+      }
       case 'my_blocks':
         return {
           data: [...this.blockedBy(uid)].map((id) => ({
@@ -446,6 +495,8 @@ export class FakeBackend {
     const { reason, details } = query.payload ?? {};
     if (typeof photoId === 'string') return this.flagPhoto(uid, photoId, String(reason), details);
     if (typeof checkinId === 'number') return this.flagCheckin(uid, checkinId, String(reason), details);
+    if (typeof query.payload?.task_id === 'string')
+      return this.flagTask(uid, query.payload.task_id, String(reason), details);
     const spot = typeof spotId === 'string' ? this.spots.get(spotId) : undefined;
     if (typeof spotId === 'string' && !spot) {
       return {
@@ -526,6 +577,32 @@ export class FakeBackend {
     return { data: null, error: null };
   }
 
+  private flagTask(uid: string, taskId: string, reason: string, details: unknown): QueryResult {
+    const task = this.cleanups.get(taskId);
+    if (!task) {
+      return {
+        data: null,
+        error: { message: 'insert or update on table "flags" violates foreign key', code: '23503' },
+      };
+    }
+    if (task.created_by === uid) return { data: null, error: { message: 'own_content', code: 'P0001' } };
+    if (this.flags.some((f) => f.reporter === uid && f.status === 'open' && f.taskId === taskId)) {
+      return { data: null, error: { message: 'duplicate key value violates unique constraint', code: '23505' } };
+    }
+    this.flags.push({
+      reporter: uid,
+      taskId,
+      reason,
+      ...(typeof details === 'string' ? { details } : {}),
+      status: 'open',
+    });
+    const reporters = new Set(
+      this.flags.filter((f) => f.taskId === taskId && f.status === 'open').map((f) => f.reporter),
+    );
+    if (reporters.size >= 3) task.hidden = true;
+    return { data: null, error: null };
+  }
+
   /** The spot-photos bucket, as supabase-js's storage.from(bucket) shows it. */
   private bucket(bucket: string) {
     const publicUrl = (path: string) => `https://fake.supabase.test/storage/v1/object/public/${bucket}/${path}`;
@@ -544,8 +621,8 @@ export class FakeBackend {
         const intercepted = this.storageIntercept?.(call);
         if (intercepted) return intercepted;
         const uid = this.auth.userId;
-        // Your own files, and not while a photo on a spot uses one.
-        const listed = new Set([...this.photos.values()].map((r) => r.path));
+        // Your own files, and not while a photo on a spot (or a cleanup) uses one.
+        const listed = this.listedPaths();
         const removed = paths.filter((path) => this.files.get(path)?.owner === uid && uid != null && !listed.has(path));
         for (const path of removed) this.files.delete(path);
         return Promise.resolve({ data: removed.map((name) => ({ name })), error: null });
@@ -687,6 +764,241 @@ export class FakeBackend {
         if (spot.verified && spot.created_by != null && this.confirmations(spot) < 2) spot.verified = false;
       }
     }
+    return { data: null, error: null };
+  }
+
+  /** Files a spot photo or a cleanup uses (moderation.photo_listed). */
+  private listedPaths(): Set<unknown> {
+    return new Set([
+      ...[...this.photos.values()].map((r) => r.path),
+      ...[...this.cleanups.values()].map((r) => r.before_path),
+      ...this.completions.flatMap((r) => [r.after_path, r.haul_path]),
+    ]);
+  }
+
+  /** The cleanup_tasks_api row for a cleanup, as `uid` sees it. */
+  private cleanupView(task: Row, uid: string | null): Row {
+    const blocked = this.blockedBy(uid);
+    const done = this.completions.find((c) => c.task_id === task.id && c.status === 'approved');
+    const shown = done && !blocked.has(String(done.camper_id)) ? done : undefined;
+    const spot = this.visibleSpot(task.spot_id, uid);
+    return {
+      id: task.id,
+      latitude: task.latitude,
+      longitude: task.longitude,
+      kind: task.kind,
+      size: task.size,
+      note: task.note ?? null,
+      status: task.status,
+      before_path: task.before_path,
+      created_by: task.created_by ?? null,
+      posted_by: this.profiles.get(String(task.created_by)) ?? null,
+      created_at: task.created_at,
+      spot_id: task.spot_id ?? null,
+      spot_name: spot ? (spot.name as string) : null,
+      hidden: task.hidden === true,
+      done_at: task.done_at ?? null,
+      cleaned_by_id: shown ? shown.camper_id : null,
+      cleaned_by: shown ? (this.profiles.get(String(shown.camper_id)) ?? null) : null,
+      after_path: shown ? shown.after_path : null,
+      haul_path: shown ? shown.haul_path : null,
+    };
+  }
+
+  /** Cleanups (migration 0008): reading them, posting one, deleting your own. */
+  private answerCleanup(query: FakeQuery, uid: string | null): QueryResult {
+    if (query.table === 'cleanup_tasks_api') {
+      const blocked = this.blockedBy(uid);
+      const rows = [...this.cleanups.values()]
+        .filter((t) => !t.hidden || (uid != null && t.created_by === uid))
+        .filter((t) => !blocked.has(String(t.created_by)))
+        .map((t) => this.cleanupView(t, uid))
+        .filter((r) => this.matches(r, query.filters))
+        .reverse();
+      return this.shape(rows, query);
+    }
+    if (!uid) return { data: null, error: { message: 'permission denied for table cleanup_tasks', code: '42501' } };
+    if (query.op === 'delete') {
+      const untouched = (t: Row) =>
+        t.created_by === uid &&
+        t.status === 'open' &&
+        t.hidden !== true &&
+        !this.completions.some((c) => c.task_id === t.id) &&
+        !this.flags.some((f) => f.taskId === t.id && f.status === 'open');
+      const gone = [...this.cleanups.values()].filter((t) => this.matches(t, query.filters) && untouched(t));
+      for (const t of gone) this.cleanups.delete(String(t.id));
+      return this.shape(
+        gone.map((t) => ({ id: t.id })),
+        query,
+      );
+    }
+    if (query.op !== 'insert') {
+      return { data: null, error: { message: 'permission denied for table cleanup_tasks', code: '42501' } };
+    }
+    const refused = this.postingBlock(uid);
+    if (refused) return { data: null, error: refused };
+    const { id, location, kind, size, note, before_path: path, spot_id: spotId } = query.payload ?? {};
+    const fail = (message: string) => ({ data: null, error: { message, code: 'P0001' } });
+    if (typeof note === 'string' && hasBlockedWords(note)) return fail('blocked_words');
+    if (path !== `${uid}/${String(id)}.jpg`) return fail('photo_path');
+    if (this.files.get(String(path))?.owner !== uid) return fail('photo_missing');
+    if (this.cleanups.has(String(id))) return { data: null, error: { message: 'duplicate key value', code: '23505' } };
+    if (this.listedPaths().has(String(path))) return fail('photo_used');
+    const at = readPoint(location);
+    if (!at) return { data: null, error: { message: 'parse error - invalid geometry', code: 'XX000' } };
+    if (spotId != null) {
+      const spot = this.visibleSpot(spotId, uid);
+      if (!spot || distanceMeters(spot as unknown as typeof at, at) > 2_000) return fail('spot_too_far');
+    }
+    const near = [...this.cleanups.values()].some(
+      (t) => t.status !== 'done' && !t.hidden && distanceMeters(t as unknown as typeof at, at) <= 30,
+    );
+    if (near) return fail('cleanup_nearby');
+    this.cleanups.set(String(id), {
+      id,
+      ...at,
+      kind,
+      size,
+      note: typeof note === 'string' ? note.trim() || null : null,
+      status: 'open',
+      before_path: path,
+      created_by: uid,
+      created_at: new Date().toISOString(),
+      spot_id: spotId ?? null,
+      hidden: false,
+      done_at: null,
+    });
+    return { data: null, error: null };
+  }
+
+  /** Cleanups sent for review: sending one, and reading your own (or approved ones). */
+  private answerCompletion(query: FakeQuery, uid: string | null): QueryResult {
+    if (query.op === 'select') {
+      const rows = this.completions
+        .filter((c) => c.status === 'approved' || (uid != null && c.camper_id === uid))
+        .filter((c) => this.matches(c, query.filters));
+      return this.shape(rows, query);
+    }
+    if (!uid || query.op !== 'insert') {
+      return { data: null, error: { message: 'permission denied for table cleanup_completions', code: '42501' } };
+    }
+    const refused = this.postingBlock(uid);
+    if (refused) return { data: null, error: refused };
+    const {
+      id,
+      task_id: taskId,
+      after_path: after,
+      haul_path: haul,
+      location,
+      accuracy_m: accuracy,
+      note,
+    } = query.payload ?? {};
+    const fail = (message: string) => ({ data: null, error: { message, code: 'P0001' } });
+    if (typeof note === 'string' && hasBlockedWords(note)) return fail('blocked_words');
+    if (after !== `${uid}/${String(id)}.jpg` || !String(haul).startsWith(`${uid}/`) || haul === after) {
+      return fail('photo_path');
+    }
+    if (this.files.get(String(after))?.owner !== uid || this.files.get(String(haul))?.owner !== uid) {
+      return fail('photo_missing');
+    }
+    if (this.completions.some((c) => c.id === id))
+      return { data: null, error: { message: 'duplicate key', code: '23505' } };
+    if (this.listedPaths().has(String(after)) || this.listedPaths().has(String(haul))) return fail('photo_used');
+    const task = this.cleanups.get(String(taskId));
+    if (!task || task.hidden) return fail('cleanup_gone');
+    if (task.status === 'done') return fail('cleanup_done');
+    if (task.status === 'review') return fail('cleanup_in_review');
+    const at = readPoint(location);
+    if (!at) return { data: null, error: { message: 'parse error - invalid geometry', code: 'XX000' } };
+    if (distanceMeters(task as unknown as typeof at, at) > 150) return fail('cleanup_too_far');
+    if (this.completions.filter((c) => c.task_id === taskId && c.camper_id === uid).length >= 2) {
+      return fail('cleanup_tries');
+    }
+    this.completions.push({
+      id,
+      task_id: taskId,
+      camper_id: uid,
+      after_path: after,
+      haul_path: haul,
+      ...at,
+      accuracy_m: typeof accuracy === 'number' ? accuracy : null,
+      note: typeof note === 'string' ? note.trim() || null : null,
+      status: 'pending',
+      size: null,
+      review_note: null,
+      created_at: new Date().toISOString(),
+    });
+    task.status = 'review';
+    return { data: null, error: null };
+  }
+
+  /** A row of public.cleanup_review_queue(). */
+  private reviewRow(c: Row): Row {
+    const task = this.cleanups.get(String(c.task_id)) ?? {};
+    const spot = typeof task.spot_id === 'string' ? this.spots.get(task.spot_id) : undefined;
+    return {
+      completion_id: c.id,
+      task_id: c.task_id,
+      kind: task.kind,
+      task_size: task.size,
+      task_note: task.note ?? null,
+      before_path: task.before_path,
+      after_path: c.after_path,
+      haul_path: c.haul_path,
+      note: c.note,
+      camper_id: c.camper_id,
+      camper_name: this.profiles.get(String(c.camper_id)) ?? null,
+      camper_joined: '2026-10-01T12:00:00+00:00',
+      camper_approved: this.completions.filter((a) => a.camper_id === c.camper_id && a.status === 'approved').length,
+      posted_by: task.created_by ?? null,
+      posted_by_name: this.profiles.get(String(task.created_by)) ?? null,
+      spot_id: task.spot_id ?? null,
+      spot_name: spot ? spot.name : null,
+      distance_m: Math.round(distanceMeters(task as never, c as never)),
+      accuracy_m: c.accuracy_m,
+      tries: this.completions.filter((r) => r.task_id === c.task_id && r.camper_id === c.camper_id).length,
+      task_created_at: task.created_at,
+      sent_at: c.created_at,
+    };
+  }
+
+  /** approve_cleanup and reject_cleanup, as a moderator. */
+  private review(name: string, uid: string, args: Row): QueryResult {
+    const fail = (message: string) => ({ data: null, error: { message, code: 'P0001' } });
+    if (!this.moderators.has(uid)) return fail('not_moderator');
+    const c = this.completions.find((r) => r.id === args.completion);
+    if (!c) return fail('review_gone');
+    if (c.status !== 'pending') return fail('review_done');
+    const task = this.cleanups.get(String(c.task_id));
+    if (!task) return fail('review_gone');
+    if (name === 'reject_cleanup') {
+      const why = String(args.reason ?? '').trim();
+      if (!why) return fail('reason_needed');
+      Object.assign(c, { status: 'rejected', review_note: why });
+      task.status = 'open';
+      return { data: null, error: null };
+    }
+    const size = String(args.final_size ?? task.size);
+    if (!(size in CLEANUP_EMBERS)) return fail('invalid_size');
+    Object.assign(c, { status: 'approved', size, reviewed_at: new Date().toISOString() });
+    Object.assign(task, { status: 'done', done_at: new Date().toISOString() });
+    const award = (camper: unknown, reason: string, amount: number) => {
+      if (camper == null) return;
+      this.embers.push({
+        id: this.embers.length + 1,
+        camper_id: camper,
+        reason,
+        ref: task.id,
+        spot_id: task.spot_id ?? null,
+        spot_name: typeof task.spot_id === 'string' ? (this.spots.get(task.spot_id)?.name ?? null) : null,
+        amount,
+        full_amount: amount,
+        earned_on: new Date().toISOString().slice(0, 10),
+        created_at: new Date().toISOString(),
+      });
+    };
+    award(c.camper_id, 'cleanup', CLEANUP_EMBERS[size] ?? 0);
+    if (task.created_by !== c.camper_id) award(task.created_by, 'cleanup_reported', 10);
     return { data: null, error: null };
   }
 

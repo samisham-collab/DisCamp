@@ -18,6 +18,8 @@ export const PHOTO_BUCKET = 'spot-photos';
 /** Photos one camper can add to one spot (the database holds this too). */
 export const MAX_PHOTOS_PER_SPOT = 3;
 export const MAX_CHECKIN_NOTE = 300;
+/** The after photo of a cleanup is taken within this many meters of its pin (0008). */
+export const CLEANUP_RADIUS_M = 150;
 /** A camper can say "Still good" about a spot once in this many days (0007). */
 export const CONFIRM_AGAIN_DAYS = 30;
 const DAY_MS = 86_400_000;
@@ -83,6 +85,41 @@ export function toCommunityError(error: unknown, fallback: string): CommunityErr
       return new CommunityError("You've checked in a lot today. Try again tomorrow.", 'limit');
     case 'spot_gone':
       return new CommunityError('That spot is no longer on DisCamp.', 'gone');
+    // Cleanups (migration 0008).
+    case 'spot_too_far':
+      return new CommunityError('That spot is more than 2 km from here. Post the cleanup without it.', 'invalid');
+    case 'cleanup_nearby':
+      return new CommunityError(
+        'Someone already posted a cleanup within 30 m of here. Find it in Cleanups and clean that one up.',
+        'already',
+      );
+    case 'cleanup_limit':
+      return new CommunityError("You've done a lot of cleanups today. Try again tomorrow.", 'limit');
+    case 'cleanup_gone':
+    case 'review_gone':
+      return new CommunityError('That cleanup is no longer on DisCamp.', 'gone');
+    case 'cleanup_done':
+      return new CommunityError('Someone already cleaned this up. Thanks for stopping!', 'already');
+    case 'cleanup_in_review':
+      return new CommunityError(
+        "Someone's cleanup of this is waiting for review. Check back in a day or two.",
+        'already',
+      );
+    case 'cleanup_too_far':
+      return new CommunityError(
+        `Take the after photo within ${CLEANUP_RADIUS_M} m of the cleanup's pin, then try again.`,
+        'invalid',
+      );
+    case 'cleanup_tries':
+      return new CommunityError("You've sent this cleanup for review twice, which is the most.", 'limit');
+    case 'photo_used':
+      return new CommunityError('That photo is already on DisCamp. Take a new one.', 'invalid');
+    case 'not_moderator':
+      return new CommunityError('Only DisCamp moderators review cleanups.', 'invalid');
+    case 'review_done':
+      return new CommunityError('This cleanup was already reviewed.', 'already');
+    case 'reason_needed':
+      return new CommunityError('Say why, so the camper can fix it.', 'invalid');
     case 'not_signed_in':
       return new CommunityError('Your sign-in has expired. Sign in again, then try again.', 'signed-out');
   }
@@ -99,7 +136,8 @@ export function toCommunityError(error: unknown, fallback: string): CommunityErr
   return new CommunityError(`${fallback} Please try again.`, 'server');
 }
 
-async function withTimeout<T>(run: (signal: AbortSignal) => Promise<T>, timeoutMs: number, fallback: string) {
+/** Runs one request with a time limit, and turns a refusal into a CommunityError. */
+export async function withTimeout<T>(run: (signal: AbortSignal) => Promise<T>, timeoutMs: number, fallback: string) {
   try {
     return await withDeadline(run, timeoutMs);
   } catch (error) {
@@ -202,6 +240,56 @@ const REFUSED = /^(P0001|PGRST|2[23]|42)/;
  * after a lost answer finds the file (and the photo) already there and
  * carries on.
  */
+/** A write's answer, as supabase-js gives it. */
+type WriteAnswer = { error: ErrorLike | null };
+
+/**
+ * Uploads a photo file into the camper's folder. A file already there (a
+ * retry after a lost answer) is fine. Storage only says no, not why: then
+ * `explain` sends the write the file was for, and the database says why
+ * (banned, rules not agreed to, signed out). With no file, it can't succeed.
+ */
+export async function uploadPhotoFile(
+  client: SupabaseClient,
+  path: string,
+  photo: PreparedPhoto,
+  readBytes: (uri: string) => Promise<ArrayBuffer>,
+  explain: () => PromiseLike<WriteAnswer>,
+): Promise<void> {
+  const bytes = await readBytes(photo.uri);
+  const upload = await client.storage
+    .from(PHOTO_BUCKET)
+    .upload(path, bytes, { contentType: 'image/jpeg', upsert: false });
+  if (!upload.error || ALREADY_UPLOADED.test(upload.error.message)) return;
+  if (STORAGE_REFUSED.test(upload.error.message) || String(upload.error.statusCode ?? '') === '403') {
+    const { error } = await explain();
+    if (error && error.message !== 'photo_missing') throw error;
+    throw new CommunityError(
+      "DisCamp couldn't take this photo. If you've added a lot today, try again tomorrow; if not, sign out and back in.",
+      'limit',
+    );
+  }
+  throw upload.error;
+}
+
+/**
+ * After the database refused a write, removes the files uploaded for it, so
+ * they don't linger. Not when the answer was lost (the write may well have
+ * worked, and needs them).
+ */
+export async function removeRefusedFiles(
+  client: SupabaseClient,
+  error: ErrorLike,
+  signal: AbortSignal,
+  paths: string[],
+): Promise<void> {
+  if (signal.aborted || !REFUSED.test(error.code ?? '')) return;
+  await client.storage
+    .from(PHOTO_BUCKET)
+    .remove(paths)
+    .catch(() => undefined);
+}
+
 export function addPhoto(
   client: SupabaseClient,
   { spotId, id, userId, photo }: NewPhoto,
@@ -211,41 +299,16 @@ export function addPhoto(
   const path = `${userId}/${id}.jpg`;
   return withTimeout(
     async (signal) => {
-      const bytes = await readBytes(photo.uri);
-      const upload = await client.storage
-        .from(PHOTO_BUCKET)
-        .upload(path, bytes, { contentType: 'image/jpeg', upsert: false });
-      if (upload.error && !ALREADY_UPLOADED.test(upload.error.message)) {
-        if (STORAGE_REFUSED.test(upload.error.message) || String(upload.error.statusCode ?? '') === '403') {
-          // Storage only says no. The database says why (banned, rules not
-          // agreed to, signed out); with no file, it can't add the photo.
-          const { error } = await client
-            .from('spot_photos')
-            .insert({ id, spot_id: spotId, path, width: photo.width, height: photo.height })
-            .retry(false)
-            .abortSignal(signal);
-          if (error && error.message !== 'photo_missing') throw error;
-          throw new CommunityError(
-            "DisCamp couldn't take this photo. If you've added a lot today, try again tomorrow; if not, sign out and back in.",
-            'limit',
-          );
-        }
-        throw upload.error;
-      }
-      const { error } = await client
-        .from('spot_photos')
-        .insert({ id, spot_id: spotId, path, width: photo.width, height: photo.height })
-        .retry(false)
-        .abortSignal(signal);
+      const insert = () =>
+        client
+          .from('spot_photos')
+          .insert({ id, spot_id: spotId, path, width: photo.width, height: photo.height })
+          .retry(false)
+          .abortSignal(signal);
+      await uploadPhotoFile(client, path, photo, readBytes, insert);
+      const { error } = await insert();
       if (error && error.code !== '23505') {
-        // Refused: don't leave the file behind. If the answer was lost, the
-        // photo may well be added, so the file stays for it.
-        if (!signal.aborted && REFUSED.test(error.code ?? '')) {
-          await client.storage
-            .from(PHOTO_BUCKET)
-            .remove([path])
-            .catch(() => undefined);
-        }
+        await removeRefusedFiles(client, error, signal, [path]);
         throw error;
       }
       const { data, error: readError } = await client

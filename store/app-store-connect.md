@@ -23,16 +23,16 @@ elsewhere.
 **Tracking:** DisCamp does not track. Answer "No" to using data for tracking for
 every type below, and the app needs no App Tracking Transparency prompt.
 
-| Data type                           | Collected?                                                    | Linked to the user? | Used for tracking? | Purposes          |
-| ----------------------------------- | ------------------------------------------------------------- | ------------------- | ------------------ | ----------------- |
-| Contact Info > Email Address        | Yes                                                           | Yes                 | No                 | App Functionality |
-| Contact Info > Name                 | Yes (the display name)                                        | Yes                 | No                 | App Functionality |
-| Identifiers > User ID               | Yes (account ID)                                              | Yes                 | No                 | App Functionality |
-| User Content > Photos or Videos     | Yes (photos campers add to spots)                             | Yes                 | No                 | App Functionality |
-| User Content > Other User Content   | Yes (spots, check-ins and reports)                            | Yes                 | No                 | App Functionality |
-| Location > Precise Location         | Yes (only when a camper places a spot with "Use my location") | Yes                 | No                 | App Functionality |
-| Diagnostics > Crash Data            | Yes (Sentry)                                                  | No                  | No                 | App Functionality |
-| Diagnostics > Other Diagnostic Data | Yes (Sentry error reports)                                    | No                  | No                 | App Functionality |
+| Data type                           | Collected?                                         | Linked to the user? | Used for tracking? | Purposes          |
+| ----------------------------------- | -------------------------------------------------- | ------------------- | ------------------ | ----------------- |
+| Contact Info > Email Address        | Yes                                                | Yes                 | No                 | App Functionality |
+| Contact Info > Name                 | Yes (the display name)                             | Yes                 | No                 | App Functionality |
+| Identifiers > User ID               | Yes (account ID)                                   | Yes                 | No                 | App Functionality |
+| User Content > Photos or Videos     | Yes (photos of spots and cleanups)                 | Yes                 | No                 | App Functionality |
+| User Content > Other User Content   | Yes (spots, check-ins, cleanups and reports)       | Yes                 | No                 | App Functionality |
+| Location > Precise Location         | Yes (placing a spot, posting or sending a cleanup) | Yes                 | No                 | App Functionality |
+| Diagnostics > Crash Data            | Yes (Sentry)                                       | No                  | No                 | App Functionality |
+| Diagnostics > Other Diagnostic Data | Yes (Sentry error reports)                         | No                  | No                 | App Functionality |
 
 Not collected: phone number, physical address, payment info, contacts,
 browsing or search history, purchases, usage data, advertising data,
@@ -48,8 +48,8 @@ These match the privacy manifest in `app.json` (`ios.privacyManifests`).
 
 Answer the questionnaire like this:
 
-- User-generated content: **Yes**. (Campers post spots, photos, check-in notes
-  and display names.
+- User-generated content: **Yes**. (Campers post spots, photos, check-in notes,
+  cleanups and display names.
   DisCamp has terms, a word filter, reporting, blocking and 24-hour review; see
   MODERATION.md.)
 - Messaging or chat between users: **No**.
@@ -71,9 +71,13 @@ Paste into **App Review Information > Notes** and fill in the brackets:
 >
 > To test camper features, sign in from the Account tab with Sign in with Apple
 > (your own Apple Account works; no demo account is needed). Before a camper
-> first posts (a spot, a photo or a check-in), the app shows its community rules
-> and asks them to agree. The camera is used only when "Take a photo" is tapped;
-> photos are shrunk and stripped of location data before they're sent.
+> first posts (a spot, a photo, a check-in or a cleanup), the app shows its
+> community rules and asks them to agree. The camera is used only when "Take a
+> photo" (or a cleanup's photo button) is tapped; photos are shrunk and stripped
+> of location data before they're sent. Cleanups (the Cleanups tab) use the
+> camper's location to pin the cleanup and check the after photo was taken
+> there. Embers are points with no cash value; they can't be bought.
+> To report a cleanup, open it and tap "Report this cleanup".
 >
 > User-generated content (Guideline 1.2):
 >
@@ -110,8 +114,9 @@ Mention its name in the notes.
 - [ ] `EXPO_PUBLIC_SUPPORT_EMAIL` set on expo.dev for production (the build
       stops without it)
 - [ ] `docs/_config.yml` filled in and the pages published
-- [ ] Supabase: migrations 0001–0006 and the seed run (0006 also makes the
-      `spot-photos` Storage bucket), all four sign-ins on,
+- [ ] Supabase: migrations 0001–0008 and the seed run
+      (`bash scripts/setup-database.sh`; 0006 also makes the `spot-photos`
+      Storage bucket), all four sign-ins on,
       the report-alert webhook working (send yourself a test report)
 - [ ] A TestFlight build passes the test list on a real iPhone
 - [ ] One spot added by a second account, for reviewers (see above)

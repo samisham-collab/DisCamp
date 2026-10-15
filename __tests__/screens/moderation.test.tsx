@@ -6,7 +6,7 @@ import { router } from 'expo-router';
 import { act, fireEvent, screen, waitFor } from 'expo-router/testing-library';
 import { Linking } from 'react-native';
 
-import { LEGAL_URLS } from '@/config';
+import { LEGAL_URLS, TERMS_VERSION } from '@/config';
 
 import { ALEX, fakeBackend, NEWBIE, SAM, type FakeUser } from '../../test/fakeSupabase';
 import { makeRow } from '../../test/fixtures';
@@ -230,7 +230,7 @@ describe('Terms of use', () => {
   it('asks a new camper to agree before their first spot', async () => {
     const backend = server(NEWBIE);
     await renderApp('/spot/new');
-    expect(await screen.findByText('Before you add spots')).toBeTruthy();
+    expect(await screen.findByText('Before you post')).toBeTruthy();
     expect(screen.getByText(/zero tolerance for objectionable content/)).toBeTruthy();
     expect(screen.getByText("You're 13 or older.")).toBeTruthy();
 
@@ -240,7 +240,7 @@ describe('Terms of use', () => {
 
     fireEvent.press(screen.getByText('I agree'));
     expect(await screen.findByLabelText('Name, required')).toBeTruthy();
-    expect(backend.terms.get(NEWBIE.id)).toBe(1);
+    expect(backend.terms.get(NEWBIE.id)).toBe(TERMS_VERSION);
   });
 
   it('lets the camper leave without agreeing', async () => {
@@ -265,7 +265,7 @@ describe('Terms of use', () => {
   it('asks before editing too, for campers from before the terms', async () => {
     server({ ...SAM, termsVersion: null });
     await renderApp('/spot/edit/sams-spot');
-    expect(await screen.findByText('Before you add spots')).toBeTruthy();
+    expect(await screen.findByText('Before you post')).toBeTruthy();
   });
 
   it('shows the terms again when the server says they changed', async () => {
@@ -276,7 +276,7 @@ describe('Terms of use', () => {
     fireEvent.changeText(screen.getByLabelText('GPS location, required'), '46.653, -121.614');
     backend.terms.delete(SAM.id);
     fireEvent.press(screen.getByText('Add spot'));
-    expect(await screen.findByText('Before you add spots')).toBeTruthy();
+    expect(await screen.findByText('Before you post')).toBeTruthy();
   });
 
   it('links the terms and privacy policy from sign-in', async () => {

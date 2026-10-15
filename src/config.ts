@@ -49,7 +49,7 @@ export const MAX_RIG_NAME_LENGTH = 40;
  * moderation.current_terms_version() in the database. When the terms change,
  * raise both (the database in a new migration) and update docs/terms.md.
  */
-export const TERMS_VERSION = 1;
+export const TERMS_VERSION = 2;
 
 /** Youngest age allowed to make an account (also in docs/terms.md). */
 export const MINIMUM_AGE = 13;

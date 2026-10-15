@@ -1,5 +1,6 @@
-// "What do the colors mean?" sheet: pin colors and the cost meter.
+// "What do the colors mean?" sheet: pin colors, cleanup pins and the cost meter.
 
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -38,6 +39,14 @@ export function LegendModal({ visible, onClose }: { visible: boolean; onClose: (
                 </View>
               </View>
             ))}
+            <SectionTitle>Orange map pins: cleanups</SectionTitle>
+            <View style={styles.row}>
+              <Ionicons name="location" size={28} color={colors.orange} />
+              <Text style={styles.rowDetail}>
+                Trash a camper posted that still needs packing out. Tap one to see it, and earn Embers for cleaning it
+                up.
+              </Text>
+            </View>
             <SectionTitle>Cost meter: per night for your rig</SectionTitle>
             {LEVELS.map((level) => (
               <View key={level} style={styles.row}>

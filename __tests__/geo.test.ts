@@ -4,13 +4,31 @@ import { DEFAULT_REGION } from '@/config';
 import {
   bearingDegrees,
   compassPoint,
+  distanceMeters,
   distanceMiles,
   formatCoordinates,
   formatDistance,
   formatDistanceSpoken,
   isValidCoordinate,
+  nearestWithin,
   regionForCoordinates,
 } from '@/lib/geo';
+
+describe('distanceMeters and nearestWithin', () => {
+  const here = { latitude: 39.19, longitude: -101.76 };
+  it('measures in meters: 0.0005 degrees of latitude is about 56 m', () => {
+    expect(distanceMeters(here, { latitude: 39.1905, longitude: -101.76 })).toBeCloseTo(55.6, 0);
+  });
+
+  it('finds the closest within a distance, or none', () => {
+    const near = { id: 'near', latitude: 39.191, longitude: -101.76 };
+    const nearer = { id: 'nearer', latitude: 39.1901, longitude: -101.76 };
+    const far = { id: 'far', latitude: 39.3, longitude: -101.76 };
+    expect(nearestWithin([near, far, nearer], here, 2_000)?.id).toBe('nearer');
+    expect(nearestWithin([far], here, 2_000)).toBeNull();
+    expect(nearestWithin([], here, 2_000)).toBeNull();
+  });
+});
 
 describe('distanceMiles', () => {
   it('is zero for the same point', () => {

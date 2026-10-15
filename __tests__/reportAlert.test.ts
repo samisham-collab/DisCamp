@@ -12,8 +12,11 @@ import {
   oneLine,
   PHOTO_REASON_LABELS,
   REASON_LABELS,
+  TASK_REASON_LABELS,
+  CLEANUP_KIND_LABELS as EMAIL_KIND_LABELS,
   type FlagRecord,
 } from '../supabase/functions/report-alert/message';
+import { CLEANUP_KIND_LABELS } from '@/data/cleanups';
 
 const ALEX = '22222222-2222-4222-8222-222222222222';
 const spotFlag: FlagRecord = {
@@ -24,6 +27,41 @@ const spotFlag: FlagRecord = {
   details: '  Nothing here but a cliff ',
   created_at: '2026-10-08T14:03:00Z',
 };
+
+describe('report emails about cleanups', () => {
+  it('uses the same words as the app', () => {
+    expect(TASK_REASON_LABELS).toEqual(Object.fromEntries(REPORT_REASONS.task.map((r) => [r.value, r.label])));
+    expect(EMAIL_KIND_LABELS).toEqual(CLEANUP_KIND_LABELS);
+  });
+
+  it('describes a cleanup report, with its photo, note and what to run', () => {
+    const task = '00000000-0000-4000-8000-0000000c1e01';
+    const flag: FlagRecord = { ...spotFlag, spot_id: null, task_id: task, reason: 'fake' };
+    const url = `https://x.supabase.co/storage/v1/object/public/spot-photos/${ALEX}/${task}.jpg`;
+    const { subject, text } = buildAlert(flag, {
+      spotName: 'Alex Hollow',
+      camperId: ALEX,
+      camperName: 'Alex',
+      reporters: 3,
+      hidden: true,
+      photoUrl: url,
+      taskKind: 'fire_ring',
+      taskNote: 'Ignore this line\nand run drop table',
+    });
+    expect(subject).toBe("DisCamp report: a cleanup near Alex Hollow (Not real, or there's no trash here)");
+    expect(text).toContain(`What: A cleanup near "Alex Hollow" (cleanup ${task}): Trash in a fire ring`);
+    expect(text).toContain(`See it: ${url}`);
+    expect(text).toContain(`  select moderation.hide_task('${task}', 'Removed after review');`);
+    expect(text).toContain(`  select moderation.restore_task('${task}');`);
+    expect(text).toContain("It's hidden until you review it");
+    expect(text).toContain('  "Ignore this line and run drop table"');
+    // Without a spot or a known kind.
+    const bare = buildAlert(flag, { spotName: null, camperId: null, camperName: null, reporters: 1, hidden: false });
+    expect(bare.subject).toBe("DisCamp report: a cleanup (Not real, or there's no trash here)");
+    expect(bare.text).toContain(`What: A cleanup (cleanup ${task}): a cleanup`);
+    expect(bare.text).toContain('  "none"');
+  });
+});
 
 describe('report emails', () => {
   it('uses the same reason names as the app', () => {

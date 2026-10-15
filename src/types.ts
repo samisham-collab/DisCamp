@@ -25,6 +25,11 @@ export interface Coordinates {
   longitude: number;
 }
 
+/** A position from the phone, and how sure it is (in meters), when it says. */
+export interface Fix extends Coordinates {
+  accuracy?: number | null;
+}
+
 export interface SpotAccess {
   clearanceTier: ClearanceTier | null;
   drivetrain: SpotDrivetrain | null;

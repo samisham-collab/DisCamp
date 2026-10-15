@@ -10,7 +10,16 @@ import type { SpotMapProps } from './SpotMap.types';
 
 export type { SpotMapHandle, SpotMapProps } from './SpotMap.types';
 
-export function SpotMap({ ref, rows, selectedId, onSelect, bottomInset, onMapReady }: SpotMapProps) {
+export function SpotMap({
+  ref,
+  rows,
+  selectedId,
+  onSelect,
+  bottomInset,
+  onMapReady,
+  cleanups,
+  onOpenCleanup,
+}: SpotMapProps) {
   useImperativeHandle(
     ref,
     () => ({ fitToRows: () => undefined, centerOn: () => undefined, currentRegion: () => null }),
@@ -32,6 +41,17 @@ export function SpotMap({ ref, rows, selectedId, onSelect, bottomInset, onMapRea
           >
             <SpotPin status={row.fit.status} selected={row.spot.id === selectedId} />
             <Text style={styles.pinName}>{row.spot.name}</Text>
+          </Pressable>
+        ))}
+        {(cleanups ?? []).map((pin) => (
+          <Pressable
+            key={`cleanup-${pin.id}`}
+            onPress={() => onOpenCleanup?.(pin.id)}
+            accessibilityRole="button"
+            accessibilityLabel={pin.label}
+            style={styles.pinRow}
+          >
+            <Text style={styles.pinName}>{pin.label}</Text>
           </Pressable>
         ))}
       </ScrollView>

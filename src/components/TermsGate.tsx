@@ -52,7 +52,7 @@ export function TermsGate() {
       <View style={styles.intro}>
         <Ionicons name="shield-checkmark-outline" size={48} color={colors.pine} />
         <Text style={styles.title} accessibilityRole="header">
-          Before you add spots
+          Before you post
         </Text>
         <Text style={styles.body}>
           DisCamp works because campers look out for each other. Please agree to these rules.

@@ -5,7 +5,7 @@ import * as Location from 'expo-location';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert, Linking } from 'react-native';
 
-import type { Coordinates } from '../types';
+import type { Coordinates, Fix } from '../types';
 import { isValidCoordinate } from './geo';
 import { describeError, log } from './log';
 
@@ -15,8 +15,12 @@ interface LocationContextValue {
   status: LocationStatus;
   coords: Coordinates | null;
   locating: boolean;
-  /** Asks for permission if needed, then finds the camper. Null if it couldn't. */
-  locate: () => Promise<Coordinates | null>;
+  /**
+   * Asks for permission if needed, then finds the camper. Null if it
+   * couldn't. `fresh`: a fix from the last 30 seconds, as exact as the phone
+   * can get (for cleanup photos), with how sure it is.
+   */
+  locate: (options?: { fresh?: boolean }) => Promise<Fix | null>;
 }
 
 const LocationContext = createContext<LocationContextValue | null>(null);
@@ -26,6 +30,9 @@ const POSITION_TIMEOUT_MS = 15_000;
 /** Longest wait for quick native checks (permission status, services, last fix). */
 const CHECK_TIMEOUT_MS = 5_000;
 const LAST_KNOWN_MAX_AGE_MS = 5 * 60_000;
+/** For a fresh fix (cleanup photos): this recent, and this sure (meters). */
+const FRESH_MAX_AGE_MS = 30_000;
+const FRESH_ACCURACY_M = 50;
 
 /**
  * Resolves to `fallback` if `promise` hasn't settled within `ms`, so a native
@@ -53,10 +60,12 @@ async function checkPermission(): Promise<Location.LocationPermissionResponse> {
   return permission;
 }
 
-function toCoords(position: Location.LocationObject | null): Coordinates | null {
+function toCoords(position: Location.LocationObject | null): Fix | null {
   if (!position) return null;
   const c = { latitude: position.coords.latitude, longitude: position.coords.longitude };
-  return isValidCoordinate(c) ? c : null;
+  if (!isValidCoordinate(c)) return null;
+  const accuracy = position.coords.accuracy;
+  return typeof accuracy === 'number' && Number.isFinite(accuracy) ? { ...c, accuracy } : c;
 }
 
 /**
@@ -71,19 +80,27 @@ function noFix(step: string) {
   };
 }
 
-/** A recent fix if there is one (fast), otherwise a fresh one. Null if none comes. */
-async function currentPosition(): Promise<Coordinates | null> {
+/**
+ * A recent fix if there is one (fast), otherwise a new one. Null if none
+ * comes. `fresh`: only from the last 30 seconds and good to 50 m, otherwise
+ * a new, high-accuracy one.
+ */
+async function currentPosition(fresh = false): Promise<Fix | null> {
   const lastKnown = await orAfter(
-    Location.getLastKnownPositionAsync({ maxAge: LAST_KNOWN_MAX_AGE_MS }).catch(noFix('last known')),
+    Location.getLastKnownPositionAsync(
+      fresh ? { maxAge: FRESH_MAX_AGE_MS, requiredAccuracy: FRESH_ACCURACY_M } : { maxAge: LAST_KNOWN_MAX_AGE_MS },
+    ).catch(noFix('last known')),
     CHECK_TIMEOUT_MS,
     null,
   );
   const recent = toCoords(lastKnown);
   if (recent) return recent;
-  const fresh = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+  const found = Location.getCurrentPositionAsync({
+    accuracy: fresh ? Location.Accuracy.High : Location.Accuracy.Balanced,
+  })
     .then(toCoords)
     .catch(noFix('current'));
-  return orAfter(fresh, POSITION_TIMEOUT_MS, null);
+  return orAfter(found, POSITION_TIMEOUT_MS, null);
 }
 
 function explainDenied() {
@@ -105,7 +122,8 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<LocationStatus>('checking');
   const [coords, setCoords] = useState<Coordinates | null>(null);
   const [locating, setLocating] = useState(false);
-  const busy = useRef<Promise<Coordinates | null> | null>(null);
+  // One request at a time of each kind (a fresh one can't share a looser one).
+  const busy = useRef<Partial<Record<'any' | 'fresh', Promise<Fix | null>>>>({});
 
   // On launch, use location only if the camper already allowed it. No prompt,
   // and no alerts: a quiet failure here just means no distances yet.
@@ -140,8 +158,11 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const locate = useCallback((): Promise<Coordinates | null> => {
-    if (busy.current) return busy.current;
+  const locate = useCallback((options?: { fresh?: boolean }): Promise<Fix | null> => {
+    const fresh = options?.fresh === true;
+    const kind = fresh ? 'fresh' : 'any';
+    const pending = busy.current[kind];
+    if (pending) return pending;
     const run = (async () => {
       setLocating(true);
       try {
@@ -171,7 +192,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
           servicesOff();
           return null;
         }
-        const found = await currentPosition();
+        const found = await currentPosition(fresh);
         if (!found) {
           Alert.alert("Couldn't find your location", 'Try again in a moment, ideally with a clear view of the sky.');
           return null;
@@ -184,10 +205,10 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         return null;
       } finally {
         setLocating(false);
-        busy.current = null;
+        delete busy.current[kind];
       }
     })();
-    busy.current = run;
+    busy.current[kind] = run;
     return run;
   }, []);
 

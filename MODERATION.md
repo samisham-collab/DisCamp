@@ -1,18 +1,49 @@
 # Moderation
 
-DisCamp lets campers post spots, photos and check-in notes and pick display
-names, so Apple's App Review (Guideline 1.2) expects four things, and DisCamp
+DisCamp lets campers post spots, photos, check-in notes and cleanups and pick
+display names, so Apple's App Review (Guideline 1.2) expects four things, and DisCamp
 has all of them:
 
-| What Apple asks for                                                                   | Where it is in DisCamp                                                                              |
-| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Terms that rule out objectionable content and abusive users, agreed to before posting | The community rules screen, before a camper first posts; every write checks it (`accept_terms`)     |
-| A filter for objectionable material                                                   | The word filter, in the app (`src/lib/wordFilter.ts`) and in the database (`moderation.word_rules`) |
-| A way to report content                                                               | "Report this spot" and "Report the name" on every spot page; "Report" on photos and check-in notes  |
-| A way to block abusive users                                                          | "Block" on every spot and photo added by another camper; Account lists who you've blocked           |
+| What Apple asks for                                                                   | Where it is in DisCamp                                                                               |
+| ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Terms that rule out objectionable content and abusive users, agreed to before posting | The community rules screen, before a camper first posts; every write checks it (`accept_terms`)      |
+| A filter for objectionable material                                                   | The word filter, in the app (`src/lib/wordFilter.ts`) and in the database (`moderation.word_rules`)  |
+| A way to report content                                                               | "Report this spot" and "Report the name" on every spot page; "Report" on photos, check-ins, cleanups |
+| A way to block abusive users                                                          | "Block" on every spot and photo added by another camper; Account lists who you've blocked            |
 
 The fifth is on you: **act on every report within 24 hours.** This page is
-how.
+how. It also covers reviewing cleanups, so campers get their Embers.
+
+## Reviewing cleanups (in the app)
+
+Once, in the SQL Editor, make yourself a moderator (put your display name in
+the quotes; `find_camper` shows who matches):
+
+```sql
+select moderation.add_moderator(camper_id) from moderation.find_camper('Sam');
+```
+
+Then open **Account > Review cleanups**. Each cleanup waiting shows the before
+photo, the after photo and the haul shot (tap one to see it full size), how
+far from the cleanup's pin the after photo was taken (and how sure the phone
+was), who sent it, when they joined and how many of their cleanups you've
+approved before.
+
+- **Approve** when the after photo shows the same place, now clean, and the
+  haul shot fits the size. Change the size first if it was posted too big or
+  too small: small earns 50 Embers, medium 100, large 150. Whoever posted the
+  cleanup (if it's someone else) earns 10.
+- **Send back** with a reason when it doesn't. The camper sees it on the
+  cleanup and can send it once more (two tries each).
+- You can approve your own cleanups. Add a second moderator with the same
+  line, and remove one with `select moderation.remove_moderator('<camper_id>');`.
+- To list what's waiting from the SQL Editor:
+  `select * from public.cleanup_completions where status = 'pending';`
+  Approving and sending back only work in the app (they check who you are).
+- **Embers** are a ledger: `select * from public.embers where camper_id = '<camper_id>' order by id;`
+  Never edit or delete rows by hand (the database refuses edits). Removing a
+  spot, photo, check-in or cleanup with the tools below takes its Embers back,
+  and so does a camper deleting their own photo.
 
 ## One-time setup
 
@@ -62,11 +93,12 @@ everything waiting in the **SQL Editor**:
 select * from moderation.queue;
 ```
 
-One row per reported spot, photo, check-in or name, oldest first: how many
+One row per reported spot, photo, check-in, cleanup or name, oldest first: how many
 campers reported it, their reasons and notes, and whether it's already hidden.
 The `kind` column says which. For photos, `photo_path` is the file (open it in
 **Storage > spot-photos**, or from the link in the email); for check-ins,
-`checkin_note` is what the camper wrote.
+`checkin_note` is what the camper wrote; for cleanups, `task_photo_path` is the
+before photo.
 
 Then decide:
 
@@ -80,6 +112,8 @@ Then decide:
 | A photo is fine (also brings back one that 3 reports hid)    | `select moderation.restore_photo('<photo_id>');`               |
 | A check-in note breaks the rules                             | `select moderation.hide_checkin(<checkin_id>);`                |
 | A check-in is fine                                           | `select moderation.restore_checkin(<checkin_id>);`             |
+| A cleanup breaks the rules (fake, offensive photo)           | `select moderation.hide_task('<task_id>');`                    |
+| A cleanup is fine (also brings back one that 3 reports hid)  | `select moderation.restore_task('<task_id>');`                 |
 | Someone keeps breaking the rules, or posts something serious | `select moderation.ban('<camper_id>', 'Hateful content');`     |
 
 Each one closes the reports it covers, so they leave the queue.
@@ -91,7 +125,7 @@ Good to know:
   Once you've dismissed someone's report on a spot (by restoring it), their
   later reports on it don't count toward hiding it again, so the same few
   campers can't keep taking it down.
-- **3 reports hide a photo or a check-in too**, the same way.
+- **3 reports hide a photo, a check-in or a cleanup too**, the same way.
 - **Delete a removed photo's file.** `hide_photo` takes it off the spot, but the
   file stays in Storage, where anyone with its address could still open it. For
   anything that shouldn't exist (someone's face, a license plate, anything
@@ -109,8 +143,9 @@ Good to know:
   a note that it's under review, and can fix it, but can't delete it (or any
   spot with open reports). Restore it once it's right.
 - **A ban** stops a camper posting, editing, renaming and reporting. Their
-  spots, photos and check-ins come off the map too; add `keep_spots => true`
-  to leave them all up:
+  spots, photos, check-ins and cleanups come off the map too, and cleanups
+  they sent for review are sent back; add `keep_spots => true` to leave what
+  they posted up:
   `select moderation.ban('<camper_id>', 'Rude name', keep_spots => true);`
   The ban sticks even if they delete their account and sign up again with the
   same email or the same Apple, Google, Microsoft or GitHub sign-in (the

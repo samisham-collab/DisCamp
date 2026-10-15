@@ -78,6 +78,9 @@ describe('after sign-in', () => {
     expect(safeNext(['/account', '/x'])).toBe('/account');
     expect(safeNext('/spot/edit/camper-spot-1')).toBe('/spot/edit/camper-spot-1');
     expect(safeNext('/spot/smoky-gardens')).toBe('/spot/smoky-gardens');
+    const task = '00000000-0000-4000-8000-0000000c1e01';
+    for (const next of ['/cleanups', `/cleanup/${task}`, `/report/task/${task}`]) expect(safeNext(next)).toBe(next);
+    expect(safeNext('/cleanup/not-an-id')).toBeNull();
     expect(safeNext('/report/spot/smoky-gardens')).toBe('/report/spot/smoky-gardens');
     expect(safeNext('/report/camper/22222222-2222-4222-8222-222222222222')).toBe(
       '/report/camper/22222222-2222-4222-8222-222222222222',

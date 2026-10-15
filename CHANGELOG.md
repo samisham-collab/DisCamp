@@ -2,6 +2,25 @@
 
 All notable changes to DisCamp. Dates are when the version was finished.
 
+## 1.6.0 (2026-10-15)
+
+Cleanups, the moderators' review, and Embers (product plan stories 7, 8 and 9). Run migration `0008_cleanups_embers.sql` along with this version: `bash scripts/setup-database.sh` runs just that file. Then make yourself a moderator (README "Moderation").
+
+### Added
+
+- **Cleanups.** A new **Cleanups** tab (and **Post a cleanup here** on every spot's page) posts trash at a site with a before photo from the camera, never the photo library. It's pinned where the camper stands, linked to a spot within 2 km, with what it is (litter, a fire ring, dumped trash, other), how big (small, medium, large) and an optional note. One cleanup per place: a second within 30 m is turned away. Up to 10 a day. Open cleanups show as orange pins on the map, in the Cleanups tab (nearest first) and on the spot's page; the Cleanups tab also lists those waiting for review and those done in the last 30 days. Whoever posted one can delete it until someone acts on it.
+- **I cleaned it up.** Anyone, the camper who posted it included, sends an after photo, taken within 150 m of the pin (the app checks a fresh location from right after the photo; the database checks the location the app sends, and a moderator looks at every cleanup), and a haul shot of what they packed out. It waits for review; one at a time per cleanup, two tries per camper. A cleanup sent back shows why.
+- **Review** for moderators, from Account: before, after and haul photos side by side, how far from the pin the after photo was taken, who sent it and their record. Approve at the size you see, or send it back with a reason. Moderators are added in the SQL Editor (`moderation.add_moderator`).
+- **Embers and ranks** on Account: the total, rank (Tenderfoot to Guardian), how far to the next, today's count against the daily limit, recent Embers, and how to earn them. An approved cleanup earns 50/100/150 by size and 10 for whoever posted it; a spot you added that 2 campers confirm, 50; your first "Still good" and first change report on each spot, 10 each (a "Still good" taken back keeps its Embers); photos, 5 (3 a spot, ever). Up to 300 a day, 100 a day for an account's first two weeks, and at most 50 a day from check-ins (they need no proof of a visit). Only the database writes Embers, in an append-only ledger; photos and check-ins from 1.5 earned theirs when 0008 ran. Deleting a photo takes its Embers back, and so does a moderator removing a spot, photo, check-in or cleanup. A photo already on DisCamp can't be used for a cleanup.
+- **Reports for cleanups**, with their own reasons, an email with the before photo and the lines to run, and `moderation.hide_task` / `restore_task`. Three reports hide a cleanup until reviewed. A ban takes down a camper's cleanups and sends back what they sent for review.
+
+### Changed
+
+- Location gets a fresh, high-accuracy fix (with how sure it is) for cleanup photos; the rest of the app is unchanged.
+- The terms of use cover cleanups and Embers (no cash value, can't be bought, can be taken back for abuse); the privacy policy, App Store privacy answers and permission messages cover cleanup photos and locations. The terms version goes to 2, so campers agree again before their next post.
+- The community-rules screen before a first post says "Before you post" (it's no longer only about spots).
+- The map legend explains the orange cleanup pins.
+
 ## 1.5.1 (2026-10-14)
 
 "Still good" changes, from testing 1.5.0. Run migration `0007_still_good_once.sql` along with this version: `bash scripts/setup-database.sh` runs just that file.

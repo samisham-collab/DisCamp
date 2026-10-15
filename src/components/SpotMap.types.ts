@@ -15,6 +15,13 @@ export interface SpotMapHandle {
   currentRegion: () => Region | null;
 }
 
+/** A cleanup still to do, shown as an orange pin. */
+export interface CleanupPin extends Coordinates {
+  id: string;
+  /** Read by screen readers: "Cleanup: Litter · small". */
+  label: string;
+}
+
 export interface SpotMapProps {
   ref?: Ref<SpotMapHandle>;
   rows: SpotRow[];
@@ -27,4 +34,7 @@ export interface SpotMapProps {
   bottomInset: number;
   /** Called once the map can move. Camera moves before this are ignored on Android. */
   onMapReady?: () => void;
+  /** Cleanups to show, and what tapping one does. */
+  cleanups?: readonly CleanupPin[];
+  onOpenCleanup?: (id: string) => void;
 }

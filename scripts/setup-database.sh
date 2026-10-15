@@ -114,6 +114,9 @@ for f in supabase/migrations/[0-9]*.sql; do
     fail "Stopped: $f didn't finish (the error is above), so none of it was kept and nothing after it ran. Send a screenshot of this window."
   fi
 done
+# Tell Supabase's API about new tables and functions now (it usually notices
+# on its own; this makes sure).
+run -c "notify pgrst, 'reload schema'" >/dev/null 2>&1 || true
 printf 'Running supabase/seed.sql ... '
 run -1 -f supabase/seed.sql >/dev/null || fail "Stopped: the starter spots didn't load (the error is above)."
 printf 'done\n'

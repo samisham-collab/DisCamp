@@ -26,12 +26,15 @@ It ships with six starter spots from public listings:
 - **Works offline**: the last spots loaded are saved on the phone. If the server can't be reached, a banner says so and offers Retry.
 - **Location only when asked**: DisCamp never asks for location on launch. Tap "Show my location" or "Sort by distance" when you want distances.
 - **Screen readers**: every control has a label and role, and filter counts and connection problems are read out.
-- **Sign in** with Apple, Google, Microsoft or GitHub (Account tab, or "Add spot"). Only needed to add spots.
+- **Sign in** with Apple, Google, Microsoft or GitHub (Account tab, or "Add spot"). Only needed to post (spots, photos, check-ins, cleanups).
 - **Add a spot**: drop a pin on a satellite map (or use your location, or paste GPS), then rate access, who fits and cost. Only the name, land manager and location are required; anything else can stay "Not sure". The draft is saved as you type. New spots show for everyone right away, marked "not yet confirmed".
 - **Your spots**: edit or delete the spots you added (deleting stops once other campers have reported on a spot). The Account tab lists them, and lets you change your display name, sign out or delete your account.
 - **Community rules**: before they first post, campers agree to the terms of use. A word filter keeps offensive words out of spots, notes and names.
 - **Photos**: campers add up to 3 photos per spot, from the camera or their library. Each photo is shrunk to 1,600 pixels and saved fresh before it's sent, which strips its location and camera details. Tap a photo to see it full size, delete your own, or report or block someone else's.
 - **Still good?**: one tap tells other campers a spot is still as described, and the spot shows when it was last confirmed. Each camper can do it once per spot every 30 days; afterwards the button shows it's done. Reporting a change afterwards takes their "Still good" back. Two campers (other than the one who added it) saying "Still good" mark a spot confirmed. **Something changed** reports a washout, a locked gate, trash or a closure; it shows as a warning on the spot until someone says it's still good.
+- **Cleanups**: found trash at a site? The **Cleanups** tab (or a spot's page) posts it with a before photo from the camera, pinned where you stand and linked to a spot within 2 km. Open cleanups show as orange pins on the map and in the Cleanups tab, nearest first. Whoever packs it out (the camper who posted it too) taps **I cleaned it up** and sends an after photo, taken within 150 m of the pin, and a haul shot of what they carried out. It waits for a moderator; a camper can send a cleanup twice.
+- **Review** (moderators only, from Account): the before, after and haul photos side by side, how far from the pin the after photo was taken, and who sent it. **Approve** at the size you see, or **Send back** with a reason the camper reads.
+- **Embers**: points for helping, shown on Account with your rank (Tenderfoot, Scout at 250, Trailblazer at 1,000, Pathfinder at 3,000, Steward at 7,500, Guardian at 15,000), how far to the next, today's count and what earned them. An approved cleanup earns 50, 100 or 150 by size, and 10 for whoever posted it; a spot you added that 2 campers confirm earns 50; your first "Still good" and first change report on a spot earn 10 each; photos earn 5 (3 a spot; deleting a photo takes its 5 back). Up to 300 a day, 100 a day in an account's first two weeks, and at most 50 a day from check-ins. Embers have no cash value and can't be bought; only the database adds them.
 - **Report and block**: every spot page has **Report this spot**, and for spots campers added, **Report the name** and **Block**. Blocked campers' spots and photos disappear for you; Account lists them. Photos can be reported too. Each report emails you, and 3 reports hide a spot or photo until you review it. [MODERATION.md](MODERATION.md) is the routine.
 - **Help and contact**: the Account tab shows the support email and links to the privacy policy, terms and support page.
 - Works with **no backend**: then it shows the starter spots, and sign-in and adding spots are turned off. Supabase is optional (see below).
@@ -113,9 +116,10 @@ update public.spots set verified = true where id = 'smoky-gardens';
    5. `supabase/migrations/0005_fixes.sql` lets hookups be "not reported" and sharpens the word filter (1.4.1).
    6. `supabase/migrations/0006_photos_checkins.sql` adds photos (and their Storage bucket), "Still good" check-ins and change reports (1.5.0). See "Photos" below.
    7. `supabase/migrations/0007_still_good_once.sql` makes "Still good" once per spot every 30 days, and lets a change report take it back (1.5.1).
-   8. `supabase/seed.sql` adds the starter spots.
+   8. `supabase/migrations/0008_cleanups_embers.sql` adds cleanups, the moderators' review, and Embers (1.6.0). It also gives earlier photos and check-ins their Embers.
+   9. `supabase/seed.sql` adds the starter spots.
 
-   Already ran some for an earlier version? Run only the ones after it (for 1.3: 0004 to 0007; for 1.4.0: 0005 to 0007; for 1.4.1: 0006 and 0007; for 1.5.0: just 0007), then the seed. Never rerun an older file after a newer one: newer files change things the older ones made. To switch a database set up by hand over to the script, tell it the last file that ran, for example `bash scripts/setup-database.sh --after 0005`.
+   Already ran some for an earlier version? Run only the ones after it (for 1.3: 0004 to 0008; for 1.4.0: 0005 to 0008; for 1.4.1: 0006 to 0008; for 1.5.0: 0007 and 0008; for 1.5.1: just 0008), then the seed. Never rerun an older file after a newer one: newer files change things the older ones made. To switch a database set up by hand over to the script, tell it the last file that ran, for example `bash scripts/setup-database.sh --after 0005`.
 
 3. Copy your **Project URL** and **publishable key** from the project's API settings.
 4. For your phone: `cp .env.example .env`, put both values in `.env`, and restart `npx expo start`.
@@ -139,6 +143,8 @@ If 0006 printed a warning that Storage was not set up (some projects don't let t
      `bucket_id = 'spot-photos' and owner_id = (select auth.uid()::text)`
    - **DELETE**, named "Campers delete their own spot photos", using:
      `bucket_id = 'spot-photos' and owner_id = (select auth.uid()::text) and not moderation.photo_listed(name)`
+
+Cleanup photos (before, after and haul shots) use the same bucket and rules: 0008 adds nothing to Storage. They don't count toward the 25 files a day (cleanups have their own limits: 10 posted and 10 sent a day), and a photo already on DisCamp can't be used again.
 
 Photos are public files: anyone with a photo's address can open it, which is what lets them show on spot pages. File names are random, so they can't be guessed. Campers can only upload files named like a photo into their own folder, up to 25 a day, and can't delete a file while a photo on a spot uses it (so a reported photo's file stays for you to review). When you remove a photo after a report, delete its file too (MODERATION.md says how). The free plan's 1 GB of Storage holds about 3,000 photos.
 
@@ -183,6 +189,14 @@ Without these, sign-in opens and then quietly comes back as "cancelled".
 
 **Moderation.** Apple expects you to act on reports within 24 hours. [MODERATION.md](MODERATION.md) sets up an email for every report (a small Supabase Edge Function, `supabase/functions/report-alert`, plus Resend) and walks through the daily routine in the SQL Editor.
 
+**Reviewing cleanups.** Make yourself a moderator once, in the SQL Editor (put your display name in the quotes):
+
+```sql
+select moderation.add_moderator(camper_id) from moderation.find_camper('Sam');
+```
+
+Then **Account > Review cleanups** shows what's waiting. MODERATION.md has the details.
+
 **Legal pages.** The privacy policy, terms of use and support page are in `docs/`, ready for GitHub Pages:
 
 1. Fill in your name and support email at the top of `docs/_config.yml`.
@@ -214,14 +228,19 @@ Builds run on Expo's servers with EAS (`eas.json` has a **preview** and a **prod
 src/
   app/                      Screens (Expo Router: every file here is a screen)
     _layout.tsx             Providers, splash screen, crash screen, main stack
-    (tabs)/_layout.tsx      Bottom tabs: Explore, My Rig, Account
+    (tabs)/_layout.tsx      Bottom tabs: Explore, Cleanups, My Rig, Account
     (tabs)/index.tsx        Explore: map or list, filters, summary card, "Add spot"
+    (tabs)/cleanups.tsx     Cleanups: to clean up (nearest first), waiting for review, done lately
     (tabs)/rig.tsx          My Rig
-    (tabs)/account.tsx      Account: name, your spots, blocked campers, help, sign out, delete account
+    (tabs)/account.tsx      Account: Embers and rank, name, your spots, blocked campers, help, sign out, delete account
     spot/[id].tsx           Spot page (edit and delete if you added it; report and block otherwise)
-    report/[kind]/[id].tsx  Report a spot, a photo or a camper's name
+    report/[kind]/[id].tsx  Report a spot, a photo, a check-in, a cleanup or a camper's name
     checkin/[id].tsx        Report a change at a spot (washout, locked gate, trash, closed)
     rules.tsx               The community rules on their own, before a first photo or check-in
+    cleanup/[id].tsx        A cleanup: before photo, status, "I cleaned it up", delete or report
+    cleanup/new.tsx         Post a cleanup (before photo, pinned where you stand)
+    cleanup/send/[id].tsx   Send a cleanup for review (after photo within 150 m, haul shot)
+    review.tsx              Moderators: approve cleanups or send them back
     spot/new.tsx            Add a spot
     spot/edit/[id].tsx      Edit a spot you added
     sign-in.tsx             Sign in with Apple, Google, Microsoft or GitHub
@@ -235,6 +254,10 @@ src/
   data/spotWrites.ts        Adding, editing and deleting spots on the server
   data/moderation.ts        Reports, blocks and agreeing to the terms, on the server
   data/community.ts         Photos and check-ins on the server
+  data/cleanups.ts          Cleanups, reviews and Embers on the server
+  data/cleanupsStore.tsx    Shares cleanups with the map, Cleanups tab and spot pages
+  lib/embers.ts             Embers amounts and ranks
+  lib/camera.ts             Camera-only photos for cleanups
   lib/fit.ts                Rig-fit rules and the C1–C7 clearance tiers
   lib/cost.ts               Cost meter levels and the fee that applies to your rig
   lib/geo.ts                Distances, directions, map regions
@@ -254,6 +277,8 @@ src/
   components/TermsGate.tsx  Community rules and "I agree", before a first post
   components/SpotPhotos.tsx A spot's photos: thumbnails, add, full-size view
   components/SpotCheckins.tsx "Were you here?": Still good, Something changed, recent check-ins
+  components/Cleanups.tsx   Cleanup rows, photos, and the Cleanups card on spot pages
+  components/EmbersCard.tsx Embers and rank on Account, and the moderators' way into Review
   config.ts                 App-wide settings (timeouts, storage keys, support and legal links)
   theme.ts                  Colors and sizes
 supabase/migrations/        Database schema, one numbered file per change
@@ -279,7 +304,8 @@ test/                       Test helpers and stand-ins for native modules
 ## Security
 
 - Visitors can only read. Signed-in campers can change only their own spots and account, enforced by grants, row-level security and triggers in the database (see "What the database allows"). Reports, blocks and moderator tools are out of reach of the app. The database test checks every rule on each push.
-- The camera is asked for only when a camper taps "Take a photo"; choosing from the library uses the phone's own picker, which needs no permission. DisCamp never records sound, so Android's microphone permission is removed. Android 9 and older keep one storage permission, because their camera needs it to save the photo it takes.
+- Embers are written only by the database (an append-only ledger campers can read but not write), from what campers do; no request from the app can add any directly. A modified app can still claim to be where it isn't, which is why a moderator approves every cleanup, check-ins earn at most 50 a day, and deleting a photo takes its Embers back. Cleanup reviews run in database functions that check the camper is a moderator.
+- The camera is asked for only when a camper taps "Take a photo" (or a cleanup's photo button); choosing from the library uses the phone's own picker, which needs no permission. DisCamp never records sound, so Android's microphone permission is removed. Android 9 and older keep one storage permission, because their camera needs it to save the photo it takes.
 - iPhone asks for location only while the app is in use; the unused "always" and motion permission messages, background location, Android's overlay permission and (on Android 10 and newer) storage access are removed.
 - Every row from the server is validated. A bad field becomes "not reported"; a broken row is skipped; links can only be web links.
 - `npm audit` lists advisories in packages Expo uses at build time (its command-line tools and config plugins). They don't ship inside the app. Keep Expo up to date with `npx expo install --fix` to pick up their fixes.
@@ -288,7 +314,8 @@ test/                       Test helpers and stand-ins for native modules
 
 - **Maps:** v1 uses `react-native-maps` (Apple Maps on iPhone, Google Maps on Android) because it runs in Expo Go for free. The plan's MapLibre + OpenFreeMap switch comes with offline maps; only `src/components/SpotMap.tsx` touches the map.
 - **Lots of spots:** the app loads every spot in one request, and Supabase returns at most 1,000 rows per request. Before you get close, switch to loading spots for the visible map area (the app logs a warning if it ever hits the limit).
-- **Next up:** 1.6.0: cleanup tasks ("Litter in area") with before and after photos, your review queue in the app, and Embers, the points campers earn. Then TestFlight on a real iPhone and the App Store. The product plan's MVP backlog lists the rest, sprint by sprint.
+- **Cleanups later:** AI checks of before and after photos (an Edge Function, so the key never ships in the app), duplicate-photo checks, and trusted campers reviewing cleanups. Until then a moderator reviews every one.
+- **Next up:** TestFlight on a real iPhone and the App Store. The product plan's MVP backlog lists the rest, sprint by sprint.
 
 ## Put it on GitHub
 

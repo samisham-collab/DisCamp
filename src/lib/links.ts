@@ -47,10 +47,15 @@ async function open(url: string, failTitle: string, failMessage: string): Promis
 }
 
 export function openDirections(spot: Spot): Promise<boolean> {
+  return openDirectionsTo(spot, spot.name);
+}
+
+/** Directions to any place (a spot, a cleanup) in the phone's maps app. */
+export function openDirectionsTo(at: Coordinates, name: string): Promise<boolean> {
   return open(
-    directionsUrl(spot, spot.name),
+    directionsUrl(at, name),
     "Couldn't open Maps",
-    `Enter these coordinates in your maps app: ${formatCoordinates(spot)}`,
+    `Enter these coordinates in your maps app: ${formatCoordinates(at)}`,
   );
 }
 

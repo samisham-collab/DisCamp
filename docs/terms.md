@@ -57,6 +57,17 @@ your account. You can delete a photo you added from the spot's page, unless it h
 change report shows on the spot until another camper says it's still good, or for 30 days. Other campers confirm the
 spots you add.
 
+## Cleanups and Embers
+
+You can post trash you find at a site as a cleanup, with a photo, and send an after photo and a photo of what you packed
+out when you clean one up. Take cleanup photos where the trash is, and leave people and license plates out. A moderator
+reviews each cleanup before it earns Embers, and can send it back with a reason.
+
+Embers are DisCamp's points. They have no cash value, can't be bought, sold or transferred, and aren't property. We
+may correct them, and take back Embers earned by breaking these terms (for example, with fake cleanups or photos).
+Deleting a photo takes back the Embers it earned. If
+we change or end Embers, or you delete your account, they're gone.
+
 ## Camping safely
 
 Spot information comes from public listings and other campers. **It may be wrong, out of date or incomplete.** Roads
@@ -78,7 +89,7 @@ limits, so they may not all apply to you.
 
 ## Donations
 
-DisCamp is free and paid for by donations. Any donation is voluntary and doesn't buy features, points or special
+DisCamp is free and paid for by donations. Any donation is voluntary and doesn't buy features, Embers or special
 treatment.
 
 ## Ending your use

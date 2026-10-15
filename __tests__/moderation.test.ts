@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
+import { TERMS_VERSION } from '@/config';
 import type * as Moderation from '@/data/moderation';
 import {
   acceptTerms,
@@ -87,7 +88,7 @@ describe('reports', () => {
     const alex = signedIn(ALEX);
     await expect(sendReport(alex.client, { kind: 'spot', id: 'alex-spot' }, 'fake', '')).rejects.toMatchObject({
       kind: 'own',
-      message: "You can't report your own spot, photo, check-in or name.",
+      message: "You can't report your own spot, photo, check-in, cleanup or name.",
     });
     const sam = signedIn();
     await expect(sendReport(sam.client, { kind: 'spot', id: 'gone' }, 'fake', '')).rejects.toMatchObject({
@@ -189,8 +190,8 @@ describe('the terms of use', () => {
     const backend = fakeBackend();
     backend.auth.setUser(NEWBIE);
     expect(backend.terms.has(NEWBIE.id)).toBe(false);
-    await acceptTerms(backend.client, 1);
-    expect(backend.terms.get(NEWBIE.id)).toBe(1);
+    await acceptTerms(backend.client, TERMS_VERSION);
+    expect(backend.terms.get(NEWBIE.id)).toBe(TERMS_VERSION);
   });
 
   it('turns away an out-of-date app, or a signed-out one', async () => {

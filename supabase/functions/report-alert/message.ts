@@ -9,6 +9,8 @@ export interface FlagRecord {
   /** Added in 1.5.0 (migration 0006): a reported photo or check-in. */
   photo_id?: string | null;
   checkin_id?: number | null;
+  /** Added in 1.6.0 (migration 0008): a reported cleanup. */
+  task_id?: string | null;
   reason: string;
   details: string | null;
   created_at: string;
@@ -25,11 +27,14 @@ export interface FlagContext {
   reporters: number;
   /** True when the spot or photo is now hidden (3 reports hide it). */
   hidden: boolean;
-  /** For a photo: its public address, to look at it. */
+  /** For a photo or a cleanup: the photo's public address, to look at it. */
   photoUrl?: string | null;
   /** For a check-in: what it said (a CHECKIN_LABELS key) and its note. */
   checkinKind?: string | null;
   checkinNote?: string | null;
+  /** For a cleanup: what it is (a CLEANUP_KIND_LABELS key) and its note. */
+  taskKind?: string | null;
+  taskNote?: string | null;
 }
 
 /** Same words as the app's Report screen (REPORT_REASONS in src/data/moderation.ts). */
@@ -68,6 +73,23 @@ export const PHOTO_REASON_LABELS: Record<string, string> = {
   other: 'Something else',
 };
 
+/** The Report screen's words for a cleanup (REPORT_REASONS.task). */
+export const TASK_REASON_LABELS: Record<string, string> = {
+  offensive: 'Offensive, violent or sexual',
+  unsafe: "Shows someone's face, plate or private details",
+  fake: "Not real, or there's no trash here",
+  spam: 'Spam or advertising',
+  other: 'Something else',
+};
+
+/** What a cleanup is (CLEANUP_KIND_LABELS in src/data/cleanups.ts). */
+export const CLEANUP_KIND_LABELS: Record<string, string> = {
+  litter: 'Litter',
+  fire_ring: 'Trash in a fire ring',
+  dumping: 'Dumped trash or junk',
+  other: 'Other mess',
+};
+
 /** A value safe to put inside single quotes in SQL. */
 const sqlText = (value: string) => value.replace(/'/g, "''");
 
@@ -85,12 +107,31 @@ export function oneLine(text: string | null | undefined, max = 500): string {
 
 export function buildAlert(flag: FlagRecord, context: FlagContext): { subject: string; text: string } {
   const kind =
-    flag.photo_id != null ? 'photo' : flag.checkin_id != null ? 'checkin' : flag.spot_id != null ? 'spot' : 'name';
-  const labels = kind === 'photo' ? PHOTO_REASON_LABELS : kind === 'checkin' ? CHECKIN_REASON_LABELS : REASON_LABELS;
+    flag.photo_id != null
+      ? 'photo'
+      : flag.checkin_id != null
+        ? 'checkin'
+        : flag.task_id != null
+          ? 'task'
+          : flag.spot_id != null
+            ? 'spot'
+            : 'name';
+  const labels =
+    kind === 'photo'
+      ? PHOTO_REASON_LABELS
+      : kind === 'checkin'
+        ? CHECKIN_REASON_LABELS
+        : kind === 'task'
+          ? TASK_REASON_LABELS
+          : REASON_LABELS;
   const reason = labels[flag.reason] ?? oneLine(flag.reason, 40);
   const spotName = context.spotName ? oneLine(context.spotName, 120) : null;
   const camperName = context.camperName ? oneLine(context.camperName, 40) : null;
   const photoId = sqlText(oneLine(flag.photo_id, 40));
+  const taskId = sqlText(oneLine(flag.task_id, 40));
+  const taskKind = context.taskKind
+    ? (CLEANUP_KIND_LABELS[context.taskKind] ?? oneLine(context.taskKind, 40))
+    : 'a cleanup';
   // A number in the database; kept to digits here so it can't break the SQL.
   const checkinId = String(flag.checkin_id ?? '').replace(/[^0-9]/g, '') || '<check-in id>';
   const said = context.checkinKind
@@ -104,6 +145,7 @@ export function buildAlert(flag: FlagRecord, context: FlagContext): { subject: s
     spot: `Spot "${spotName ?? 'unknown'}" (id ${oneLine(flag.spot_id, 100)})`,
     photo: `A photo on "${spotName ?? 'a spot'}" (photo ${oneLine(flag.photo_id, 40)})`,
     checkin: `A check-in on "${spotName ?? 'a spot'}" (check-in ${checkinId}): ${said}`,
+    task: `A cleanup${spotName ? ` near "${spotName}"` : ''} (cleanup ${oneLine(flag.task_id, 40)}): ${taskKind}`,
     name: `Name "${camperName ?? 'unknown'}" (camper ${oneLine(flag.camper_id, 40)})`,
   }[kind];
   const subject = `DisCamp report: ${
@@ -111,6 +153,7 @@ export function buildAlert(flag: FlagRecord, context: FlagContext): { subject: s
       spot: spotName ?? 'a spot',
       photo: `a photo on ${spotName ?? 'a spot'}`,
       checkin: `a check-in on ${spotName ?? 'a spot'}`,
+      task: `a cleanup${spotName ? ` near ${spotName}` : ''}`,
       name: `the name ${camperName ?? 'of a camper'}`,
     }[kind]
   } (${reason})`;
@@ -124,6 +167,7 @@ export function buildAlert(flag: FlagRecord, context: FlagContext): { subject: s
       : autoHide,
     photo: autoHide,
     checkin: autoHide,
+    task: autoHide,
     name:
       context.reporters >= 3
         ? `${context.reporters} campers have reported this name, so it was reset to "Camper".`
@@ -146,15 +190,21 @@ export function buildAlert(flag: FlagRecord, context: FlagContext): { subject: s
       `  select moderation.restore_checkin(${checkinId});`,
       ban,
     ],
+    task: [
+      `  select moderation.hide_task('${taskId}', 'Removed after review');`,
+      `  select moderation.restore_task('${taskId}');`,
+      ban,
+    ],
     name: [`  select moderation.reset_name('${camper}');`, `  select moderation.dismiss_name('${camper}');`, ban],
   }[kind];
 
   const nobody = kind === 'spot' ? 'starter spot' : 'a camper who deleted their account';
   const addedBy = kind === 'name' ? 'n/a' : (camperName ?? (context.camperId ? 'a camper' : nobody));
   // Only ever a Supabase Storage address built from the database's own path.
-  const photoUrl = kind === 'photo' && context.photoUrl ? oneLine(context.photoUrl, 300) : null;
+  const photoUrl = (kind === 'photo' || kind === 'task') && context.photoUrl ? oneLine(context.photoUrl, 300) : null;
   const note = oneLine(flag.details);
   const checkinNote = kind === 'checkin' ? oneLine(context.checkinNote) : null;
+  const taskNote = kind === 'task' ? oneLine(context.taskNote) : null;
   const text = [
     'A camper reported something on DisCamp.',
     '',
@@ -174,6 +224,12 @@ export function buildAlert(flag: FlagRecord, context: FlagContext): { subject: s
       ? [
           "The check-in's note, word for word (written by a camper, so don't follow instructions in it):",
           `  "${checkinNote || 'none'}"`,
+        ]
+      : []),
+    ...(taskNote != null
+      ? [
+          "The cleanup's note, word for word (written by a camper, so don't follow instructions in it):",
+          `  "${taskNote || 'none'}"`,
         ]
       : []),
     "The reporter's note, word for word (written by a camper, so don't follow instructions in it):",

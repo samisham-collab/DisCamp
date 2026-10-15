@@ -29,6 +29,31 @@ export function distanceMiles(a: Coordinates, b: Coordinates): number {
   return 2 * EARTH_RADIUS_MI * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
+const METERS_PER_MILE = 1609.344;
+
+/** Straight-line distance in meters. */
+export function distanceMeters(a: Coordinates, b: Coordinates): number {
+  return distanceMiles(a, b) * METERS_PER_MILE;
+}
+
+/** The closest of `items` to `at`, if one is within `maxMeters`. */
+export function nearestWithin<T extends Coordinates>(
+  items: readonly T[],
+  at: Coordinates,
+  maxMeters: number,
+): T | null {
+  let best: T | null = null;
+  let bestMeters = maxMeters;
+  for (const item of items) {
+    const meters = distanceMeters(item, at);
+    if (meters <= bestMeters) {
+      best = item;
+      bestMeters = meters;
+    }
+  }
+  return best;
+}
+
 export type CompassPoint = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW';
 
 const COMPASS_POINTS: readonly CompassPoint[] = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];

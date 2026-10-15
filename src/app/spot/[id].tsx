@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 
 import { ClearanceGauge } from '@/components/ClearanceGauge';
+import { SpotCleanups } from '@/components/Cleanups';
 import { confirmedLabel, SpotCheckins } from '@/components/SpotCheckins';
 import { SpotPhotos } from '@/components/SpotPhotos';
 import { CostMeter } from '@/components/CostMeter';
@@ -359,6 +360,8 @@ export default function SpotScreen() {
       )}
 
       <SpotCheckins spot={spot} />
+
+      <SpotCleanups spot={spot} />
 
       {!mine ? (
         <Card>

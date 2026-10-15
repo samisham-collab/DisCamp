@@ -11,12 +11,13 @@ import { describeError, log } from '../lib/log';
 
 export type ReportReason = 'offensive' | 'spam' | 'fake' | 'unsafe' | 'other';
 
-/** What a camper can report: a spot, a photo, a check-in, or the name of the camper who added one. */
+/** What a camper can report: a spot, a photo, a check-in, a cleanup, or the name of the camper who added one. */
 export type ReportTarget =
   | { kind: 'spot'; id: string }
   | { kind: 'camper'; id: string }
   | { kind: 'photo'; id: string }
-  | { kind: 'checkin'; id: string };
+  | { kind: 'checkin'; id: string }
+  | { kind: 'task'; id: string };
 
 export const REPORT_REASONS: Record<ReportTarget['kind'], readonly { value: ReportReason; label: string }[]> = {
   spot: [
@@ -41,6 +42,13 @@ export const REPORT_REASONS: Record<ReportTarget['kind'], readonly { value: Repo
   checkin: [
     { value: 'offensive', label: 'Offensive or abusive' },
     { value: 'fake', label: 'Not true, or about another spot' },
+    { value: 'spam', label: 'Spam or advertising' },
+    { value: 'other', label: 'Something else' },
+  ],
+  task: [
+    { value: 'offensive', label: 'Offensive, violent or sexual' },
+    { value: 'unsafe', label: "Shows someone's face, plate or private details" },
+    { value: 'fake', label: "Not real, or there's no trash here" },
     { value: 'spam', label: 'Spam or advertising' },
     { value: 'other', label: 'Something else' },
   ],
@@ -82,7 +90,7 @@ export function toModerationError(error: unknown, fallback: string): ModerationE
     case 'banned':
       return new ModerationError(bannedMessage(), 'banned');
     case 'own_content':
-      return new ModerationError("You can't report your own spot, photo, check-in or name.", 'own');
+      return new ModerationError("You can't report your own spot, photo, check-in, cleanup or name.", 'own');
     case 'flag_limit':
       return new ModerationError("You've sent a lot of reports today. Try again tomorrow.", 'limit');
     case 'terms_outdated':
@@ -140,6 +148,7 @@ export function sendReport(
             spot: { spot_id: target.id },
             photo: { photo_id: target.id },
             checkin: { checkin_id: Number(target.id) },
+            task: { task_id: target.id },
             camper: { camper_id: target.id },
           }[target.kind],
           reason,

@@ -2,7 +2,7 @@
   "expo": {
     "name": "DisCamp",
     "slug": "discamp",
-    "version": "1.5.1",
+    "version": "1.6.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -118,7 +118,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "DisCamp uses your location to show how far away spots are and to center the map on you.",
+          "locationWhenInUsePermission": "DisCamp uses your location to show how far away spots are, to center the map on you, and to pin and check the cleanups you post or clean up.",
           "locationAlwaysAndWhenInUsePermission": false,
           "locationAlwaysPermission": false,
           "motionUsagePermission": false,
@@ -138,7 +138,7 @@
         "expo-image-picker",
         {
           "photosPermission": "DisCamp opens your photo library when you choose a photo to add to a spot.",
-          "cameraPermission": "DisCamp uses the camera when you take a photo to add to a spot.",
+          "cameraPermission": "DisCamp uses the camera when you take a photo of a spot or a cleanup.",
           "microphonePermission": "DisCamp only takes still photos and never records sound."
         }
       ],

@@ -53,6 +53,20 @@ describe('location', () => {
     expect(result.current.locating).toBe(false);
   });
 
+  it('gets a fresh, exact fix for cleanup photos, with how sure it is', async () => {
+    const { result } = await setup();
+    jest
+      .mocked(Location.getCurrentPositionAsync)
+      .mockResolvedValueOnce({ coords: { ...GOODLAND, accuracy: 9.5 } } as never);
+    let found: unknown;
+    await act(async () => {
+      found = await result.current.locate({ fresh: true });
+    });
+    expect(found).toEqual({ ...GOODLAND, accuracy: 9.5 });
+    expect(Location.getLastKnownPositionAsync).toHaveBeenLastCalledWith({ maxAge: 30_000, requiredAccuracy: 50 });
+    expect(Location.getCurrentPositionAsync).toHaveBeenLastCalledWith({ accuracy: Location.Accuracy.High });
+  });
+
   it('sends the camper to Settings after a permanent denial', async () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     const openSettings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);

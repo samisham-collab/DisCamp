@@ -22,6 +22,8 @@ import { SpotMap, type SpotMapHandle } from '@/components/SpotMap';
 import { SpotListItem, SpotSummaryCard } from '@/components/SpotSummary';
 import { Banner, EmptyState, IconButton, Pills, Segmented } from '@/components/ui';
 import { DEFAULT_REGION } from '@/config';
+import { cleanupTitle } from '@/components/Cleanups';
+import { useCleanups } from '@/data/cleanupsStore';
 import { useSpots } from '@/data/spots';
 import { useAuth } from '@/lib/auth';
 import { regionForCoordinates, type Region } from '@/lib/geo';
@@ -64,6 +66,16 @@ export default function ExploreScreen() {
   const { prefs, toggleFilter, clearFilters, setView, setMapType } = usePrefs();
   const { coords, status: locationStatus, locating, locate } = useLocation();
   const { status: authStatus } = useAuth();
+  const { cleanups } = useCleanups();
+  // Cleanups still to do show as orange pins; tapping one opens it.
+  const cleanupPins = useMemo(
+    () =>
+      cleanups
+        .filter((t) => t.status === 'open' && !t.hidden)
+        .map((t) => ({ id: t.id, latitude: t.latitude, longitude: t.longitude, label: `Cleanup: ${cleanupTitle(t)}` })),
+    [cleanups],
+  );
+  const openCleanup = useCallback((id: string) => router.push({ pathname: '/cleanup/[id]', params: { id } }), []);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheetHeight, setSheetHeight] = useState(0);
@@ -279,6 +291,8 @@ export default function ExploreScreen() {
             initialRegion={initialRegion}
             bottomInset={selectedRow && sheetHeight > 0 ? sheetHeight + CARD_MARGIN : 0}
             onMapReady={onMapReady}
+            cleanups={cleanupPins}
+            onOpenCleanup={openCleanup}
           />
 
           {showCount && (
