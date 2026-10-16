@@ -49,9 +49,9 @@ approved before.
 
 ### 1. Run the migration
 
-In Supabase, open **SQL Editor**, paste `supabase/migrations/0004_moderation.sql`
-and run it, then do the same with `0005_fixes.sql` and `0006_photos_checkins.sql`.
-(All are safe to run again, as long as they run in that order.)
+`bash scripts/setup-database.sh` runs every migration that hasn't run yet,
+`0004_moderation.sql` through `0009_push.sql` included (README, "Connect
+Supabase"). They're all safe to run again, as long as they run in order.
 
 ### 2. Get an email for every report
 
@@ -83,6 +83,42 @@ which emails you through [Resend](https://resend.com) (free for this volume).
 
 Optional: `REPORT_FROM_EMAIL` sets the sender once you've verified a domain
 in Resend, for example `DisCamp <reports@yourdomain.com>`.
+
+### 3. Notifications for cleanups
+
+A second function, `supabase/functions/cleanup-push`, sends phone
+notifications through Expo's free push service: moderators hear about each
+new cleanup to review, and campers hear when theirs is approved or sent back,
+or when someone cleans up one they posted. Migration `0009_push.sql` keeps
+each phone's push address (campers never see them) and works out who to tell.
+
+1. In Terminal, from the DisCamp folder (logged in and linked as in step 2):
+
+   ```bash
+   npx supabase functions deploy cleanup-push
+   ```
+
+   It uses the same `REPORT_WEBHOOK_SECRET` as report-alert, so there's no new
+   secret to set. (To give it its own, set `PUSH_WEBHOOK_SECRET`.)
+
+2. In Supabase, open **Database > Webhooks > Create a new hook**:
+   - Name: `cleanup-push`
+   - Table: `public.cleanup_completions`, events: **Insert** and **Update**
+   - Type: **Supabase Edge Functions**, function `cleanup-push`, method POST
+   - HTTP headers: turn on "Add auth header with service key", and add
+     `x-discamp-secret` with the same secret as report-alert
+3. Turn on notifications on your phone (**Account > Notifications**, in a
+   TestFlight or store build: Expo Go can't receive them). Then, from a
+   second account, send a cleanup for review: you should get "New cleanup to
+   review" within a minute. If not, open **Edge Functions > cleanup-push >
+   Logs**. "Nobody to tell" means no moderator has notifications on yet.
+
+Notifications also need the app side set up once: the EAS project id, the
+Apple push key and Firebase for Android (README, "Build for TestFlight and
+Android").
+
+Optional: if you turn on **Enhanced Security for Push Notifications** on
+expo.dev, set the access token it gives you as the `EXPO_ACCESS_TOKEN` secret.
 
 ## The routine (at least once a day)
 

@@ -10,7 +10,15 @@ import type { IconName } from './ui';
 
 export function FitIcon({ status, size = 16 }: { status: FitStatus; size?: number }) {
   const c = fitColors[status];
-  return <Ionicons name={c.icon as IconName} size={size} color={c.text} />;
+  return (
+    <Ionicons
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+      name={c.icon as IconName}
+      size={size}
+      color={c.text}
+    />
+  );
 }
 
 export function SpotPin({ status, selected }: { status: FitStatus; selected: boolean }) {

@@ -159,6 +159,7 @@ const sendCleanup = (uid: string, id: string, haul: string, task: string, where:
       '0006_photos_checkins.sql',
       '0007_still_good_once.sql',
       '0008_cleanups_embers.sql',
+      '0009_push.sql',
     ]);
     sql('drop schema if exists moderation cascade; drop schema if exists public cascade; create schema public;');
     // Recreate what a new Supabase project has: the API roles, default
@@ -1478,6 +1479,108 @@ const sendCleanup = (uid: string, id: string, haul: string, task: string, where:
     sql('delete from public.flags;');
   });
 
+  it('keeps push addresses private, and says who to tell about a cleanup', () => {
+    const phone = (name: string) => `ExponentPushToken[${name}]`;
+    const register = (uid: string, token: string, os = 'ios') =>
+      asCamper(uid, `select public.register_push_token('${token}', '${os}')`);
+    const owner = (token: string) => sql(`select camper_id from public.push_tokens where token = '${token}';`);
+
+    // Campers only reach the table through the functions.
+    expect(errorOf(() => asCamper(ROBIN, 'select count(*) from public.push_tokens'))).toMatch(/permission denied/);
+    expect(errorOf(() => sql(`select public.register_push_token('${phone('x')}', 'ios');`, 'anon'))).toMatch(
+      /permission denied/,
+    );
+    expect(errorOf(() => sql(`select public.register_push_token('${phone('x')}', 'ios');`, 'authenticated'))).toMatch(
+      /not_signed_in/,
+    );
+    expect(errorOf(() => register(ROBIN, 'not-a-token'))).toMatch(/bad_push_token/);
+    expect(errorOf(() => register(ROBIN, phone('x'), 'web'))).toMatch(/bad_platform/);
+
+    register(SAM, phone('sam'));
+    register(ROBIN, phone('robin'), 'android');
+    register(TRAIL, phone('trail'));
+    // One phone, another camper signs in: the address moves to them.
+    register(PAT, phone('trail'));
+    expect(owner(phone('trail'))).toBe(PAT);
+    register(TRAIL, phone('trail'));
+    expect(owner(phone('trail'))).toBe(TRAIL);
+    // Someone else can't switch off your phone; you can.
+    asCamper(PAT, `select public.forget_push_token('${phone('trail')}')`);
+    expect(owner(phone('trail'))).toBe(TRAIL);
+    asCamper(TRAIL, `select public.forget_push_token('${phone('trail')}')`);
+    expect(owner(phone('trail'))).toBe('');
+    register(TRAIL, phone('trail'));
+    // The 10 most recent phones per camper.
+    for (let i = 0; i < 11; i += 1) register(ROBIN, phone(`robin-${i}`));
+    expect(sql(`select count(*) from public.push_tokens where camper_id = '${ROBIN}';`)).toBe('10');
+    expect(owner(phone('robin'))).toBe('');
+    expect(owner(phone('robin-0'))).toBe('');
+    expect(
+      sql(
+        `select public.forget_push_tokens(array['${phone('robin-1')}', '${phone('robin-2')}', 'gone']);`,
+        'service_role',
+      ),
+    ).toBe('2');
+    expect(errorOf(() => sql(`select public.forget_push_tokens(array['${phone('sam')}']);`, 'authenticated'))).toMatch(
+      /permission denied/,
+    );
+
+    // Trail posts a cleanup, Robin cleans it up: moderators (Sam) hear.
+    const task = cleanupId(60);
+    const where = at(-113.4, 42.7);
+    putFile(TRAIL, task);
+    postCleanup(TRAIL, task, where);
+    const [after, haul] = [cleanupId(61), cleanupId(62)];
+    putFile(ROBIN, after);
+    putFile(ROBIN, haul);
+    sendCleanup(ROBIN, after, haul, task, where);
+    const targets = (completion: string, what: string) =>
+      sql(
+        `select string_agg(role || '|' || token || '|' || kind || '|' || coalesce(embers::text, '-') || '|' || coalesce(reason, '-'), ',' order by role, token) ` +
+          `from public.cleanup_push_targets('${completion}', '${what}');`,
+        'service_role',
+      );
+    expect(errorOf(() => asCamper(SAM, `select * from public.cleanup_push_targets('${after}', 'sent')`))).toMatch(
+      /permission denied/,
+    );
+    expect(targets(after, 'sent')).toBe(`moderator|${phone('sam')}|litter|-|-`);
+    // Not approved yet, and unknown cleanups or events tell nobody.
+    expect(targets(after, 'approved')).toBe('');
+    expect(targets(cleanupId(99), 'sent')).toBe('');
+    expect(targets(after, 'something')).toBe('');
+
+    asCamper(SAM, `select public.approve_cleanup('${after}', 'large')`);
+    const earned = (uid: string, reason: string) =>
+      sql(`select amount from public.embers where camper_id = '${uid}' and reason = '${reason}' and ref = '${task}';`);
+    const robinPhones = Number(sql(`select count(*) from public.push_tokens where camper_id = '${ROBIN}';`));
+    const approved = targets(after, 'approved').split(',');
+    expect(approved).toHaveLength(robinPhones + 1);
+    expect(approved).toContain(`approved|${phone('robin-10')}|litter|${earned(ROBIN, 'cleanup')}|-`);
+    expect(approved).toContain(`poster|${phone('trail')}|litter|${earned(TRAIL, 'cleanup_reported')}|-`);
+    // The webhook for "sent" arriving late tells nobody now.
+    expect(targets(after, 'sent')).toBe('');
+    // Nor about a hidden cleanup.
+    sql(`update public.cleanup_tasks set hidden_at = now() where id = '${task}';`);
+    expect(targets(after, 'approved')).toBe('');
+    sql(`update public.cleanup_tasks set hidden_at = null where id = '${task}';`);
+
+    // Robin posts one, Trail cleans it up, Sam sends it back: Trail hears why.
+    const second = cleanupId(63);
+    const there = at(-113.5, 42.8);
+    putFile(ROBIN, second);
+    postCleanup(ROBIN, second, there);
+    putFile(TRAIL, cleanupId(64));
+    putFile(TRAIL, cleanupId(65));
+    sendCleanup(TRAIL, cleanupId(64), cleanupId(65), second, there);
+    asCamper(SAM, `select public.reject_cleanup('${cleanupId(64)}', 'The after photo is blurry')`);
+    expect(targets(cleanupId(64), 'rejected')).toBe(`sent_back|${phone('trail')}|litter|-|The after photo is blurry`);
+    expect(targets(cleanupId(64), 'approved')).toBe('');
+    // A ban sends back what the camper sent for review, without telling them.
+    register(PAT, phone('pat'));
+    expect(sql(`select status from public.cleanup_completions where id = '${cleanupId(52)}';`)).toBe('rejected');
+    expect(targets(cleanupId(52), 'rejected')).toBe('');
+  });
+
   it('deletes an account but keeps the spots it added, without a name', () => {
     const id = asCamper(SAM, `${addSpot('Keeper')} returning id`);
     expect(fails(() => sql('select public.delete_my_account();', 'anon'))).toBe(true);
@@ -1490,6 +1593,7 @@ const sendCleanup = (uid: string, id: string, haul: string, task: string, where:
 
     asCamper(SAM, 'select public.delete_my_account()');
     expect(sql(`select count(*) from auth.users where id = '${SAM}';`)).toBe('0');
+    expect(sql(`select count(*) from public.push_tokens where camper_id = '${SAM}';`)).toBe('0');
     expect(sql(`select count(*) from public.profiles where id = '${SAM}';`)).toBe('0');
     // Blocks either way go; reports Sam sent stay, without Sam; reports about Sam go.
     expect(sql(`select count(*) from public.blocks where '${SAM}' in (blocker_id, blocked_id);`)).toBe('0');

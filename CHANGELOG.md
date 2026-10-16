@@ -2,6 +2,22 @@
 
 All notable changes to DisCamp. Dates are when the version was finished.
 
+## 1.7.0 (2026-10-16)
+
+Notifications, the tip jar, disconnecting Apple on account deletion, an accessibility pass and 53 more starter spots. Run migration `0009_push.sql` along with this version: `bash scripts/setup-database.sh` runs just that file and reloads the starter spots. Notifications, tips and the Apple disconnect each need one-time setup outside the code (README and MODERATION.md say how); until then, the app explains instead of failing.
+
+### Added
+
+- **Notifications for cleanups.** Campers hear when a cleanup they sent is approved (with the Embers it earned) or sent back (with the reason), and when someone cleans up one they posted; moderators hear about each new cleanup to review. Tapping one opens that cleanup, or Review. The app offers them after a camper sends their first cleanup, and in a new **Account > Notifications** card; it never asks on launch. A new Edge Function, `cleanup-push`, sends them through Expo's push service from a Database Webhook on `cleanup_completions`. Migration 0009 keeps each phone's push address (up to 10 per camper, never readable from the app); signing out removes this phone's (asking the phone for it if this launch never registered it), and deleting an account removes them all. A camper whose cleanups a ban sent back isn't notified. On Android the notification shows DisCamp's tent. They need a store or TestFlight build: Expo Go can't receive them.
+- **Tip jar.** **Account > Support DisCamp** takes tips of $2.99, $4.99 or $9.99 (Coffee at camp, A bundle of firewood, A tank of gas) as in-app purchases, at the store's local prices. A tip unlocks nothing, and DisCamp keeps no record of who tipped. It shows for everyone, signed in or not; in Expo Go it says tips need the store version. The store connection runs for the whole app, and each time DisCamp comes back to the front it finishes any paid tip left unfinished (Google refunds tips not finished within 3 days); a tip still waiting for payment is never finished early. Uses `expo-iap` 5.8.2.
+- **Deleting an account disconnects Sign in with Apple.** On iPhone, Apple's sheet confirms it's the camper, and a new Edge Function, `apple-revoke`, revokes DisCamp's Apple tokens before the account is deleted (App Store rule 5.1.1(v), master task list Q6). It only revokes when Apple's answer is for the account's own Apple ID, so a phone signed in to someone else's Apple ID can't disconnect theirs. Closing Apple's sheet keeps the account, with an option to delete without Apple. If the function isn't set up (or on Android), the account is still deleted and the app explains the manual step, as before.
+- **53 more starter spots** across 24 states (59 in all): 38 dispersed spots, from Valley of the Gods and Alabama Hills to Gale River Road and Flagpole Knob, and 15 KOAs, including Goodland's. Each was checked against current sources for closures and rule changes (several popular spots now need designated sites or permits, and the entries say so), and lists its sources. They're in `src/data/seeds/`, one file per region.
+
+### Changed
+
+- **Accessibility pass (master task list Q5).** Decorative icons are hidden from screen readers everywhere (VoiceOver and TalkBack no longer stop on them); photo thumbnails say when a photo is hidden for review; banners read their message without the icon; the tab names grow with the phone's text size up to what fits; the add-spot loading spinner has a label.
+- The privacy policy covers push addresses, Expo's push service and tips; the support page covers notifications, tips and the Apple disconnect; the App Store Connect notes describe the tips and the token revocation.
+
 ## 1.6.1 (2026-10-15)
 
 ### Fixed

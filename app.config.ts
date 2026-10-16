@@ -18,7 +18,14 @@
 //
 // Over-the-air updates: `npx eas-cli@latest init` writes the project id to
 // app.json (extra.eas.projectId); updates are on from then on.
+//
+// Notifications on Android go through Firebase Cloud Messaging, which needs
+// the google-services.json file from your Firebase project (MODERATION.md,
+// "Notifications"). Put it next to this file, or upload it to expo.dev as a
+// file environment variable named GOOGLE_SERVICES_JSON. Without it, Android
+// builds work but can't receive notifications.
 
+import { existsSync } from 'fs';
 import type { ConfigContext, ExpoConfig } from 'expo/config';
 import { AndroidConfig, withAndroidManifest, type ConfigPlugin } from 'expo/config-plugins';
 
@@ -59,6 +66,9 @@ export default function appConfig({ config }: ConfigContext): ExpoConfig {
       ? [['@sentry/react-native/expo', { url: 'https://sentry.io/', organization: sentryOrg, project: sentryProject }]]
       : [];
 
+  const googleServicesFile =
+    env.GOOGLE_SERVICES_JSON?.trim() || (existsSync('./google-services.json') ? './google-services.json' : undefined);
+
   const extra = config.extra as { eas?: { projectId?: unknown } } | undefined;
   const projectId = typeof extra?.eas?.projectId === 'string' ? extra.eas.projectId : undefined;
 
@@ -66,6 +76,7 @@ export default function appConfig({ config }: ConfigContext): ExpoConfig {
     ...config,
     name: config.name ?? 'DisCamp',
     slug: config.slug ?? 'discamp',
+    android: { ...config.android, ...(googleServicesFile ? { googleServicesFile } : {}) },
     updates: projectId
       ? { ...config.updates, url: `https://u.expo.dev/${projectId}` }
       : { ...config.updates, enabled: false },

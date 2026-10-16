@@ -86,7 +86,13 @@ export default function CleanupsScreen() {
     >
       <Card>
         <View style={styles.introTitle}>
-          <Ionicons name="leaf-outline" size={24} color={colors.pine} />
+          <Ionicons
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+            name="leaf-outline"
+            size={24}
+            color={colors.pine}
+          />
           <Text style={styles.title} accessibilityRole="header">
             Leave it better
           </Text>

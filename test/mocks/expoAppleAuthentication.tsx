@@ -20,9 +20,10 @@ export enum AppleAuthenticationButtonStyle {
 
 export const isAvailableAsync = jest.fn(async () => true);
 
-export const signInAsync = jest.fn(async (_options?: { nonce?: string }) => ({
+export const signInAsync = jest.fn(async (_options?: { nonce?: string; requestedScopes?: number[] }) => ({
   user: 'apple-user',
   identityToken: 'apple-identity-token',
+  authorizationCode: 'apple-one-time-code' as string | null,
   fullName: { givenName: 'Sam', familyName: 'Isham' } as { givenName: string | null; familyName: string | null } | null,
   email: 'sam@privaterelay.appleid.com',
 }));

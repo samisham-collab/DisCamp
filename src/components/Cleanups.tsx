@@ -70,7 +70,13 @@ export function CleanupRow({ task, from }: { task: CleanupTask; from: Coordinate
           {cleanupTitle(task)}
         </Text>
         <View style={styles.rowStatus}>
-          <Ionicons name={status.icon} size={14} color={task.status === 'open' ? colors.orange : colors.pine} />
+          <Ionicons
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+            name={status.icon}
+            size={14}
+            color={task.status === 'open' ? colors.orange : colors.pine}
+          />
           <Text style={styles.rowStatusText}>{shown}</Text>
         </View>
         {meta ? (
@@ -79,7 +85,13 @@ export function CleanupRow({ task, from }: { task: CleanupTask; from: Coordinate
           </Text>
         ) : null}
       </View>
-      <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+      <Ionicons
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+        name="chevron-forward"
+        size={18}
+        color={colors.muted}
+      />
     </Pressable>
   );
 }
@@ -112,7 +124,13 @@ export function CleanupPhoto({ url, label, height = 220 }: { url: string; label:
             accessibilityLabel="Close"
             style={({ pressed }) => [styles.viewerClose, pressed && styles.pressed]}
           >
-            <Ionicons name="close" size={26} color="#FFFFFF" />
+            <Ionicons
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+              name="close"
+              size={26}
+              color="#FFFFFF"
+            />
           </Pressable>
         </SafeAreaView>
       </Modal>

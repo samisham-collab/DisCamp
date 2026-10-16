@@ -13,6 +13,7 @@ import { DeadlineError, withDeadline } from './deadline';
 import { enabledProviders, type AuthProviderId } from './authProviders';
 import { checkDisplayName } from './displayName';
 import { describeError, log } from './log';
+import { clearPushRegistration, forgetThisPhone, turnOnPush } from './push';
 import { useServerClient } from './server';
 
 export type AuthStatus = 'disabled' | 'loading' | 'signed-out' | 'signed-in';
@@ -210,6 +211,8 @@ export function AuthProvider({ children, client: clientProp, providers: provider
 
   const signOut = useCallback(async (): Promise<ActionResult> => {
     if (!client) return { ok: true };
+    // While still signed in: this phone stops getting the camper's notifications.
+    await forgetThisPhone(client);
     try {
       // "local": this phone only. Other phones stay signed in.
       const { error } = await client.auth.signOut({ scope: 'local' });
@@ -217,8 +220,10 @@ export function AuthProvider({ children, client: clientProp, providers: provider
       // Offline, Supabase can't tell the server, but it still forgets the
       // session on this phone: that's signed out, as far as the camper goes.
       if (!(await signedInHere(client))) return { ok: true };
+      void turnOnPush(client, { ask: false }); // still signed in: keep their notifications
       return failure('Signing out', error);
     } catch (error) {
+      void turnOnPush(client, { ask: false });
       return failure('Signing out', error);
     }
   }, [client]);
@@ -236,8 +241,10 @@ export function AuthProvider({ children, client: clientProp, providers: provider
     } catch (error) {
       return failure('Deleting your account', error);
     }
-    // The account is gone on the server; forget the session on this phone.
-    // Supabase may answer that the session no longer exists, which is fine.
+    // The account is gone on the server (its push addresses too); forget the
+    // session on this phone. Supabase may answer that the session no longer
+    // exists, which is fine.
+    clearPushRegistration();
     await client.auth.signOut({ scope: 'local' }).catch(() => undefined);
     return { ok: true };
   }, [client]);

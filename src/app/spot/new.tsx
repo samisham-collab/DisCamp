@@ -53,7 +53,7 @@ export default function NewSpotScreen() {
   if (!ready) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.pine} />
+        <ActivityIndicator size="large" color={colors.pine} accessibilityLabel="Loading" />
       </View>
     );
   }

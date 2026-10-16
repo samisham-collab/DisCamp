@@ -73,7 +73,14 @@ function PickerBody({ start, onCancel, onPick }: Omit<LocationPickerProps, 'visi
         />
         {/* The pin stays in the middle; its point marks the spot. */}
         <View pointerEvents="none" style={styles.pinWrap}>
-          <Ionicons name="location" size={44} color={colors.red} style={styles.pin} />
+          <Ionicons
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+            name="location"
+            size={44}
+            color={colors.red}
+            style={styles.pin}
+          />
         </View>
         <View style={styles.mapControls}>
           <IconButton

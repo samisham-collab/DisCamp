@@ -71,7 +71,13 @@ function WetRoadFlag({ spot }: { spot: Spot }) {
   if (!spot.access.impassableWhenWet) return null;
   return (
     <View style={styles.flag}>
-      <Ionicons name="rainy-outline" size={16} color={colors.orangeDark} />
+      <Ionicons
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+        name="rainy-outline"
+        size={16}
+        color={colors.orangeDark}
+      />
       <Text style={styles.flagText}>Impassable when wet</Text>
     </View>
   );
@@ -83,7 +89,13 @@ function CheckinFlag({ spot }: { spot: Spot }) {
   if (change) {
     return (
       <View style={styles.flag}>
-        <Ionicons name="alert-circle-outline" size={16} color={colors.orangeDark} />
+        <Ionicons
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+          name="alert-circle-outline"
+          size={16}
+          color={colors.orangeDark}
+        />
         <Text style={styles.flagText} numberOfLines={2}>
           {change}
         </Text>
@@ -94,7 +106,13 @@ function CheckinFlag({ spot }: { spot: Spot }) {
   if (!confirmed) return null;
   return (
     <View style={styles.flag}>
-      <Ionicons name="checkmark-circle-outline" size={16} color={colors.pine} />
+      <Ionicons
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+        name="checkmark-circle-outline"
+        size={16}
+        color={colors.pine}
+      />
       <Text style={styles.confirmed}>{confirmed}</Text>
     </View>
   );
@@ -129,7 +147,13 @@ export function SpotSummaryCard({
           hitSlop={8}
           style={styles.close}
         >
-          <Ionicons name="close" size={22} color={colors.muted} />
+          <Ionicons
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+            name="close"
+            size={22}
+            color={colors.muted}
+          />
         </Pressable>
       </View>
       <FitBadge fit={row.fit} />
@@ -166,7 +190,13 @@ export function SpotListItem({ row, onPress }: { row: SpotRow; onPress: () => vo
           <CostMeter level={cost.level} size="sm" />
         </View>
       </View>
-      <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+      <Ionicons
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+        name="chevron-forward"
+        size={20}
+        color={colors.muted}
+      />
     </Pressable>
   );
 }

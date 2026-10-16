@@ -9,10 +9,17 @@
 //
 // "Not in the data model yet" notes keep useful facts (elevation, cell
 // signal) for when the app gets fields for them.
+//
+// The first six spots live here; the rest are in src/data/seeds/, one file
+// per region (checked 2026-10-16).
 
 import type { Spot } from '../types';
+import { EAST_SPOTS } from './seeds/east';
+import { PACIFIC_SPOTS } from './seeds/pacific';
+import { ROCKIES_SPOTS } from './seeds/rockies';
+import { SOUTHWEST_SPOTS } from './seeds/southwest';
 
-export const SEED_SPOTS: Spot[] = [
+const FIRST_SPOTS: Spot[] = [
   {
     id: 'smoky-gardens',
     name: 'Smoky Gardens',
@@ -375,4 +382,12 @@ export const SEED_SPOTS: Spot[] = [
       { label: 'Mount Rushmore KOA at Palmer Gulch', url: 'https://koa.com/campgrounds/mount-rushmore/' },
     ],
   },
+];
+
+export const SEED_SPOTS: Spot[] = [
+  ...FIRST_SPOTS,
+  ...SOUTHWEST_SPOTS,
+  ...ROCKIES_SPOTS,
+  ...PACIFIC_SPOTS,
+  ...EAST_SPOTS,
 ];

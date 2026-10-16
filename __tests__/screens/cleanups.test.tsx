@@ -7,6 +7,9 @@ import * as Location from 'expo-location';
 import { act, fireEvent, screen, waitFor, within } from 'expo-router/testing-library';
 import { Linking, RefreshControl } from 'react-native';
 
+import Constants from 'expo-constants';
+
+import { inExpoGo } from '@/lib/expoGo';
 import * as PhotoPicker from '@/lib/photoPicker';
 import * as Links from '@/lib/links';
 
@@ -17,6 +20,8 @@ import { renderApp } from '../../test/renderApp';
 
 // Pinned to Smoky Gardens only: see test/mocks/seedSpots.ts.
 jest.mock('@/data/seedSpots', () => jest.requireActual('../../test/mocks/seedSpots'));
+// Expo Go, like the real default; one test pretends to be a store build.
+jest.mock('@/lib/expoGo', () => ({ inExpoGo: jest.fn(() => true) }));
 
 /** Row spot (makeRow) is at 39.19, -101.76. */
 const AT_ROW_SPOT = { latitude: 39.19, longitude: -101.76 };
@@ -312,6 +317,31 @@ describe('Cleaning one up', () => {
     await waitFor(() => expect(app.getPathname()).toBe(`/cleanup/${id}`));
     expect(await screen.findByText(/Your cleanup is waiting for review/)).toBeTruthy();
     expect(screen.queryByText('I cleaned it up')).toBeNull();
+  });
+
+  it('offers notifications after sending, in a store build', async () => {
+    jest.mocked(inExpoGo).mockReturnValue(false);
+    const config = Constants.expoConfig as { extra?: unknown };
+    const saved = config.extra;
+    config.extra = { eas: { projectId: 'project-1234' } };
+    try {
+      const backend = server();
+      const alerts = spyOnAlerts();
+      standAt(NEAR_ROW_SPOT, 9);
+      const id = cleanupBy(backend, ALEX, 1);
+      await renderApp(`/cleanup/send/${id}`);
+      fireEvent.press(await screen.findByText('Take the after photo'));
+      fireEvent.press(await screen.findByText('Take the haul shot'));
+      expect(await screen.findByText('Retake the haul shot')).toBeTruthy();
+      fireEvent.press(screen.getByText('Send for review'));
+      await waitFor(() => expect(alerts.lastTitle()).toBe('Sent for review'));
+      expect(alerts.alert.mock.calls.at(-1)?.[1]).toMatch(/Want a notification when it’s reviewed\?$/);
+      await act(async () => alerts.press('Notify me'));
+      await waitFor(() => expect(backend.pushTokens.get('ExponentPushToken[test-phone-1]')).toBe(SAM.id));
+    } finally {
+      config.extra = saved;
+      jest.mocked(inExpoGo).mockReturnValue(true);
+    }
   });
 
   it('won’t send from too far away', async () => {

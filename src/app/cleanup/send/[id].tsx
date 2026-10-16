@@ -22,6 +22,7 @@ import { takeCameraPhoto } from '@/lib/camera';
 import { distanceMeters, distanceMiles, formatDistance } from '@/lib/geo';
 import { useLocation } from '@/lib/location';
 import { readPhotoBytes, type PreparedPhoto } from '@/lib/photoPicker';
+import { pushPermission, turnOnPush } from '@/lib/push';
 import { useStillHere } from '@/lib/useStillHere';
 import { hasBlockedWords } from '@/lib/wordFilter';
 import type { Fix } from '@/types';
@@ -137,9 +138,18 @@ export default function SendCleanupScreen() {
       );
       upsert({ ...task, status: 'review' });
       AccessibilityInfo.announceForAccessibility('Sent for review');
+      // A good moment to offer notifications: there's now a review to hear about.
+      const offer = (await pushPermission()) === 'undetermined';
       Alert.alert(
         'Sent for review',
-        `Thanks for packing it out! A moderator checks it within a day or two, and your ${cleanupEmbers(task)} Embers post when it's approved.`,
+        `Thanks for packing it out! A moderator checks it within a day or two, and your ${cleanupEmbers(task)} Embers post when it's approved.` +
+          (offer ? ' Want a notification when it’s reviewed?' : ''),
+        offer
+          ? [
+              { text: 'Not now', style: 'cancel' },
+              { text: 'Notify me', onPress: () => void turnOnPush(client, { ask: true }) },
+            ]
+          : undefined,
       );
       if (stillHere()) close();
     } catch (e) {

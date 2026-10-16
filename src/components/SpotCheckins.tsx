@@ -161,7 +161,13 @@ export function SpotCheckins({ spot }: { spot: Spot }) {
       <View style={styles.buttons}>
         {ownSpot ? null : mine && again && !mine.withdrawn ? (
           <View style={styles.done}>
-            <Ionicons name="checkmark-circle" size={22} color={colors.pine} />
+            <Ionicons
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+              name="checkmark-circle"
+              size={22}
+              color={colors.pine}
+            />
             <Text style={styles.doneText}>
               You said it&apos;s still good {timeAgo(mine.at) ?? 'recently'}. Thanks! If it&apos;s different now, report
               what changed and your &ldquo;Still good&rdquo; is taken back.
@@ -195,6 +201,8 @@ export function SpotCheckins({ spot }: { spot: Spot }) {
           {recent.map((c) => (
             <View key={c.id} style={styles.item}>
               <Ionicons
+                accessibilityElementsHidden
+                importantForAccessibility="no"
                 name={c.kind === 'still_good' ? 'checkmark-circle' : 'alert-circle'}
                 size={20}
                 color={c.kind === 'still_good' ? colors.pine : colors.orange}
@@ -228,7 +236,13 @@ export function SpotCheckins({ spot }: { spot: Spot }) {
                   hitSlop={12}
                   style={({ pressed }) => [styles.report, pressed && styles.pressed]}
                 >
-                  <Ionicons name="flag-outline" size={18} color={colors.muted} />
+                  <Ionicons
+                    accessibilityElementsHidden
+                    importantForAccessibility="no"
+                    name="flag-outline"
+                    size={18}
+                    color={colors.muted}
+                  />
                 </Pressable>
               ) : null}
             </View>

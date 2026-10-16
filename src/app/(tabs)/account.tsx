@@ -1,7 +1,7 @@
-// Account: sign in, your Embers and rank, your display name, the spots
-// you've added, campers you've blocked, help and legal links, sign out and
-// delete your account (App Store rules require deletion inside the app).
-// Moderators also get a way into Review.
+// Account: sign in, your Embers and rank, notifications, your display name,
+// the spots you've added, campers you've blocked, the tip jar, help and
+// legal links, sign out and delete your account (App Store rules require
+// deletion inside the app). Moderators also get a way into Review.
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -11,6 +11,7 @@ import {
   AccessibilityInfo,
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -21,10 +22,13 @@ import {
 import { EmbersCard, ModeratorCard } from '@/components/EmbersCard';
 import { TextField } from '@/components/form';
 import { HelpCard, LinkRow } from '@/components/HelpCard';
+import { NotificationsCard } from '@/components/NotificationsCard';
+import { TipJar } from '@/components/TipJar';
 import { Banner, Button, Card, EmptyState, Row, SectionTitle } from '@/components/ui';
 import { APPLE_SIGN_IN_HELP_URL } from '@/config';
 import { listBlocks, unblockCamper, type BlockedCamper } from '@/data/moderation';
 import { useSpots } from '@/data/spots';
+import { revokeAppleSignIn } from '@/lib/appleRevoke';
 import { useAuth } from '@/lib/auth';
 import { appleRemovalSteps, providerLabel } from '@/lib/authProviders';
 import { DEFAULT_DISPLAY_NAME, MAX_DISPLAY_NAME } from '@/lib/displayName';
@@ -165,6 +169,7 @@ export default function AccountScreen() {
           title="Accounts aren't available"
           message="This version of DisCamp runs on its starter spots only, so signing in and adding spots are turned off. Browsing works as usual."
         />
+        <TipJar />
         <HelpCard />
       </ScrollView>
     );
@@ -175,7 +180,13 @@ export default function AccountScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         {appleNote ? <AppleNote /> : null}
         <View style={styles.intro}>
-          <Ionicons name="person-circle-outline" size={64} color={colors.pine} />
+          <Ionicons
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+            name="person-circle-outline"
+            size={64}
+            color={colors.pine}
+          />
           <Text style={styles.title} accessibilityRole="header">
             Add the spots you know
           </Text>
@@ -184,6 +195,7 @@ export default function AccountScreen() {
           </Text>
         </View>
         <Button label="Sign in" icon="log-in-outline" onPress={() => router.push('/sign-in')} />
+        <TipJar />
         <HelpCard />
       </ScrollView>
     );
@@ -213,38 +225,61 @@ export default function AccountScreen() {
     if (!result.ok) Alert.alert("Couldn't sign out", result.message);
   };
 
+  /**
+   * Deletes the account. For Sign in with Apple, Apple's sheet first
+   * confirms it's them so DisCamp can disconnect their Apple ID; if that
+   * can't happen, the account is still deleted and the app explains the
+   * manual step. `skipApple`: the camper chose to delete without Apple.
+   */
+  const removeAccount = async (skipApple = false) => {
+    const apple = auth.user?.apple === true;
+    setBusy('delete');
+    let disconnected = false;
+    if (apple && !skipApple && auth.client) {
+      const check = await revokeAppleSignIn(auth.client);
+      if (check === 'cancelled') {
+        setBusy(null);
+        Alert.alert('Your account is still here', 'You closed the Apple check, so nothing was deleted.', [
+          { text: 'Keep my account', style: 'cancel' },
+          { text: 'Delete without Apple', style: 'destructive', onPress: () => void removeAccount(true) },
+        ]);
+        return;
+      }
+      disconnected = check === 'revoked';
+    }
+    const result = await auth.deleteAccount();
+    setBusy(null);
+    if (!result.ok) {
+      Alert.alert("Couldn't delete your account", result.message);
+      return;
+    }
+    // Spots you added now show without your name.
+    void refresh();
+    if (apple && !disconnected) {
+      setAppleNote(true);
+      Alert.alert('Account deleted', appleRemovalSteps(), [
+        { text: "Apple's instructions", onPress: () => void openWebLink(APPLE_SIGN_IN_HELP_URL) },
+        { text: 'OK' },
+      ]);
+    } else {
+      Alert.alert(
+        'Account deleted',
+        disconnected
+          ? 'DisCamp is disconnected from your Apple ID too. Thanks for helping other campers.'
+          : 'Thanks for helping other campers.',
+      );
+    }
+  };
+
   const deleteAccount = () => {
+    const appleSheet = auth.user?.apple === true && Platform.OS === 'ios';
     Alert.alert(
       'Delete your account?',
-      'This removes your sign-in and your display name. Spots you added stay on the map without your name. This can’t be undone.',
+      'This removes your sign-in and your display name. Spots you added stay on the map without your name. This can’t be undone.' +
+        (appleSheet ? ' Apple will ask you to confirm, so DisCamp can disconnect your Apple ID.' : ''),
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete account',
-          style: 'destructive',
-          onPress: () => {
-            setBusy('delete');
-            const apple = auth.user?.apple === true;
-            void auth.deleteAccount().then((result) => {
-              setBusy(null);
-              if (result.ok) {
-                // Spots you added now show without your name.
-                void refresh();
-                if (apple) {
-                  setAppleNote(true);
-                  Alert.alert('Account deleted', appleRemovalSteps(), [
-                    { text: "Apple's instructions", onPress: () => void openWebLink(APPLE_SIGN_IN_HELP_URL) },
-                    { text: 'OK' },
-                  ]);
-                } else {
-                  Alert.alert('Account deleted', 'Thanks for helping other campers.');
-                }
-              } else {
-                Alert.alert("Couldn't delete your account", result.message);
-              }
-            });
-          },
-        },
+        { text: 'Delete account', style: 'destructive', onPress: () => void removeAccount() },
       ],
     );
   };
@@ -265,6 +300,7 @@ export default function AccountScreen() {
 
         {auth.client ? <EmbersCard key={auth.user.id} client={auth.client} /> : null}
         {auth.client ? <ModeratorCard key={`mod-${auth.user.id}`} client={auth.client} /> : null}
+        {auth.client ? <NotificationsCard client={auth.client} /> : null}
 
         <Card>
           <SectionTitle>Your name on DisCamp</SectionTitle>
@@ -313,7 +349,13 @@ export default function AccountScreen() {
                   </Text>
                   {spot.createdAt ? <Text style={styles.spotMeta}>Added {formatDay(spot.createdAt)}</Text> : null}
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+                <Ionicons
+                  accessibilityElementsHidden
+                  importantForAccessibility="no"
+                  name="chevron-forward"
+                  size={18}
+                  color={colors.muted}
+                />
               </Pressable>
             ))
           )}
@@ -321,6 +363,8 @@ export default function AccountScreen() {
         </Card>
 
         <BlockedCampers client={auth.client} />
+
+        <TipJar />
 
         <HelpCard />
 

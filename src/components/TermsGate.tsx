@@ -50,7 +50,13 @@ export function TermsGate() {
   return (
     <ScrollView contentContainerStyle={styles.content}>
       <View style={styles.intro}>
-        <Ionicons name="shield-checkmark-outline" size={48} color={colors.pine} />
+        <Ionicons
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+          name="shield-checkmark-outline"
+          size={48}
+          color={colors.pine}
+        />
         <Text style={styles.title} accessibilityRole="header">
           Before you post
         </Text>

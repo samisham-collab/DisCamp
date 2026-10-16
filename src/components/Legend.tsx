@@ -41,7 +41,13 @@ export function LegendModal({ visible, onClose }: { visible: boolean; onClose: (
             ))}
             <SectionTitle>Orange map pins: cleanups</SectionTitle>
             <View style={styles.row}>
-              <Ionicons name="location" size={28} color={colors.orange} />
+              <Ionicons
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+                name="location"
+                size={28}
+                color={colors.orange}
+              />
               <Text style={styles.rowDetail}>
                 Trash a camper posted that still needs packing out. Tap one to see it, and earn Embers for cleaning it
                 up.

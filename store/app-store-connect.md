@@ -1,4 +1,4 @@
-# App Store Connect answers for DisCamp 1.4
+# App Store Connect answers for DisCamp 1.7
 
 Drafts for the forms in App Store Connect, written from what the code actually
 does. Check each one against the app before you submit; if the app changes,
@@ -38,6 +38,10 @@ Not collected: phone number, physical address, payment info, contacts,
 browsing or search history, purchases, usage data, advertising data,
 health, financial info, sensitive info, coarse location (distances are worked
 out on the phone).
+
+Tips (in-app purchases) are handled by Apple, and DisCamp keeps no record of
+them, so **Purchases** stays "not collected". Push addresses for notifications
+aren't a data type Apple asks about; the privacy policy covers them.
 
 If you don't set up Sentry (`EXPO_PUBLIC_SENTRY_DSN` empty), leave out the two
 Diagnostics rows.
@@ -96,10 +100,16 @@ Paste into **App Review Information > Notes** and fill in the brackets:
 > - Contact: Account > Help and contact, or [support email].
 >
 > Account deletion (5.1.1(v)): Account > Delete account. For accounts that used
-> Sign in with Apple, the app then explains how to remove DisCamp from the Apple
-> Account.
+> Sign in with Apple, Apple's sheet confirms it's the camper, and DisCamp
+> revokes its Sign in with Apple tokens before deleting the account.
 >
-> Donations aren't in this version.
+> Tips: Account > Support DisCamp offers three consumable in-app purchases
+> (tip_small, tip_medium, tip_large). They are tips only: they unlock no
+> content, features or status, and the app works the same without them.
+>
+> Notifications are optional and asked for only after a camper sends a cleanup
+> (or from Account > Notifications). They tell campers when their cleanup is
+> reviewed; nothing is marketing.
 
 ## Give reviewers something to report
 
@@ -114,15 +124,19 @@ Mention its name in the notes.
 - [ ] `EXPO_PUBLIC_SUPPORT_EMAIL` set on expo.dev for production (the build
       stops without it)
 - [ ] `docs/_config.yml` filled in and the pages published
-- [ ] Supabase: migrations 0001–0008 and the seed run
+- [ ] Supabase: migrations 0001–0009 and the seed run
       (`bash scripts/setup-database.sh`; 0006 also makes the `spot-photos`
       Storage bucket), all four sign-ins on,
-      the report-alert webhook working (send yourself a test report)
+      the report-alert and cleanup-push webhooks working (send yourself a
+      test report and a test cleanup)
 - [ ] A TestFlight build passes the test list on a real iPhone
 - [ ] One spot added by a second account, for reviewers (see above)
-- [ ] Decide on Apple token revocation: Apple says apps that offer Sign in with
-      Apple "should" revoke a camper's tokens when they delete their account
-      (TN3194). DisCamp 1.4 tells campers how to do it themselves; doing it
-      automatically needs your Apple key and a server function (master task
-      list Q6). Building it before the first submission lowers the risk of a
-      rejection.
+- [ ] Apple token revocation working: the `apple-revoke` function deployed
+      with its three Apple secrets (README, "Before the App Store"). Test it:
+      delete a test account made with Apple on an iPhone; the app should say
+      "DisCamp is disconnected from your Apple ID too."
+- [ ] The three tip products created in App Store Connect (Monetization >
+      In-App Purchases), each with a review screenshot, and attached to this
+      version. The Paid Apps agreement needs to be active first.
+- [ ] Notifications set up: `eas init` done, the push key made on the first
+      iOS build, `google-services.json` for Android (README)

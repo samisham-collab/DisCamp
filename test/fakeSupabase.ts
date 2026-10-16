@@ -282,6 +282,15 @@ export class FakeBackend {
    */
   intercept: ((query: FakeQuery) => Promise<QueryResult> | undefined) | null = null;
   readonly rpc: jest.Mock<(name: string, args?: Row) => PromiseLike<QueryResult>>;
+  /** Edge Functions the app called. apple-revoke disconnects Apple by default. */
+  readonly invoke = jest.fn(
+    async (name: string, _options?: { body?: unknown; signal?: AbortSignal }): Promise<QueryResult> =>
+      name === 'apple-revoke'
+        ? { data: { revoked: true }, error: null }
+        : { data: null, error: { message: `No function ${name}` } },
+  );
+  /** Push addresses registered with register_push_token, and whose they are. */
+  readonly pushTokens = new Map<string, string>();
   readonly client: SupabaseClient;
 
   constructor(rows: Row[] = [makeRow()]) {
@@ -302,6 +311,7 @@ export class FakeBackend {
         return query;
       },
       rpc: this.rpc,
+      functions: { invoke: this.invoke },
       auth: this.auth,
       storage: { from: (bucket: string) => this.bucket(bucket) },
     } as unknown as SupabaseClient;
@@ -440,6 +450,7 @@ export class FakeBackend {
     if (!uid) return { data: null, error: { message: 'not_signed_in', code: 'P0001' } };
     switch (name) {
       case 'delete_my_account':
+        for (const [token, owner] of this.pushTokens) if (owner === uid) this.pushTokens.delete(token);
         this.profiles.delete(uid);
         this.terms.delete(uid);
         this.blocks.delete(uid);
@@ -472,6 +483,15 @@ export class FakeBackend {
           .reduce((sum, r) => sum + Number(r.amount), 0);
         return { data: [{ total, today, daily_limit: 300 }], error: null };
       }
+      case 'register_push_token':
+        if (!/^Expo(nent)?PushToken\[[A-Za-z0-9_-]{1,200}\]$/.test(String(args.push_token))) {
+          return { data: null, error: { message: 'bad_push_token', code: 'P0001' } };
+        }
+        this.pushTokens.set(String(args.push_token), uid);
+        return { data: null, error: null };
+      case 'forget_push_token':
+        if (this.pushTokens.get(String(args.push_token)) === uid) this.pushTokens.delete(String(args.push_token));
+        return { data: null, error: null };
       case 'my_blocks':
         return {
           data: [...this.blockedBy(uid)].map((id) => ({

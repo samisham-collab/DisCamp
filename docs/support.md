@@ -25,13 +25,26 @@ In the app, open **Account** and tap **Delete account** at the bottom. This remo
 the campers you've blocked. Spots you added stay on the map without your name, so other campers can keep using them.
 Delete any you'd rather remove first, from each spot's page.
 
-If you signed in with Apple, also remove DisCamp from your Apple Account: on iPhone, open **Settings**, tap your name,
+If you signed in with Apple on an iPhone, Apple asks you to confirm it's you, and DisCamp disconnects itself from your
+Apple ID as it deletes your account. If the app says that didn't happen (or you deleted it on Android), remove DisCamp
+from your Apple Account yourself: on iPhone, open **Settings**, tap your name,
 then **Sign in with Apple** (under **Sign-In & Security** on newer iPhones), choose DisCamp and tap **Delete**. On
 other devices, sign in at [account.apple.com](https://account.apple.com). Apple's help:
 [Manage your apps with Sign in with Apple](https://support.apple.com/102571).
 
 Can't open the app? Email {{ site.support_email }} from the address you signed in with, and we'll delete the account
 for you.
+
+## Notifications
+
+DisCamp can tell you when a cleanup you sent is approved or sent back, and when someone cleans up one you posted. Turn
+them on in **Account > Notifications**. To turn them off, use your phone's **Settings > Notifications > DisCamp**.
+
+## Tips
+
+DisCamp is free with no ads. If you'd like to help pay for the server and maps, **Account > Support DisCamp** takes a
+tip through the App Store or Google Play. A tip doesn't unlock anything. For a refund, ask Apple
+([reportaproblem.apple.com](https://reportaproblem.apple.com)) or Google Play, which handle the payment.
 
 ## Spot information
 

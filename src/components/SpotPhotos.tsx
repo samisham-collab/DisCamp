@@ -179,13 +179,19 @@ export function SpotPhotos({ spot }: { spot: Spot }) {
                 setViewing(true);
               }}
               accessibilityRole="imagebutton"
-              accessibilityLabel={`Photo ${i + 1} of ${photos.length}${photo.addedBy ? `, by ${photo.addedBy}` : ''}`}
+              accessibilityLabel={`Photo ${i + 1} of ${photos.length}${photo.addedBy ? `, by ${photo.addedBy}` : ''}${photo.hidden ? ', hidden while reports are reviewed' : ''}`}
               accessibilityHint="Opens it full size"
             >
               <Image source={{ uri: photo.url }} style={styles.thumb} contentFit="cover" transition={150} />
               {photo.hidden ? (
                 <View style={styles.hiddenTag}>
-                  <Ionicons name="eye-off-outline" size={14} color="#FFFFFF" />
+                  <Ionicons
+                    accessibilityElementsHidden
+                    importantForAccessibility="no"
+                    name="eye-off-outline"
+                    size={14}
+                    color="#FFFFFF"
+                  />
                 </View>
               ) : null}
             </Pressable>
@@ -348,7 +354,11 @@ function ViewerButton({
       accessibilityState={{ busy, disabled: busy }}
       style={({ pressed }) => [styles.viewerButton, pressed && styles.pressed]}
     >
-      {busy ? <ActivityIndicator color="#FFFFFF" /> : <Ionicons name={icon} size={22} color="#FFFFFF" />}
+      {busy ? (
+        <ActivityIndicator color="#FFFFFF" />
+      ) : (
+        <Ionicons accessibilityElementsHidden importantForAccessibility="no" name={icon} size={22} color="#FFFFFF" />
+      )}
       <Text style={styles.viewerButtonText}>{label}</Text>
     </Pressable>
   );

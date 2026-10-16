@@ -109,7 +109,13 @@ export default function ReportScreen() {
     return (
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.intro}>
-          <Ionicons name="checkmark-circle-outline" size={56} color={colors.pine} />
+          <Ionicons
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+            name="checkmark-circle-outline"
+            size={56}
+            color={colors.pine}
+          />
           <Text style={styles.title} accessibilityRole="header">
             {done === 'sent' ? 'Thanks for reporting' : 'Already reported'}
           </Text>

@@ -467,7 +467,8 @@ describe('Photos', () => {
     const alerts = spyOnAlerts();
     photoBy(backend, SAM, 1, { hidden: true });
     await renderApp('/spot/alex-spot');
-    fireEvent.press(await screen.findByLabelText('Photo 1 of 1, by Sam'));
+    // Screen readers hear it too, not just the eye icon.
+    fireEvent.press(await screen.findByLabelText('Photo 1 of 1, by Sam, hidden while reports are reviewed'));
     expect(await screen.findByText(/hidden while it’s reviewed/)).toBeTruthy();
     fireEvent.press(screen.getByLabelText('Delete'));
     await act(async () => alerts.press('Delete'));

@@ -62,7 +62,13 @@ export function EmbersCard({ client }: { client: SupabaseClient }) {
             accessible
             accessibilityLabel={`${formatEmbers(summary.total)}. ${standing.rank.name}.`}
           >
-            <Ionicons name="flame" size={30} color={colors.orange} />
+            <Ionicons
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+              name="flame"
+              size={30}
+              color={colors.orange}
+            />
             <View style={styles.topText}>
               <Text style={styles.total}>{formatEmbers(summary.total)}</Text>
               <Text style={styles.rank}>{standing.rank.name}</Text>
@@ -113,7 +119,13 @@ export function EmbersCard({ client }: { client: SupabaseClient }) {
         style={({ pressed }) => [styles.toggle, pressed && styles.pressed]}
       >
         <Text style={styles.link}>How to earn Embers</Text>
-        <Ionicons name={showRules ? 'chevron-up' : 'chevron-down'} size={18} color={colors.pine} />
+        <Ionicons
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+          name={showRules ? 'chevron-up' : 'chevron-down'}
+          size={18}
+          color={colors.pine}
+        />
       </Pressable>
       {showRules ? (
         <View style={styles.list}>

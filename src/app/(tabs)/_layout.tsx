@@ -14,7 +14,15 @@ type IconName = ComponentProps<typeof Ionicons>['name'];
 /** The tab's icon: filled when selected, an outline when not. */
 function tabIcon(selected: IconName, other: IconName) {
   return function TabIcon({ focused, color, size }: { focused: boolean; color: ColorValue; size: number }) {
-    return <Ionicons name={focused ? selected : other} color={color as string} size={size} />;
+    return (
+      <Ionicons
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+        name={focused ? selected : other}
+        color={color as string}
+        size={size}
+      />
+    );
   };
 }
 
@@ -22,7 +30,8 @@ function tabIcon(selected: IconName, other: IconName) {
 function TabLabel({ focused, color, children }: { focused: boolean; color: ColorValue; children: string }) {
   return (
     <View style={styles.label}>
-      <Text style={[styles.text, { color }, focused && styles.textOn]} numberOfLines={1}>
+      {/* Grows with the camper's text size, but not past what fits under the icon. */}
+      <Text style={[styles.text, { color }, focused && styles.textOn]} numberOfLines={1} maxFontSizeMultiplier={1.4}>
         {children}
       </Text>
       {/* Always there, so the label doesn't jump; only colored when selected. */}

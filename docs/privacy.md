@@ -53,6 +53,19 @@ You can sign in with Apple, Google, Microsoft or GitHub. We then receive and kee
   isn't told who reported them.
 - **Campers you block.** Only you (and the app, to hide their spots and photos from you) see this list.
 
+## Notifications
+
+If you turn on notifications (DisCamp asks after you first send a cleanup, or in **Account > Notifications**), your
+phone gives DisCamp a push address for this install of the app. We keep it with your account so we can tell you when a
+cleanup you sent is approved or sent back, when someone cleans up one you posted, and, if you're a moderator, when a
+cleanup is waiting for review. It isn't shown to anyone. Signing out on that phone removes it, deleting your account
+removes all of yours, and you can turn notifications off any time in your phone's settings.
+
+## Tips
+
+Tips go through the App Store or Google Play. Apple or Google handle the payment; DisCamp never sees your card or
+payment details, and we keep no record of who tipped. A tip doesn't change your account or unlock anything.
+
 ## Your location
 
 DisCamp asks for permission to use your location only when you first tap "Show my location", "Sort by distance" or
@@ -84,6 +97,9 @@ These companies process information for us, only to provide their service:
 - **Apple, Google, Microsoft and GitHub**, when you choose to sign in with them. Their own privacy policies cover what
   they do.
 - **Sentry**, for crash reports.
+- **Expo** (650 Industries), whose push service delivers notifications to your phone, with Apple and Google's own
+  notification services. They get the push address and the notification's text.
+- **Apple and Google** handle tips you leave through the App Store or Google Play.
 - **Resend**, which emails us each report so we can review it quickly.
 - **Map providers.** The map uses Apple Maps on iPhone and Google Maps on Android, which load map images for the area
   you're viewing.
@@ -94,7 +110,8 @@ such as reporting child sexual abuse material to the authorities.
 ## Keeping and deleting your information
 
 We keep your account information until you delete your account. You can do that any time in the app: **Account >
-Delete account**. Deleting your account removes your sign-in, email address, display name and block list right away.
+Delete account**. Deleting your account removes your sign-in, email address, display name, block list and notification push addresses
+right away. If you signed in with Apple on an iPhone, DisCamp also asks Apple to disconnect DisCamp from your Apple ID.
 Spots, photos, check-ins and cleanups you added stay without your name, so other campers can keep using them, and your
 Embers record is deleted; you can delete
 spots and photos you added before deleting your account (except while one has reports waiting for review). Reports you sent are kept

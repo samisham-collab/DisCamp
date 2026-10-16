@@ -2,7 +2,7 @@
   "expo": {
     "name": "DisCamp",
     "slug": "discamp",
-    "version": "1.6.1",
+    "version": "1.7.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -142,7 +142,15 @@
           "microphonePermission": "DisCamp only takes still photos and never records sound."
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#1F5C43"
+        }
+      ],
+      "expo-iap"
     ],
     "runtimeVersion": {
       "policy": "appVersion"

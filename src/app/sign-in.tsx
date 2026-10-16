@@ -95,7 +95,13 @@ export default function SignInScreen() {
   return (
     <ScrollView contentContainerStyle={styles.content}>
       <View style={styles.intro}>
-        <Ionicons name="person-circle-outline" size={56} color={colors.pine} />
+        <Ionicons
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+          name="person-circle-outline"
+          size={56}
+          color={colors.pine}
+        />
         <Text style={styles.title} accessibilityRole="header">
           Sign in to DisCamp
         </Text>

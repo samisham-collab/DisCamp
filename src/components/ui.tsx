@@ -115,7 +115,15 @@ export function Segmented<T extends string>({
             accessibilityLabel={o.label}
             style={[styles.segment, on && styles.segmentOn]}
           >
-            {o.icon && <Ionicons name={o.icon} size={16} color={on ? '#FFFFFF' : colors.ink} />}
+            {o.icon && (
+              <Ionicons
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+                name={o.icon}
+                size={16}
+                color={on ? '#FFFFFF' : colors.ink}
+              />
+            )}
             <Text style={[styles.segmentText, on && styles.segmentTextOn]}>{o.label}</Text>
           </Pressable>
         );
@@ -175,7 +183,13 @@ export function Stepper({
         accessibilityLabel={`Decrease ${label}`}
         testID={`${label}-decrease`}
       >
-        <Ionicons name="remove" size={24} color={colors.pine} />
+        <Ionicons
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+          name="remove"
+          size={24}
+          color={colors.pine}
+        />
       </Pressable>
       <Text style={styles.stepValue}>
         {formatNumber(value)} {unit}
@@ -187,7 +201,7 @@ export function Stepper({
         accessibilityLabel={`Increase ${label}`}
         testID={`${label}-increase`}
       >
-        <Ionicons name="add" size={24} color={colors.pine} />
+        <Ionicons accessibilityElementsHidden importantForAccessibility="no" name="add" size={24} color={colors.pine} />
       </Pressable>
     </View>
   );
@@ -265,7 +279,13 @@ export function IconButton({
       {busy ? (
         <ActivityIndicator color={colors.pine} />
       ) : (
-        <Ionicons name={icon} size={22} color={active ? '#FFFFFF' : colors.pine} />
+        <Ionicons
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+          name={icon}
+          size={22}
+          color={active ? '#FFFFFF' : colors.pine}
+        />
       )}
     </Pressable>
   );
@@ -281,7 +301,13 @@ export function ActionButton({ icon, label, onPress }: { icon: IconName; label: 
       style={({ pressed }) => [styles.action, pressed && styles.pressed]}
     >
       <View style={styles.actionIcon}>
-        <Ionicons name={icon} size={22} color={colors.pine} />
+        <Ionicons
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+          name={icon}
+          size={22}
+          color={colors.pine}
+        />
       </View>
       <Text style={styles.actionText} numberOfLines={1}>
         {label}
@@ -321,7 +347,13 @@ export function Banner({
   }, [announceKey]);
   return (
     <View style={[styles.banner, { backgroundColor: palette.bg }]}>
-      <Ionicons name={icon ?? palette.icon} size={20} color={palette.fg} />
+      <Ionicons
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+        name={icon ?? palette.icon}
+        size={20}
+        color={palette.fg}
+      />
       <Text style={[styles.bannerText, { color: palette.fg }]} accessibilityRole={tone === 'info' ? 'text' : 'alert'}>
         {message}
       </Text>
@@ -366,7 +398,7 @@ export function EmptyState({
 }) {
   return (
     <View style={styles.empty}>
-      <Ionicons name={icon} size={32} color={colors.muted} />
+      <Ionicons accessibilityElementsHidden importantForAccessibility="no" name={icon} size={32} color={colors.muted} />
       <Text style={styles.emptyTitle} accessibilityRole="header">
         {title}
       </Text>

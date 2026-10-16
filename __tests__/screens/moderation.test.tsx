@@ -325,7 +325,9 @@ describe('Help and contact', () => {
   });
 
   it('after deleting an Apple account, explains removing DisCamp from the Apple Account', async () => {
-    server({ ...SAM, provider: 'apple' });
+    const backend = server({ ...SAM, provider: 'apple' });
+    // The apple-revoke function isn't set up, so Apple stays connected.
+    backend.invoke.mockResolvedValueOnce({ data: { revoked: false, reason: 'not_configured' }, error: null });
     const alerts = spyOnAlerts();
     const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
     await renderApp('/account');

@@ -8,9 +8,11 @@ import { useEffect, useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { PushBridge } from '@/components/PushBridge';
 import { Button } from '@/components/ui';
 import { CleanupsProvider } from '@/data/cleanupsStore';
 import { SpotsProvider } from '@/data/spots';
+import { TipsProvider } from '@/data/tipsStore';
 import { AuthProvider } from '@/lib/auth';
 import { initCrashReports } from '@/lib/crashReports';
 import { LocationProvider } from '@/lib/location';
@@ -96,6 +98,7 @@ function AppStack() {
     <View style={styles.app} testID="app-ready">
       <StatusBar style="dark" />
       {stack}
+      <PushBridge />
     </View>
   );
 }
@@ -109,7 +112,9 @@ export default function RootLayout() {
             <AuthProvider>
               <SpotsProvider>
                 <CleanupsProvider>
-                  <AppStack />
+                  <TipsProvider>
+                    <AppStack />
+                  </TipsProvider>
                 </CleanupsProvider>
               </SpotsProvider>
             </AuthProvider>

@@ -24,6 +24,8 @@ jest.mock('expo-image-picker', () => jest.requireActual('./test/mocks/expoImageP
 jest.mock('expo-image-manipulator', () => jest.requireActual('./test/mocks/expoImageManipulator'));
 jest.mock('expo-file-system', () => jest.requireActual('./test/mocks/expoFileSystem'));
 jest.mock('expo-image', () => jest.requireActual('./test/mocks/expoImage'));
+jest.mock('expo-notifications', () => jest.requireActual('./test/mocks/expoNotifications'));
+jest.mock('expo-iap', () => jest.requireActual('./test/mocks/expoIap'));
 // Expo builds sign-in redirect links from app.json, which tests don't load.
 jest.mock('expo-linking', () => ({
   ...jest.requireActual<Record<string, unknown>>('expo-linking'),
@@ -54,6 +56,8 @@ beforeEach(() => {
   const { kvStore } = jest.requireMock<{ kvStore: typeof MemoryKvStore }>('@/lib/kvStore');
   kvStore.reset();
   jest.requireMock<{ store: Map<string, string> }>('expo-secure-store').store.clear();
+  jest.requireMock<{ reset: () => void }>('expo-notifications').reset();
+  jest.requireMock<{ reset: () => void }>('expo-iap').reset();
 
   unexpectedLogs.length = 0;
   for (const level of ['error', 'warn'] as const) {

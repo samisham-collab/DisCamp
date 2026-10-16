@@ -197,7 +197,13 @@ export default function ExploreScreen() {
                 accessibilityLabel="Add a spot"
                 style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
               >
-                <Ionicons name="add" size={20} color="#FFFFFF" />
+                <Ionicons
+                  accessibilityElementsHidden
+                  importantForAccessibility="no"
+                  name="add"
+                  size={20}
+                  color="#FFFFFF"
+                />
                 <Text style={styles.addText} numberOfLines={1} maxFontSizeMultiplier={1.6}>
                   Add spot
                 </Text>
@@ -209,7 +215,13 @@ export default function ExploreScreen() {
               accessibilityLabel="What the colors mean"
               style={styles.headerIcon}
             >
-              <Ionicons name="help-circle-outline" size={26} color={colors.pine} />
+              <Ionicons
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+                name="help-circle-outline"
+                size={26}
+                color={colors.pine}
+              />
             </Pressable>
           </View>
         </View>
@@ -221,7 +233,13 @@ export default function ExploreScreen() {
           accessibilityHint="Opens My Rig"
           style={({ pressed }) => [styles.rigChip, pressed && styles.pressed]}
         >
-          <Ionicons name="car-sport-outline" size={22} color={colors.pine} />
+          <Ionicons
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+            name="car-sport-outline"
+            size={22}
+            color={colors.pine}
+          />
           <View style={styles.rigText}>
             <Text style={styles.rigLabel} numberOfLines={1}>
               Showing fit for <Text style={styles.rigName}>{rigDisplayName(rig)}</Text>
@@ -230,7 +248,13 @@ export default function ExploreScreen() {
               {rigSummary(rig)}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+          <Ionicons
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+            name="chevron-forward"
+            size={18}
+            color={colors.muted}
+          />
         </Pressable>
 
         <View style={styles.controlsRow}>

@@ -2,9 +2,9 @@
 
 A free, community-built map of campsites that tells you whether your rig can reach a spot, whether it fits, and what it costs to stay.
 
-**Version 1.4** gets DisCamp ready for the App Store: reporting, blocking, a word filter and terms of use for camper-added content (Apple's Guideline 1.2), a privacy policy, terms and support page to publish, crash reports, over-the-air updates and a privacy manifest. Version 1.3 added accounts and camper-added spots. See [CHANGELOG.md](CHANGELOG.md) for every version.
+**Version 1.7** adds notifications for cleanups, a tip jar (DisCamp's only income), disconnecting Sign in with Apple when an account is deleted, an accessibility pass, and 53 more starter spots across the US, KOAs included. Version 1.6 added cleanups and Embers; 1.5, photos and "Still good". See [CHANGELOG.md](CHANGELOG.md) for every version.
 
-It ships with six starter spots from public listings:
+It ships with 59 starter spots from public listings, in 24 states: 42 dispersed spots and 17 campgrounds, 15 of them KOAs (for the nights you want a shower and hookups). The first six:
 
 | Spot                                | Where                                               | Type       |
 | ----------------------------------- | --------------------------------------------------- | ---------- |
@@ -14,6 +14,8 @@ It ships with six starter spots from public listings:
 | South Fork Sublett Creek            | Forest Road 583, Sublett Reservoir, Idaho           | Dispersed  |
 | Forest Road 46 near Packwood        | Gifford Pinchot National Forest, Washington         | Dispersed  |
 | Forest Road 356 near Mount Rushmore | Black Hills National Forest, South Dakota           | Dispersed  |
+
+The other 53 are in `src/data/seeds/`, one file per region (Southwest, Rockies and Plains, Pacific, Central and East). Each lists its sources; anything a source didn't say is marked ASSUMPTION or left "not reported", and every one starts unconfirmed until campers check it on site.
 
 ## What the app does
 
@@ -25,7 +27,7 @@ It ships with six starter spots from public listings:
 - **Filters**: "Fits my rig" and "Free for my rig". Filters, map or list, and satellite view are remembered.
 - **Works offline**: the last spots loaded are saved on the phone. If the server can't be reached, a banner says so and offers Retry.
 - **Location only when asked**: DisCamp never asks for location on launch. Tap "Show my location" or "Sort by distance" when you want distances.
-- **Screen readers**: every control has a label and role, and filter counts and connection problems are read out.
+- **Screen readers and large text**: every control has a label and role, decorative icons are hidden from screen readers, photos say whose they are (and when they're hidden for review), and filter counts and connection problems are read out. Text grows with the phone's text size.
 - **Sign in** with Apple, Google, Microsoft or GitHub (Account tab, or "Add spot"). Only needed to post (spots, photos, check-ins, cleanups).
 - **Add a spot**: drop a pin on a satellite map (or use your location, or paste GPS), then rate access, who fits and cost. Only the name, land manager and location are required; anything else can stay "Not sure". The draft is saved as you type. New spots show for everyone right away, marked "not yet confirmed".
 - **Your spots**: edit or delete the spots you added (deleting stops once other campers have reported on a spot). The Account tab lists them, and lets you change your display name, sign out or delete your account.
@@ -35,6 +37,8 @@ It ships with six starter spots from public listings:
 - **Cleanups**: found trash at a site? The **Cleanups** tab (or a spot's page) posts it with a before photo from the camera, pinned where you stand and linked to a spot within 2 km. Open cleanups show as orange pins on the map and in the Cleanups tab, nearest first. Whoever packs it out (the camper who posted it too) taps **I cleaned it up** and sends an after photo, taken within 150 m of the pin, and a haul shot of what they carried out. It waits for a moderator; a camper can send a cleanup twice.
 - **Review** (moderators only, from Account): the before, after and haul photos side by side, how far from the pin the after photo was taken, and who sent it. **Approve** at the size you see, or **Send back** with a reason the camper reads.
 - **Embers**: points for helping, shown on Account with your rank (Tenderfoot, Scout at 250, Trailblazer at 1,000, Pathfinder at 3,000, Steward at 7,500, Guardian at 15,000), how far to the next, today's count and what earned them. An approved cleanup earns 50, 100 or 150 by size, and 10 for whoever posted it; a spot you added that 2 campers confirm earns 50; your first "Still good" and first change report on a spot earn 10 each; photos earn 5 (3 a spot; deleting a photo takes its 5 back). Up to 300 a day, 100 a day in an account's first two weeks, and at most 50 a day from check-ins. Embers have no cash value and can't be bought; only the database adds them.
+- **Notifications**: campers hear when a moderator approves or sends back a cleanup they sent, and when someone cleans up one they posted; moderators hear about each new cleanup to review. The app asks after a camper first sends a cleanup (or from **Account > Notifications**), never on launch. They need the App Store or Google Play version; Expo Go can't receive them.
+- **Tip jar**: **Account > Support DisCamp** takes tips of $2.99, $4.99 or $9.99 through the App Store or Google Play. A tip unlocks nothing; DisCamp stays free with no ads. Tips need the store version too.
 - **Report and block**: every spot page has **Report this spot**, and for spots campers added, **Report the name** and **Block**. Blocked campers' spots and photos disappear for you; Account lists them. Photos can be reported too. Each report emails you, and 3 reports hide a spot or photo until you review it. [MODERATION.md](MODERATION.md) is the routine.
 - **Help and contact**: the Account tab shows the support email and links to the privacy policy, terms and support page.
 - Works with **no backend**: then it shows the starter spots, and sign-in and adding spots are turned off. Supabase is optional (see below).
@@ -117,9 +121,10 @@ update public.spots set verified = true where id = 'smoky-gardens';
    6. `supabase/migrations/0006_photos_checkins.sql` adds photos (and their Storage bucket), "Still good" check-ins and change reports (1.5.0). See "Photos" below.
    7. `supabase/migrations/0007_still_good_once.sql` makes "Still good" once per spot every 30 days, and lets a change report take it back (1.5.1).
    8. `supabase/migrations/0008_cleanups_embers.sql` adds cleanups, the moderators' review, and Embers (1.6.0). It also gives earlier photos and check-ins their Embers.
-   9. `supabase/seed.sql` adds the starter spots.
+   9. `supabase/migrations/0009_push.sql` keeps each camper's push address for notifications, and says who to tell about a cleanup (1.7.0).
+   10. `supabase/seed.sql` adds the starter spots.
 
-   Already ran some for an earlier version? Run only the ones after it (for 1.3: 0004 to 0008; for 1.4.0: 0005 to 0008; for 1.4.1: 0006 to 0008; for 1.5.0: 0007 and 0008; for 1.5.1: just 0008), then the seed. Never rerun an older file after a newer one: newer files change things the older ones made. To switch a database set up by hand over to the script, tell it the last file that ran, for example `bash scripts/setup-database.sh --after 0005`.
+   Already ran some for an earlier version? Run only the ones after it (for 1.3: 0004 to 0009; for 1.4.0: 0005 to 0009; for 1.4.1: 0006 to 0009; for 1.5.0: 0007 to 0009; for 1.5.1: 0008 and 0009; for 1.6: just 0009), then the seed. Never rerun an older file after a newer one: newer files change things the older ones made. To switch a database set up by hand over to the script, tell it the last file that ran, for example `bash scripts/setup-database.sh --after 0005`.
 
 3. Copy your **Project URL** and **publishable key** from the project's API settings.
 4. For your phone: `cp .env.example .env`, put both values in `.env`, and restart `npx expo start`.
@@ -171,7 +176,18 @@ Without these, sign-in opens and then quietly comes back as "cancelled".
 **Before the App Store:**
 
 - Apple requires Sign in with Apple in any app that offers Google, Microsoft or GitHub sign-in (App Review guideline 4.8), so switch Apple on before submitting.
-- Account deletion is in the app (Account > Delete account), as Apple requires. For accounts that used Sign in with Apple, the app then explains how to remove DisCamp from the Apple Account (Apple's minimum, TN3194). Revoking the tokens automatically needs a server function holding the Apple key; it's on the list after launch.
+- Account deletion is in the app (Account > Delete account), as Apple requires. For accounts that used Sign in with Apple on an iPhone, Apple's sheet confirms it's them first, and the `apple-revoke` server function disconnects DisCamp from their Apple ID (App Store rule 5.1.1(v)). Set it up once:
+  1. In [Apple Developer](https://developer.apple.com/account/resources/authkeys/list) > **Keys**, make a key with **Sign in with Apple** on, for the `org.discamp.app` App ID. Download the `.p8` file (only once) and note the **Key ID** and your **Team ID** (top right, or Membership).
+  2. In Terminal, from the DisCamp folder (after `npx supabase login` and `link`, see MODERATION.md):
+
+     ```sh
+     npx supabase secrets set APPLE_TEAM_ID=ABCDE12345 APPLE_KEY_ID=XYZ987WVUT APPLE_PRIVATE_KEY="$(cat ~/Downloads/AuthKey_XYZ987WVUT.p8)"
+     npx supabase functions deploy apple-revoke --no-verify-jwt
+     ```
+
+     The key stays on Supabase; never put it in the app, `.env` or git (`.gitignore` skips `.p8` files). The function checks who's calling itself, which is why it's deployed with `--no-verify-jwt`.
+
+  Until it's set up (and on Android, which has no Apple sheet), the app still deletes the account and explains how to remove DisCamp from the Apple Account (TN3194).
 
 **What the database allows** (enforced by `0003_accounts.sql` and `0004_moderation.sql`, checked by the database tests):
 
@@ -188,6 +204,8 @@ Without these, sign-in opens and then quietly comes back as "cancelled".
 ## Moderation, legal pages and crash reports
 
 **Moderation.** Apple expects you to act on reports within 24 hours. [MODERATION.md](MODERATION.md) sets up an email for every report (a small Supabase Edge Function, `supabase/functions/report-alert`, plus Resend) and walks through the daily routine in the SQL Editor.
+
+**Notifications for cleanups.** A second small function, `supabase/functions/cleanup-push`, sends them through Expo's free push service. MODERATION.md, "Notifications for cleanups", sets it up (one webhook, like the report emails), and "Build for TestFlight and Android" below covers the phone side.
 
 **Reviewing cleanups.** Make yourself a moderator once, in the SQL Editor (put your display name in the quotes):
 
@@ -221,6 +239,19 @@ Builds run on Expo's servers with EAS (`eas.json` has a **preview** and a **prod
 - **Android test build (APK you can install directly):** `npx eas-cli@latest build --profile preview --platform android`
 - **iPhone for TestFlight:** `npx eas-cli@latest build --profile production --platform ios`, then `npx eas-cli@latest submit --platform ios`. This needs your Apple Developer account.
 - **App ID:** `org.discamp.app` in `app.json` is a placeholder. Change it to one you own before your first store build; it can't be changed after release.
+- **Notifications** need three things from you, once:
+  1. `npx eas-cli@latest init`, which puts the project id in `app.json` (Expo's push service needs it). Until then, Account says notifications aren't set up.
+  2. **iPhone:** the first iOS build asks "Would you like to set up Push Notifications for your project?" Say yes and EAS makes the Apple push key for you.
+  3. **Android:** Android notifications go through Firebase. At [console.firebase.google.com](https://console.firebase.google.com), make a project, add an Android app with the package `org.discamp.app`, and download `google-services.json` into the DisCamp folder (next to `app.json`). Then in Firebase **Project settings > Service accounts**, generate a private key, and upload it with `npx eas-cli@latest credentials` (Android > production > Google Service Account > Push Notifications (FCM V1)). Keep that key out of git.
+- **Tip jar:** tips are in-app purchases, so they only work in builds from the stores (TestFlight and internal testing included), never in Expo Go. Set up three **consumable** products with these exact ids in both stores, at $2.99, $4.99 and $9.99:
+
+  | Product id   | Name (shown in the app) |
+  | ------------ | ----------------------- |
+  | `tip_small`  | Coffee at camp          |
+  | `tip_medium` | A bundle of firewood    |
+  | `tip_large`  | A tank of gas           |
+
+  **App Store Connect:** first accept the Paid Apps agreement and add banking and tax (**Business**). Then your app > **Monetization > In-App Purchases** > **+** > Consumable, for each. Add a review screenshot of the Account tab's tip jar. Submit them with the next app version. **Google Play Console:** set up a payments profile, then your app > **Monetize > Products > In-app products**, one per id. Test with sandbox accounts (App Store Connect > Users and Access > Sandbox) and license testers (Play Console > Settings > License testing): test purchases cost nothing. `store/app-store-connect.md` has the review notes.
 
 ## Project map
 
@@ -232,7 +263,7 @@ src/
     (tabs)/index.tsx        Explore: map or list, filters, summary card, "Add spot"
     (tabs)/cleanups.tsx     Cleanups: to clean up (nearest first), waiting for review, done lately
     (tabs)/rig.tsx          My Rig
-    (tabs)/account.tsx      Account: Embers and rank, name, your spots, blocked campers, help, sign out, delete account
+    (tabs)/account.tsx      Account: Embers and rank, notifications, name, your spots, blocked campers, tip jar, help, sign out, delete account
     spot/[id].tsx           Spot page (edit and delete if you added it; report and block otherwise)
     report/[kind]/[id].tsx  Report a spot, a photo, a check-in, a cleanup or a camper's name
     checkin/[id].tsx        Report a change at a spot (washout, locked gate, trash, closed)
@@ -248,7 +279,8 @@ src/
     +native-intent.tsx      Catches the sign-in link on phones
     +not-found.tsx          Page for broken links
   components/               Map, pins, cost meter, clearance gauge, cards, shared UI
-  data/seedSpots.ts         Starter spots (6, from public listings)
+  data/seedSpots.ts         Starter spots: the first 6, plus the regions below
+  data/seeds/               53 more starter spots, one file per region (dispersed spots and KOAs)
   data/spots.tsx            Shares spots with every screen: starter → saved → server
   data/spotsRepository.ts   Server queries and the offline copy
   data/spotWrites.ts        Adding, editing and deleting spots on the server
@@ -256,6 +288,7 @@ src/
   data/community.ts         Photos and check-ins on the server
   data/cleanups.ts          Cleanups, reviews and Embers on the server
   data/cleanupsStore.tsx    Shares cleanups with the map, Cleanups tab and spot pages
+  data/tipsStore.tsx        The tip jar's store connection, for the whole app (finishes paid tips)
   lib/embers.ts             Embers amounts and ranks
   lib/camera.ts             Camera-only photos for cleanups
   lib/fit.ts                Rig-fit rules and the C1–C7 clearance tiers
@@ -274,16 +307,25 @@ src/
   lib/photoPicker.ts        Takes or picks a photo, shrinks it and strips its details
   lib/usePostingGate.ts     Before posting: signed in and agreed to the rules
   lib/crashReports.ts       Sentry crash reports, scrubbed of anything personal
+  lib/push.ts               Notifications: asking, this phone's push address, which screen a tap opens
+  lib/tips.ts               The tip jar's products (in-app purchases)
+  lib/appleRevoke.ts        Disconnecting Sign in with Apple before an account is deleted
+  lib/expoGo.ts             Whether this is Expo Go (no notifications or tips there)
   components/TermsGate.tsx  Community rules and "I agree", before a first post
   components/SpotPhotos.tsx A spot's photos: thumbnails, add, full-size view
   components/SpotCheckins.tsx "Were you here?": Still good, Something changed, recent check-ins
   components/Cleanups.tsx   Cleanup rows, photos, and the Cleanups card on spot pages
   components/EmbersCard.tsx Embers and rank on Account, and the moderators' way into Review
+  components/NotificationsCard.tsx  Notifications on Account: on, off, or turn them on
+  components/TipJar.tsx     "Support DisCamp": the tip jar on Account
+  components/PushBridge.tsx Shows notifications while the app is open, and opens the screen a tap is about
   config.ts                 App-wide settings (timeouts, storage keys, support and legal links)
   theme.ts                  Colors and sizes
 supabase/migrations/        Database schema, one numbered file per change
 supabase/seed.sql           Generated from seedSpots.ts (npm run seed:sql)
-supabase/functions/         report-alert: emails you each report (Deno, runs on Supabase)
+supabase/functions/         Small server functions (Deno, run on Supabase):
+                            report-alert emails you each report; cleanup-push sends cleanup notifications;
+                            apple-revoke disconnects Sign in with Apple when an account is deleted
 docs/                       Privacy policy, terms and support page (GitHub Pages)
 store/                      Draft App Store Connect answers
 MODERATION.md               Acting on reports within 24 hours
@@ -315,6 +357,7 @@ test/                       Test helpers and stand-ins for native modules
 - **Maps:** v1 uses `react-native-maps` (Apple Maps on iPhone, Google Maps on Android) because it runs in Expo Go for free. The plan's MapLibre + OpenFreeMap switch comes with offline maps; only `src/components/SpotMap.tsx` touches the map.
 - **Lots of spots:** the app loads every spot in one request, and Supabase returns at most 1,000 rows per request. Before you get close, switch to loading spots for the visible map area (the app logs a warning if it ever hits the limit).
 - **Cleanups later:** AI checks of before and after photos (an Edge Function, so the key never ships in the app), duplicate-photo checks, and trusted campers reviewing cleanups. Until then a moderator reviews every one.
+- **Tips later:** a thank-you badge for tippers would need the server to check each purchase with Apple and Google first. For now a tip is just a thank-you, and DisCamp keeps no record of who tipped.
 - **Next up:** TestFlight on a real iPhone and the App Store. The product plan's MVP backlog lists the rest, sprint by sprint.
 
 ## Put it on GitHub
@@ -323,7 +366,7 @@ test/                       Test helpers and stand-ins for native modules
 cd ~/Documents/DisCamp
 git init
 git add .
-git commit -m "DisCamp v1.4"
+git commit -m "DisCamp v1.7"
 ```
 
 Then create an empty repo on GitHub and follow its "push an existing repository" steps. CI starts running on the first push.
