@@ -215,7 +215,11 @@ const sendCleanup = (uid: string, id: string, haul: string, task: string, where:
   it('returns exactly the starter spots through the API view', () => {
     const { spots, skipped } = parseSpotRows(readSpots());
     expect(skipped).toBe(0);
-    expect(spots).toEqual([...SEED_SPOTS].sort((a, b) => a.name.localeCompare(b.name)));
+    // Compared in id order: the database sorts names by its own locale (CI's
+    // is en_US, which orders some names differently from JavaScript), and the
+    // app sorts spots itself anyway.
+    const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    expect([...spots].sort(byId)).toEqual([...SEED_SPOTS].sort(byId));
   });
 
   it('lets visitors read spots and nothing else', () => {

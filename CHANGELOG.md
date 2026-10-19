@@ -35,6 +35,7 @@ A pre-TestFlight pass: fixes from going through every screen as a camper would, 
 - Opening a cleanup that has since been removed takes it off the lists.
 - On **Review**, the keyboard no longer covers the send-back reason.
 - **Edit spot** no longer says reports from other campers are "coming in a later version"; it points to "Something changed".
+- CI's database check failed from 1.7.0 on: a test compared the starter spots in name order, and CI's database (US English) sorts some of the new names differently from JavaScript. It now compares them by id. The app and the database were never affected.
 
 ## 1.7.0 (2026-10-16)
 
