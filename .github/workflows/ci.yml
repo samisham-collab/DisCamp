@@ -52,8 +52,8 @@ jobs:
       - run: npm ci
       - run: npm run test:db
 
-  # Type-checks and lints the report-alert Edge Function, which runs on Deno
-  # (Supabase's runtime), not in the app.
+  # Type-checks and lints the Edge Functions, which run on Deno (Supabase's
+  # runtime), not in the app.
   edge-functions:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -62,5 +62,5 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - run: deno check supabase/functions/report-alert/index.ts
+      - run: deno check supabase/functions/report-alert/index.ts supabase/functions/cleanup-push/index.ts supabase/functions/apple-revoke/index.ts
       - run: deno lint supabase/functions

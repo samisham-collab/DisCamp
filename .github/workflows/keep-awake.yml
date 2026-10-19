@@ -1,0 +1,42 @@
+# Keeps the free Supabase project awake. Supabase pauses free projects after a
+# week with no activity, so this reads one starter spot twice a week, the same
+# way the app does (twice, so one late or skipped run never lets a week pass).
+# If the read fails (the project is already paused, or the key changed), the
+# run fails and GitHub emails you.
+#
+# It needs two repository secrets: on GitHub, open the DisCamp repo >
+# Settings > Secrets and variables > Actions > New repository secret, and add
+#   SUPABASE_URL              the same value as EXPO_PUBLIC_SUPABASE_URL in .env
+#   SUPABASE_PUBLISHABLE_KEY  the same value as EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+# Never the secret (service role) key. To try it right away: Actions > Keep
+# Supabase awake > Run workflow.
+name: Keep Supabase awake
+
+on:
+  schedule:
+    # Mondays and Thursdays at 15:17 UTC (10:17 a.m. in Kansas in summer,
+    # 9:17 in winter).
+    - cron: '17 15 * * 1,4'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read one starter spot
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          set -eo pipefail
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "Add the SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY secrets first (see the top of keep-awake.yml)." >&2
+            exit 1
+          fi
+          curl --fail --silent --show-error --retry 3 --retry-delay 10 --max-time 30 \
+            -H "apikey: $SUPABASE_PUBLISHABLE_KEY" \
+            "${SUPABASE_URL%/}/rest/v1/spots_api?select=id&limit=1" > /dev/null
+          echo "Supabase answered."
