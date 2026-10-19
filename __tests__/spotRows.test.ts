@@ -48,14 +48,23 @@ describe('applyFilters', () => {
 });
 
 describe('sortRows', () => {
-  it('sorts best fit first, then nearest, then by name', () => {
-    const rows = buildSpotRows([unrated, far, rough, near], preset('Mid-size 4x4 + RTT'), here);
-    expect(sortRows(rows).map((r) => r.spot.id)).toEqual(['near', 'far', 'unrated', 'rough']);
+  it('sorts nearest first when the camper is located, then best fit, then by name', () => {
+    const rows = buildSpotRows([far, near], preset('Mid-size 4x4 + RTT'), here);
+    expect(sortRows(rows).map((r) => r.spot.id)).toEqual(['near', 'far']);
+    // Same place: the better fit first, then by name.
+    const twin = (id: string, name: string, tier: 1 | 7) =>
+      makeSpot({ id, name, latitude: 40, longitude: -101.71, access: { clearanceTier: tier } });
+    const same = buildSpotRows(
+      [twin('b', 'B rough', 7), twin('c', 'C', 1), twin('a', 'A', 1)],
+      preset('Mid-size 4x4 + RTT'),
+      here,
+    );
+    expect(sortRows(same).map((r) => r.spot.id)).toEqual(['a', 'c', 'b']);
   });
 
-  it('sorts by name when there is no location', () => {
-    const rows = buildSpotRows([far, near], preset('Mid-size 4x4 + RTT'), null);
-    expect(sortRows(rows).map((r) => r.spot.id)).toEqual(['far', 'near']);
+  it('sorts best fit first, then by name, when there is no location', () => {
+    const rows = buildSpotRows([unrated, far, rough, near], preset('Mid-size 4x4 + RTT'), null);
+    expect(sortRows(rows).map((r) => r.spot.id)).toEqual(['far', 'near', 'unrated', 'rough']);
   });
 
   it('does not change the original array', () => {

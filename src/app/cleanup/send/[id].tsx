@@ -6,7 +6,7 @@ import * as Crypto from 'expo-crypto';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { AccessibilityInfo, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Alert, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AccountGate } from '@/components/AccountGate';
 import { cleanupEmbers, cleanupTitle } from '@/components/Cleanups';
@@ -16,7 +16,7 @@ import { TermsGate } from '@/components/TermsGate';
 import { Banner, Button, Card, EmptyState, SectionTitle } from '@/components/ui';
 import { MAX_CLEANUP_NOTE, sendCleanup } from '@/data/cleanups';
 import { useCleanups } from '@/data/cleanupsStore';
-import { CLEANUP_RADIUS_M } from '@/data/community';
+import { CLEANUP_RADIUS_M, isRoughFix, roughFixMessage } from '@/data/community';
 import { useAuth } from '@/lib/auth';
 import { takeCameraPhoto } from '@/lib/camera';
 import { distanceMeters, distanceMiles, formatDistance } from '@/lib/geo';
@@ -100,10 +100,11 @@ export default function SendCleanupScreen() {
     );
   }
 
-  const meters = fix ? distanceMeters(task, fix) : null;
+  const rough = isRoughFix(fix);
+  const meters = fix && !rough ? distanceMeters(task, fix) : null;
   const tooFar = meters != null && meters > CLEANUP_RADIUS_M;
   const noteError = hasBlockedWords(note) ? "Some words aren't allowed on DisCamp." : null;
-  const ready = after != null && haul != null && fix != null && !tooFar && !noteError;
+  const ready = after != null && haul != null && fix != null && !rough && !tooFar && !noteError;
 
   const takeAfter = async () => {
     const taken = await takeCameraPhoto('take photos of cleanups');
@@ -185,12 +186,20 @@ export default function SendCleanupScreen() {
           busy={sending}
           onTake={() => void takeAfter()}
         />
-        {after && fix ? (
+        {after && fix && rough ? (
+          <Banner
+            tone="warning"
+            icon="location-outline"
+            message={roughFixMessage(fix, 'retake the after photo')}
+            actionLabel="Settings"
+            onAction={() => void Linking.openSettings()}
+          />
+        ) : after && fix ? (
           tooFar ? (
             <Banner
               tone="error"
               icon="location-outline"
-              message={`You're ${formatDistance(distanceMiles(task, fix))} from the cleanup's pin. Go to it and retake the after photo (within ${CLEANUP_RADIUS_M} m).`}
+              message={`You're ${(meters ?? 0) < 1000 ? `${Math.round(meters ?? 0)} m` : formatDistance(distanceMiles(task, fix))} from the cleanup's pin. Go to it and retake the after photo (within ${CLEANUP_RADIUS_M} m).`}
             />
           ) : (
             <Text style={styles.body}>You&apos;re about {Math.round(meters ?? 0)} m from the pin. Good.</Text>

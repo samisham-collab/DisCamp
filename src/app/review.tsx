@@ -19,6 +19,7 @@ import {
 import { AccountGate } from '@/components/AccountGate';
 import { CleanupPhoto, cleanupTitle } from '@/components/Cleanups';
 import { ChoiceField, TextField } from '@/components/form';
+import { KeyboardSafe } from '@/components/KeyboardSafe';
 import { Banner, Button, Card, EmptyState, Row, Segmented } from '@/components/ui';
 import {
   amModerator,
@@ -284,27 +285,36 @@ export default function ReviewScreen() {
   };
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />}
-    >
-      {error ? (
-        <Banner tone="error" message={error} actionLabel="Retry" onAction={() => void load()} announceKey={error} />
-      ) : null}
-      {items == null && !error ? <ActivityIndicator color={colors.pine} accessibilityLabel="Loading" /> : null}
-      {items != null && items.length === 0 ? (
-        <EmptyState icon="checkmark-done-outline" title="All caught up" message="No cleanups are waiting for review." />
-      ) : null}
-      {items != null && items.length > 0 ? (
-        <Text style={styles.body}>
-          {items.length} waiting, oldest first. Approve when the after photo shows the same place, clean, and the haul
-          shot matches the size.
-        </Text>
-      ) : null}
-      {(items ?? []).map((item) => (
-        <ReviewCard key={item.completionId} item={item} onDone={done} />
-      ))}
-    </ScrollView>
+    <KeyboardSafe>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
+      >
+        {error ? (
+          <Banner tone="error" message={error} actionLabel="Retry" onAction={() => void load()} announceKey={error} />
+        ) : null}
+        {items == null && !error ? <ActivityIndicator color={colors.pine} accessibilityLabel="Loading" /> : null}
+        {items != null && items.length === 0 ? (
+          <EmptyState
+            icon="checkmark-done-outline"
+            title="All caught up"
+            message="No cleanups are waiting for review."
+          />
+        ) : null}
+        {items != null && items.length > 0 ? (
+          <Text style={styles.body}>
+            {items.length} waiting, oldest first. Approve when the after photo shows the same place, clean, and the haul
+            shot matches the size.
+          </Text>
+        ) : null}
+        {(items ?? []).map((item) => (
+          <ReviewCard key={item.completionId} item={item} onDone={done} />
+        ))}
+      </ScrollView>
+    </KeyboardSafe>
   );
 }
 

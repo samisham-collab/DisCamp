@@ -27,6 +27,7 @@ import { TipJar } from '@/components/TipJar';
 import { Banner, Button, Card, EmptyState, Row, SectionTitle } from '@/components/ui';
 import { APPLE_SIGN_IN_HELP_URL } from '@/config';
 import { listBlocks, unblockCamper, type BlockedCamper } from '@/data/moderation';
+import { useCleanups } from '@/data/cleanupsStore';
 import { useSpots } from '@/data/spots';
 import { revokeAppleSignIn } from '@/lib/appleRevoke';
 import { useAuth } from '@/lib/auth';
@@ -49,6 +50,7 @@ function AppleNote() {
 
 function BlockedCampers({ client }: { client: SupabaseClient | null }) {
   const { reload } = useSpots();
+  const { refresh: refreshCleanups } = useCleanups();
   const [blocked, setBlocked] = useState<BlockedCamper[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -81,6 +83,7 @@ function BlockedCampers({ client }: { client: SupabaseClient | null }) {
       await unblockCamper(client, camper.id);
       setBlocked((list) => (list ?? []).filter((c) => c.id !== camper.id));
       void reload();
+      void refreshCleanups();
       AccessibilityInfo.announceForAccessibility(`${camper.name ?? 'Camper'} unblocked`);
     } catch (e) {
       Alert.alert("Couldn't unblock", e instanceof Error ? e.message : 'Please try again.');
@@ -191,7 +194,8 @@ export default function AccountScreen() {
             Add the spots you know
           </Text>
           <Text style={styles.body}>
-            Sign in to add campsites and fix the ones you&apos;ve added. Browsing spots never needs an account.
+            Sign in to add spots, photos and cleanups, and to fix what you&apos;ve added. Browsing never needs an
+            account.
           </Text>
         </View>
         <Button label="Sign in" icon="log-in-outline" onPress={() => router.push('/sign-in')} />

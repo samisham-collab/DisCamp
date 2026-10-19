@@ -4,7 +4,9 @@
 // what shows); screens refresh it when they come into view.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AppState } from 'react-native';
 
+import { STALE_AFTER_MS } from '../config';
 import { useAuth } from '../lib/auth';
 import { listCleanups, type CleanupTask } from './cleanups';
 
@@ -32,6 +34,8 @@ export function CleanupsProvider({ children }: { children: ReactNode }) {
   const [failed, setError] = useState<string | null>(null);
   // Only the newest load's answer counts.
   const latest = useRef(0);
+  // When the list last came from the server (0: never).
+  const loadedAt = useRef(0);
   // Without a server there are no cleanups (and nothing to wait for).
   const cleanups = client ? list : EMPTY;
   const loading = client ? waiting : false;
@@ -45,6 +49,7 @@ export function CleanupsProvider({ children }: { children: ReactNode }) {
     return listCleanups(client).then(
       (found) => {
         if (latest.current !== ticket) return;
+        loadedAt.current = Date.now();
         setCleanups(found);
         setError(null);
         setLoading(false);
@@ -60,6 +65,15 @@ export function CleanupsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void load();
   }, [load, userId]);
+
+  // Back to the app after a while: cleanups others posted or finished meanwhile.
+  useEffect(() => {
+    if (!client) return undefined;
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active' && Date.now() - loadedAt.current > STALE_AFTER_MS) void load();
+    });
+    return () => subscription.remove();
+  }, [client, load]);
 
   const upsert = useCallback((task: CleanupTask) => {
     // In place if it's listed (so lists don't jump around), else first.

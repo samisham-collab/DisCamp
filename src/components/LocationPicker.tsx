@@ -3,13 +3,14 @@
 // pull-offs and clearings are easier to see from above.
 
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { type Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DEFAULT_REGION } from '../config';
 import { formatCoordinates } from '../lib/geo';
+import { useLocation } from '../lib/location';
 import type { Coordinates } from '../types';
 import { colors, TOUCH_TARGET } from '../theme';
 import type { LocationPickerProps } from './LocationPicker.types';
@@ -22,6 +23,8 @@ export const LOCATION_PICKER_AVAILABLE = true;
 
 /** Close enough to see a pull-off from above. */
 const ZOOMED_DELTA = 0.01;
+/** After "Go to my location": the area around you, to find the spot from. */
+const AROUND_ME_DELTA = 0.05;
 
 function startRegion(start: Coordinates | null): Region {
   return start ? { ...start, latitudeDelta: ZOOMED_DELTA, longitudeDelta: ZOOMED_DELTA } : DEFAULT_REGION;
@@ -43,6 +46,22 @@ function PickerBody({ start, onCancel, onPick }: Omit<LocationPickerProps, 'visi
     longitude: initialRegion.longitude,
   }));
   const [satellite, setSatellite] = useState(true);
+  const mapRef = useRef<MapView>(null);
+  const { locate, locating } = useLocation();
+
+  const goToMe = async () => {
+    const found = await locate();
+    if (!found) return;
+    mapRef.current?.animateToRegion(
+      {
+        latitude: found.latitude,
+        longitude: found.longitude,
+        latitudeDelta: AROUND_ME_DELTA,
+        longitudeDelta: AROUND_ME_DELTA,
+      },
+      400,
+    );
+  };
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
@@ -58,6 +77,7 @@ function PickerBody({ start, onCancel, onPick }: Omit<LocationPickerProps, 'visi
 
       <View style={styles.mapWrap}>
         <MapView
+          ref={mapRef}
           style={StyleSheet.absoluteFill}
           initialRegion={initialRegion}
           mapType={satellite ? 'hybrid' : 'standard'}
@@ -89,6 +109,7 @@ function PickerBody({ start, onCancel, onPick }: Omit<LocationPickerProps, 'visi
             active={satellite}
             onPress={() => setSatellite((s) => !s)}
           />
+          <IconButton icon="locate-outline" label="Go to my location" busy={locating} onPress={() => void goToMe()} />
         </View>
       </View>
 
@@ -129,7 +150,7 @@ const styles = StyleSheet.create({
   },
   // Lift the icon so its point, not its middle, is on the center of the map.
   pin: { marginBottom: PIN },
-  mapControls: { position: 'absolute', top: 12, right: 12 },
+  mapControls: { position: 'absolute', top: 12, right: 12, gap: 10 },
   footer: { padding: 16, gap: 10, borderTopWidth: 1, borderTopColor: colors.line },
   coords: { fontSize: 16, fontWeight: '700', color: colors.ink, textAlign: 'center' },
 });

@@ -320,7 +320,12 @@ function PhotoViewer({
                     busy={blocking}
                     onPress={() => {
                       const camper = { id: photo.createdBy ?? '', name: photo.addedBy ?? null };
-                      block(camper, `/spot/${spot.id}`, () => onBlocked(camper.id));
+                      block(
+                        camper,
+                        `/spot/${spot.id}`,
+                        () => onBlocked(camper.id),
+                        (go) => onClose(go),
+                      );
                     }}
                   />
                 ) : null}

@@ -11,7 +11,11 @@ import { AccessibilityInfo, AppState } from 'react-native';
 
 import { selectionFeedback } from '../lib/haptics';
 import { describeError, log } from '../lib/log';
+import { withDeadline } from '../lib/deadline';
 import { iapModule, isTip, TIP_IDS, toTipProducts, type TipProduct } from '../lib/tips';
+
+/** How long to wait for the App Store or Google Play to answer. */
+const STORE_TIMEOUT_MS = 20_000;
 
 /** off: no store here (Expo Go, the web). */
 export type TipsPhase = 'off' | 'loading' | 'ready' | 'error';
@@ -81,23 +85,24 @@ export function TipsProvider({ children }: { children: ReactNode }) {
 
   const connect = useCallback(() => {
     if (!iap) return;
-    iap
-      .initConnection()
-      .then(() => iap.fetchProducts({ skus: [...TIP_IDS], type: 'in-app' }))
-      .then(
-        (list) => {
-          connected.current = true;
-          if (!mounted.current) return;
-          const found = toTipProducts((list ?? []) as { id: string; title?: string; displayPrice: string }[]);
-          setProducts(found);
-          setPhase(found.length > 0 ? 'ready' : 'error');
-          sweep();
-        },
-        (error: unknown) => {
-          log.info('Could not load tips', { error: describeError(error) });
-          if (mounted.current) setPhase('error');
-        },
-      );
+    // A store that never answers shows "can't reach the store" (with Try again), not a spinner forever.
+    withDeadline(async () => {
+      await iap.initConnection();
+      return iap.fetchProducts({ skus: [...TIP_IDS], type: 'in-app' });
+    }, STORE_TIMEOUT_MS).then(
+      (list) => {
+        connected.current = true;
+        if (!mounted.current) return;
+        const found = toTipProducts((list ?? []) as { id: string; title?: string; displayPrice: string }[]);
+        setProducts(found);
+        setPhase(found.length > 0 ? 'ready' : 'error');
+        sweep();
+      },
+      (error: unknown) => {
+        log.info('Could not load tips', { error: describeError(error) });
+        if (mounted.current) setPhase('error');
+      },
+    );
   }, [iap, sweep]);
 
   useEffect(() => {

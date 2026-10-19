@@ -35,6 +35,7 @@ import { rigDisplayName, rigSummary } from '@/lib/rigModel';
 import type { SpotFilter } from '@/lib/schemas';
 import { applyFilters, buildSpotRows, countLabel, sortRows, type SpotRow } from '@/lib/spotRows';
 import { spotsStatus } from '@/lib/spotsStatus';
+import { stillChecking } from '@/lib/usePostingGate';
 import { colors, radius, TOUCH_TARGET } from '@/theme';
 
 const FILTER_OPTIONS: readonly { value: SpotFilter; label: string }[] = [
@@ -141,7 +142,7 @@ export default function ExploreScreen() {
     if (framed.current || mapTouched.current || !map || !mapReady) return;
     if (coords) {
       framed.current = true;
-      map.centerOn(coords);
+      map.showAround(coords);
     } else if (source !== 'seed') {
       framed.current = true;
       map.fitToRows();
@@ -160,13 +161,14 @@ export default function ExploreScreen() {
 
   // Adding a spot needs an account: sign in first, then straight to the form.
   const onAddSpot = () => {
-    if (authStatus === 'signed-in') router.push('/spot/new');
+    if (authStatus === 'loading') stillChecking();
+    else if (authStatus === 'signed-in') router.push('/spot/new');
     else router.push({ pathname: '/sign-in', params: { next: '/spot/new' } });
   };
 
   const onLocate = async () => {
     const found = await locate();
-    if (found) mapRef.current?.centerOn(found);
+    if (found) mapRef.current?.showAround(found);
   };
 
   const empty =

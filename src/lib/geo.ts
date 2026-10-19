@@ -121,6 +121,16 @@ const PADDING_FACTOR = 1.4;
  * A map region that shows every coordinate with some breathing room.
  * Returns `fallback` when there is nothing valid to show.
  */
+/** The `count` places nearest to `at`, nearest first. */
+export function nearestCoordinates(at: Coordinates, places: readonly Coordinates[], count: number): Coordinates[] {
+  return places
+    .filter(isValidCoordinate)
+    .map((p) => ({ p: { latitude: p.latitude, longitude: p.longitude }, d: distanceMeters(at, p) }))
+    .sort((a, b) => a.d - b.d)
+    .slice(0, Math.max(0, count))
+    .map((x) => x.p);
+}
+
 export function regionForCoordinates(coords: Coordinates[], fallback: Region): Region {
   const valid = coords.filter(isValidCoordinate);
   const first = valid[0];

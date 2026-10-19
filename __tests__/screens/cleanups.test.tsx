@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import { router } from 'expo-router';
 import { act, fireEvent, screen, waitFor, within } from 'expo-router/testing-library';
 import { Linking, RefreshControl } from 'react-native';
 
@@ -194,6 +195,31 @@ describe('Posting a cleanup', () => {
     expect(screen.getByText(/Cleaned it up yourself\?/)).toBeTruthy();
   });
 
+  it('won’t pin a cleanup to an approximate location', async () => {
+    const backend = server();
+    const settings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
+    // Precise Location off: the phone only knows the town.
+    standAt(NEAR_ROW_SPOT, 2600);
+    await renderApp('/cleanup/new');
+    fireEvent.press(await screen.findByText('Take the before photo'));
+    expect(
+      await screen.findByText(
+        'Your phone only shared an approximate location (within about 1.6 mi). Turn on Precise Location for DisCamp in Settings, then retake the photo.',
+      ),
+    ).toBeTruthy();
+    fireEvent.press(screen.getByText('Settings'));
+    expect(settings).toHaveBeenCalled();
+    fireEvent.press(screen.getByText('Post the cleanup'));
+    expect(backend.cleanups.size).toBe(0);
+
+    standAt(NEAR_ROW_SPOT, 300);
+    fireEvent.press(screen.getByText('Retake the photo'));
+    expect(await screen.findByText(/approximate location \(within about 300 m\)/)).toBeTruthy();
+    standAt(NEAR_ROW_SPOT, 20);
+    fireEvent.press(screen.getByText('Retake the photo'));
+    expect(await screen.findByText('Pinned where you are (within about 20 m). Near Row spot.')).toBeTruthy();
+  });
+
   it('opened from a spot far away, posts where the camper stands without linking it', async () => {
     const backend = server();
     standAt({ latitude: 39.5, longitude: -101.76 });
@@ -364,6 +390,39 @@ describe('Cleaning one up', () => {
     standAt(AT_ROW_SPOT);
     fireEvent.press(screen.getByText('Retake the after photo'));
     expect(await screen.findByText("You're about 0 m from the pin. Good.")).toBeTruthy();
+  });
+
+  it('won’t check an after photo against an approximate location, and gives close calls in meters', async () => {
+    const backend = server();
+    standAt(AT_ROW_SPOT, 2600);
+    const id = cleanupBy(backend, ALEX, 1);
+    await renderApp(`/cleanup/send/${id}`);
+    fireEvent.press(await screen.findByText('Take the after photo'));
+    expect(await screen.findByText(/then retake the after photo\.$/)).toBeTruthy();
+    fireEvent.press(screen.getByText('Take the haul shot'));
+    expect(await screen.findByText('Retake the haul shot')).toBeTruthy();
+    fireEvent.press(screen.getByText('Send for review'));
+    expect(backend.completions).toHaveLength(0);
+
+    // Precise, but just outside 150 m.
+    standAt({ latitude: AT_ROW_SPOT.latitude + 0.0015, longitude: AT_ROW_SPOT.longitude }, 8);
+    fireEvent.press(screen.getByText('Retake the after photo'));
+    expect(
+      await screen.findByText(/^You're 1\d\d m from the cleanup's pin\. Go to it and retake the after photo/),
+    ).toBeTruthy();
+  });
+
+  it('drops a cleanup that’s gone from the server off the list', async () => {
+    const backend = server();
+    const id = cleanupBy(backend, ALEX, 1);
+    await renderApp('/cleanups');
+    expect(await screen.findAllByText('Litter · medium')).toHaveLength(1);
+    backend.cleanups.delete(id);
+    act(() => router.push(`/cleanup/${id}`));
+    expect(await screen.findByText('Cleanup not found')).toBeTruthy();
+    fireEvent.press(screen.getByText('Back to Cleanups'));
+    expect(await screen.findByText('Leave it better')).toBeTruthy();
+    expect(screen.queryByText('Litter · medium')).toBeNull();
   });
 
   it('needs a signed-in camper and a cleanup that’s there', async () => {

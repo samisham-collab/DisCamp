@@ -106,7 +106,7 @@ export default function SignInScreen() {
           Sign in to DisCamp
         </Text>
         <Text style={styles.body}>
-          Sign in to add campsites and fix the ones you&apos;ve added. Browsing spots never needs an account.
+          Sign in to add spots, photos and cleanups, and to fix what you&apos;ve added. Browsing never needs an account.
         </Text>
       </View>
 

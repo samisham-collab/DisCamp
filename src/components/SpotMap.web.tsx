@@ -22,7 +22,12 @@ export function SpotMap({
 }: SpotMapProps) {
   useImperativeHandle(
     ref,
-    () => ({ fitToRows: () => undefined, centerOn: () => undefined, currentRegion: () => null }),
+    () => ({
+      fitToRows: () => undefined,
+      centerOn: () => undefined,
+      showAround: () => undefined,
+      currentRegion: () => null,
+    }),
     [],
   );
   useEffect(() => onMapReady?.(), [onMapReady]);

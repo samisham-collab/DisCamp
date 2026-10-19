@@ -18,6 +18,9 @@ export const DEFAULT_REGION: Region = {
   longitudeDelta: 0.32,
 };
 
+/** Coming back to the app after this long reloads spots and cleanups. */
+export const STALE_AFTER_MS = 15 * 60 * 1000;
+
 /** Give up on the server after this long and keep showing saved spots. */
 export const REMOTE_TIMEOUT_MS = 10_000;
 /**

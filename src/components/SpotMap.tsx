@@ -6,11 +6,16 @@ import { memo, useCallback, useEffect, useImperativeHandle, useRef, useState, ty
 import { StyleSheet } from 'react-native';
 import MapView, { Marker, type MapPressEvent, type Region as MapRegion } from 'react-native-maps';
 
-import { MIN_DELTA, regionForCoordinates, type Region } from '../lib/geo';
+import { MIN_DELTA, nearestCoordinates, regionForCoordinates, type Region } from '../lib/geo';
 import type { SpotRow } from '../lib/spotRows';
 import { colors } from '../theme';
 import { SpotPin } from './Fit';
 import type { SpotMapProps } from './SpotMap.types';
+
+/** How far the map zooms in on the camper (degrees, about 20 miles across). */
+const CENTER_DELTA = 0.3;
+/** When finding the camper, also show this many of the nearest spots. */
+const NEAREST_TO_SHOW = 3;
 
 export type { CleanupPin, SpotMapHandle, SpotMapProps } from './SpotMap.types';
 
@@ -108,7 +113,25 @@ export function SpotMap({
         });
       },
       centerOn: (at) => {
-        mapRef.current?.animateToRegion({ ...at, latitudeDelta: 0.3, longitudeDelta: 0.3 }, 400);
+        mapRef.current?.animateToRegion({ ...at, latitudeDelta: CENTER_DELTA, longitudeDelta: CENTER_DELTA }, 400);
+      },
+      showAround: (at) => {
+        const here = { latitude: at.latitude, longitude: at.longitude };
+        const near = nearestCoordinates(
+          here,
+          rows.map((r) => r.spot),
+          NEAREST_TO_SHOW,
+        );
+        const around = regionForCoordinates([here, ...near], initialRegion);
+        // Spots close by: the usual view around the camper already shows them.
+        if (near.length === 0 || (around.latitudeDelta <= CENTER_DELTA && around.longitudeDelta <= CENTER_DELTA)) {
+          mapRef.current?.animateToRegion({ ...here, latitudeDelta: CENTER_DELTA, longitudeDelta: CENTER_DELTA }, 400);
+          return;
+        }
+        mapRef.current?.fitToCoordinates([here, ...near], {
+          edgePadding: { top: 80, right: 72, bottom: bottomInset + 72, left: 72 },
+          animated: true,
+        });
       },
       currentRegion: () => region.current,
     }),

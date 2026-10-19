@@ -63,9 +63,10 @@ function distanceFrom(here: Coordinates, spot: Spot): string {
   return `${formatDistance(miles)} ${direction} of you, in a straight line`;
 }
 
+/** On-site check-ins ("Still good" and changes), not reports to moderators. */
 function reportsLabel(count: number): string {
-  if (count <= 0) return 'No camper reports yet';
-  return `${count} camper ${count === 1 ? 'report' : 'reports'}`;
+  if (count <= 0) return 'No check-ins yet';
+  return `${count} ${count === 1 ? 'check-in' : 'check-ins'}`;
 }
 
 function costTitle(rig: Rig): string {

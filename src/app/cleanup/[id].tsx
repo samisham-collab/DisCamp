@@ -98,7 +98,9 @@ export default function CleanupScreen() {
           if (!active) return;
           setLoaded(task);
           setLoadError(null);
+          // Gone on the server (removed, or from a camper you blocked): off the lists too.
           if (task) upsert(task);
+          else remove(id);
         },
         (e: unknown) => {
           if (active) setLoadError(e instanceof Error ? e.message : "Couldn't load the cleanup.");
@@ -120,7 +122,7 @@ export default function CleanupScreen() {
       return () => {
         active = false;
       };
-    }, [client, id, userId, upsert]),
+    }, [client, id, userId, upsert, remove]),
   );
 
   const task = loaded === undefined ? cleanups.find((t) => t.id === id) : loaded;

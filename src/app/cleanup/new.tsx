@@ -6,7 +6,7 @@ import * as Crypto from 'expo-crypto';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { AccessibilityInfo, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AccountGate } from '@/components/AccountGate';
 import { ChoiceField, TextField } from '@/components/form';
@@ -23,6 +23,7 @@ import {
   type CleanupSize,
 } from '@/data/cleanups';
 import { useCleanups } from '@/data/cleanupsStore';
+import { isRoughFix, roughFixMessage } from '@/data/community';
 import { useSpots } from '@/data/spots';
 import { useAuth } from '@/lib/auth';
 import { takeCameraPhoto } from '@/lib/camera';
@@ -80,6 +81,7 @@ export default function NewCleanupScreen() {
       : nearestWithin(visible, fix, SPOT_LINK_RADIUS_M)
     : (askedSpot ?? null);
   const farFromAsked = fix && askedSpot && linked !== askedSpot ? askedSpot : null;
+  const rough = isRoughFix(fix);
   const noteError = hasBlockedWords(note) ? "Some words aren't allowed on DisCamp." : null;
 
   const takeBefore = async () => {
@@ -96,7 +98,7 @@ export default function NewCleanupScreen() {
   };
 
   const post = async () => {
-    if (!photo || !fix || noteError) {
+    if (!photo || !fix || rough || noteError) {
       AccessibilityInfo.announceForAccessibility(noteError ?? 'Take the before photo first.');
       return;
     }
@@ -162,12 +164,20 @@ export default function NewCleanupScreen() {
             disabled={posting}
             onPress={() => void takeBefore()}
           />
-          {photo && fix ? (
+          {photo && fix && rough ? (
+            <Banner
+              tone="warning"
+              icon="location-outline"
+              message={roughFixMessage(fix, 'retake the photo')}
+              actionLabel="Settings"
+              onAction={() => void Linking.openSettings()}
+            />
+          ) : photo && fix ? (
             <Text style={styles.body}>
               Pinned where you are{plusMinus(fix)}.{linked ? ` Near ${linked.name}.` : ''}
             </Text>
           ) : null}
-          {farFromAsked ? (
+          {farFromAsked && !rough ? (
             <Text style={styles.body}>
               You&apos;re {formatDistance(distanceMiles(farFromAsked, fix as Fix))} from {farFromAsked.name}, so this
               cleanup won&apos;t be linked to it.
@@ -212,7 +222,7 @@ export default function NewCleanupScreen() {
           label="Post the cleanup"
           icon="send-outline"
           loading={posting}
-          disabled={!photo || !fix}
+          disabled={!photo || !fix || rough}
           onPress={() => void post()}
         />
         <Button label="Cancel" kind="secondary" disabled={posting} onPress={close} />

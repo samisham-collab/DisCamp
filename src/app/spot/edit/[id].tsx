@@ -1,9 +1,10 @@
 // Edit a spot you added. Saving clears its "confirmed" status on the server
 // until campers check it again.
 
-import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { usePreventRemove } from 'expo-router/react-navigation';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
 
 import { AccountGate } from '@/components/AccountGate';
 import { SpotForm } from '@/components/SpotForm';
@@ -48,6 +49,23 @@ export default function EditSpotScreen() {
   );
   const editor = useSpotEditor(draft ?? EMPTY, save, reloadProfile);
   const stillHere = useStillHere();
+  const navigation = useNavigation();
+  // The spot's id once saved: then leaving is fine, and the screen goes back to it.
+  const [savedId, setSavedId] = useState<string | null>(null);
+
+  // Back, a swipe or Android's back button with unsaved changes: ask first.
+  usePreventRemove(changes != null && savedId == null, ({ data }) => {
+    Alert.alert('Discard your changes?', "Your edits to this spot haven't been saved.", [
+      { text: 'Keep editing', style: 'cancel' },
+      { text: 'Discard', style: 'destructive', onPress: () => navigation.dispatch(data.action) },
+    ]);
+  });
+
+  // Back to the spot's page: the one underneath, or a fresh one if this
+  // screen was opened from a link. Not if the camper already left.
+  useEffect(() => {
+    if (savedId && stillHere()) router.dismissTo({ pathname: '/spot/[id]', params: { id: savedId } });
+  }, [savedId, stillHere]);
 
   const gate = <AccountGate status={status} next={`/spot/edit/${id ?? ''}`} action="Editing a spot" />;
   if (status !== 'signed-in') return gate;
@@ -73,7 +91,7 @@ export default function EditSpotScreen() {
         <EmptyState
           icon="lock-closed-outline"
           title="You can only edit spots you added"
-          message="Spot reports from other campers are coming in a later version."
+          message="Something wrong with it? Tell other campers with “Something changed” on the spot’s page."
         />
       </View>
     );
@@ -85,9 +103,7 @@ export default function EditSpotScreen() {
     const saved = await editor.submit();
     if (!saved) return;
     saveLocal(saved);
-    // Back to the spot's page: the one underneath, or a fresh one if this
-    // screen was opened from a link. Not if the camper already left.
-    if (stillHere()) router.dismissTo({ pathname: '/spot/[id]', params: { id: saved.id } });
+    setSavedId(saved.id);
   };
 
   return (

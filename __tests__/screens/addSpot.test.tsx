@@ -12,6 +12,7 @@ import { ALEX, fakeBackend, SAM, type QueryResult } from '../../test/fakeSupabas
 import { makeRow } from '../../test/fixtures';
 import { connectServer, resetServer, spyOnAlerts } from '../../test/helpers';
 import { GOODLAND } from '../../test/mocks/expoLocation';
+import { mapMethods } from '../../test/mocks/reactNativeMaps';
 import { renderApp } from '../../test/renderApp';
 
 // Pinned to Smoky Gardens only: see test/mocks/seedSpots.ts.
@@ -264,6 +265,15 @@ describe('Adding a spot', () => {
     await waitFor(() => expect(screen.queryByText('Drop the pin')).toBeNull());
     expect(field('GPS location, required').props.value).toBe('46.58000, -121.67000');
 
+    // "Go to my location" moves the map to the camper.
+    fireEvent.press(screen.getByText('Drop a pin'));
+    fireEvent.press(await screen.findByLabelText('Go to my location'));
+    await waitFor(() =>
+      expect(mapMethods.animateToRegion).toHaveBeenCalledWith(expect.objectContaining(GOODLAND), 400),
+    );
+    fireEvent.press(screen.getByText('Cancel'));
+    await waitFor(() => expect(screen.queryByText('Drop the pin')).toBeNull());
+
     // Cancel leaves the pin alone.
     fireEvent.press(screen.getByText('Drop a pin'));
     fireEvent.press(await screen.findByText('Cancel'));
@@ -338,7 +348,7 @@ describe('Adding a spot', () => {
     });
   });
 
-  it('never reuses the id of a draft another camper left on this phone', async () => {
+  it('starts fresh instead of showing a draft another camper left on this phone', async () => {
     const backend = signedIn();
     const theirs = '00000000-0000-4000-8000-00000000a1e7';
     await kvStore.setItem(
@@ -346,7 +356,8 @@ describe('Adding a spot', () => {
       JSON.stringify({ clientId: theirs, ownerId: ALEX.id, name: 'Left Behind' }),
     );
     await renderApp('/spot/new');
-    expect((await screen.findByLabelText('Name, required')).props.value).toBe('Left Behind');
+    expect((await screen.findByLabelText('Name, required')).props.value).toBe('');
+    fireEvent.changeText(field('Name, required'), 'My Own Flat');
     fireEvent.changeText(field('Land manager, required'), 'BLM');
     fireEvent.changeText(field('GPS location, required'), '46.653, -121.614');
     fireEvent.press(screen.getByText('Add spot'));
@@ -422,6 +433,37 @@ describe('Your spots', () => {
 
     await renderApp('/spot/edit/sams-spot');
     expect(await screen.findByText('You can only edit spots you added')).toBeTruthy();
+  });
+
+  it('asks before throwing away unsaved edits', async () => {
+    signedIn();
+    const alerts = spyOnAlerts();
+    const app = await renderApp('/spot/sams-spot');
+    fireEvent.press(await screen.findByText('Edit spot'));
+    await waitFor(() => expect(app.getPathname()).toBe('/spot/edit/sams-spot'));
+    fireEvent.changeText(field('Name, required'), 'Sam Flats');
+
+    act(() => router.back());
+    expect(alerts.lastTitle()).toBe('Discard your changes?');
+    act(() => alerts.press('Keep editing'));
+    expect(app.getPathname()).toBe('/spot/edit/sams-spot');
+    expect(field('Name, required').props.value).toBe('Sam Flats');
+
+    act(() => router.back());
+    await act(async () => alerts.press('Discard'));
+    await waitFor(() => expect(app.getPathname()).toBe('/spot/sams-spot'));
+    expect(screen.getByText('Sam Flat')).toBeTruthy();
+  });
+
+  it('leaves without asking when nothing changed', async () => {
+    signedIn();
+    const alerts = spyOnAlerts();
+    const app = await renderApp('/spot/sams-spot');
+    fireEvent.press(await screen.findByText('Edit spot'));
+    await waitFor(() => expect(app.getPathname()).toBe('/spot/edit/sams-spot'));
+    act(() => router.back());
+    await waitFor(() => expect(app.getPathname()).toBe('/spot/sams-spot'));
+    expect(alerts.alert).not.toHaveBeenCalled();
   });
 
   it('returns to the spot after saving, even when opened from a link', async () => {

@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { AccessibilityInfo, Alert } from 'react-native';
 
+import { useCleanups } from '../data/cleanupsStore';
 import { blockCamper } from '../data/moderation';
 import { useSpots } from '../data/spots';
 import { useAuth } from './auth';
@@ -18,11 +19,16 @@ export interface CamperRef {
 export function useBlockCamper() {
   const { client, status } = useAuth();
   const { removeByCreator, refresh } = useSpots();
+  const { refresh: refreshCleanups } = useCleanups();
   const [busy, setBusy] = useState(false);
 
-  /** `next` is where sign-in returns to, if the camper isn't signed in. `after` runs once blocked. */
+  /**
+   * `next` is where sign-in returns to, if the camper isn't signed in. `after`
+   * runs once blocked. `openSignIn` opens sign-in instead of going straight
+   * there: a full-screen photo has to close first, or sign-in opens behind it.
+   */
   const block = useCallback(
-    (camper: CamperRef, next: string, after?: () => void) => {
+    (camper: CamperRef, next: string, after?: () => void, openSignIn?: (go: () => void) => void) => {
       if (status === 'disabled' || !client) {
         Alert.alert("Blocking isn't available", 'This version of DisCamp runs on its starter spots only.');
         return;
@@ -30,7 +36,14 @@ export function useBlockCamper() {
       if (status !== 'signed-in') {
         Alert.alert('Sign in to block campers', 'Blocking needs an account, so it follows you to every phone.', [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Sign in', onPress: () => router.push({ pathname: '/sign-in', params: { next } }) },
+          {
+            text: 'Sign in',
+            onPress: () => {
+              const go = () => router.push({ pathname: '/sign-in', params: { next } });
+              if (openSignIn) openSignIn(go);
+              else go();
+            },
+          },
         ]);
         return;
       }
@@ -50,6 +63,8 @@ export function useBlockCamper() {
                   setBusy(false);
                   removeByCreator(camper.id);
                   void refresh();
+                  // Their cleanups disappear for you too.
+                  void refreshCleanups();
                   AccessibilityInfo.announceForAccessibility(`${who} blocked`);
                   after?.();
                 },
@@ -63,7 +78,7 @@ export function useBlockCamper() {
         ],
       );
     },
-    [client, status, removeByCreator, refresh],
+    [client, status, removeByCreator, refresh, refreshCleanups],
   );
 
   return { block, busy };

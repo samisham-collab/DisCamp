@@ -33,7 +33,11 @@ const keepDraft = (d: SpotDraft) => d;
 export default function NewSpotScreen() {
   const { status, user, client, termsAccepted, reloadProfile } = useAuth();
   const { spots, saveLocal } = useSpots();
-  const [draft, updateDraft, ready] = usePersistentState(STORAGE_KEYS.spotDraft, storedDraftSchema, EMPTY, keepDraft);
+  const [saved, updateDraft, ready] = usePersistentState(STORAGE_KEYS.spotDraft, storedDraftSchema, EMPTY, keepDraft);
+  const me = user?.id ?? '';
+  // A draft another camper left on this phone isn't shown to the next one;
+  // their first change replaces it.
+  const draft = saved.ownerId && saved.ownerId !== me ? EMPTY : saved;
 
   // Set just before each try to save; see SpotDraft.clientId.
   const spotId = useRef('');
@@ -61,7 +65,6 @@ export default function NewSpotScreen() {
   const near = nearbySpot(spots, parseCoordinates(draft.coordinates));
 
   const onSubmit = async () => {
-    const me = user?.id ?? '';
     // A retry (even after a restart) reuses the draft's id, unless another
     // camper on this phone picked it.
     if (draft.clientId && (draft.ownerId === me || draft.ownerId === '')) {
@@ -92,7 +95,7 @@ export default function NewSpotScreen() {
       draft={draft}
       onChange={(patch) => {
         editor.edited();
-        updateDraft((d) => ({ ...d, ...patch }));
+        updateDraft((d) => ({ ...(d.ownerId && d.ownerId !== me ? EMPTY : d), ...patch, ownerId: me }));
       }}
       errors={editor.errors}
       failedTries={editor.failedTries}

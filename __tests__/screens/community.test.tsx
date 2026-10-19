@@ -509,6 +509,19 @@ describe('Photos', () => {
     await waitFor(() => expect(screen.queryByLabelText(/by Alex/)).toBeNull());
   });
 
+  it('closes a full-size photo before asking a signed-out camper to sign in to block', async () => {
+    const backend = server(null);
+    const alerts = spyOnAlerts();
+    photoBy(backend, ALEX, 1);
+    const app = await renderApp('/spot/alex-spot');
+    fireEvent.press(await screen.findByLabelText('Photo 1 of 1, by Alex'));
+    fireEvent.press(await screen.findByLabelText('Block'));
+    expect(alerts.lastTitle()).toBe('Sign in to block campers');
+    await act(async () => alerts.press('Sign in'));
+    await waitFor(() => expect(app.getPathname()).toBe('/sign-in'));
+    expect(screen.queryByLabelText('Block')).toBeNull();
+  });
+
   it('tries again after photos fail to load', async () => {
     const backend = server();
     photoBy(backend, ALEX, 1);

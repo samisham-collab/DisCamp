@@ -20,21 +20,21 @@ The other 53 are in `src/data/seeds/`, one file per region (Southwest, Rockies a
 ## What the app does
 
 - **Map** with a pin for each spot, colored by fit: green check = fits, amber ! = tight, red × = won't fit, gray ? = not enough reports. Tap a pin for a summary card; the map moves the pin into view above it.
-- **List view**, sorted best fit first, then nearest. Distances show the direction too ("11 mi S").
+- **List view**, sorted nearest first once your location is on (best fit first without it). Distances show the direction too ("11 mi S").
 - **My Rig**: pick a preset or set clearance, drivetrain, how you camp, and trailer or rig length. Saved on the phone.
 - **Spot page**: fit for your rig with the reasons, a C1–C7 clearance gauge, who fits, amenities, rules and directions, plus **Directions**, **Share**, **Copy GPS** and **Call** buttons.
 - **Cost meter**: Free / $ / $$ / $$$ per night. Trailers and big rigs are priced on the RV site fee and see the meter first. At Smoky Gardens that's $20 a night for an RV site, and free for dry camping.
 - **Filters**: "Fits my rig" and "Free for my rig". Filters, map or list, and satellite view are remembered.
 - **Works offline**: the last spots loaded are saved on the phone. If the server can't be reached, a banner says so and offers Retry.
-- **Location only when asked**: DisCamp never asks for location on launch. Tap "Show my location" or "Sort by distance" when you want distances.
+- **Location only when asked**: DisCamp never asks for location on launch. Tap "Show my location" or "Sort by distance" when you want distances; the map then centres on you, zoomed to show the nearest spots.
 - **Screen readers and large text**: every control has a label and role, decorative icons are hidden from screen readers, photos say whose they are (and when they're hidden for review), and filter counts and connection problems are read out. Text grows with the phone's text size.
 - **Sign in** with Apple, Google, Microsoft or GitHub (Account tab, or "Add spot"). Only needed to post (spots, photos, check-ins, cleanups).
-- **Add a spot**: drop a pin on a satellite map (or use your location, or paste GPS), then rate access, who fits and cost. Only the name, land manager and location are required; anything else can stay "Not sure". The draft is saved as you type. New spots show for everyone right away, marked "not yet confirmed".
+- **Add a spot**: drop a pin on a satellite map ("Go to my location" jumps there, or paste GPS), then rate access, who fits and cost. Only the name, land manager and location are required; anything else can stay "Not sure". The draft is saved as you type. New spots show for everyone right away, marked "not yet confirmed".
 - **Your spots**: edit or delete the spots you added (deleting stops once other campers have reported on a spot). The Account tab lists them, and lets you change your display name, sign out or delete your account.
 - **Community rules**: before they first post, campers agree to the terms of use. A word filter keeps offensive words out of spots, notes and names.
 - **Photos**: campers add up to 3 photos per spot, from the camera or their library. Each photo is shrunk to 1,600 pixels and saved fresh before it's sent, which strips its location and camera details. Tap a photo to see it full size, delete your own, or report or block someone else's.
 - **Still good?**: one tap tells other campers a spot is still as described, and the spot shows when it was last confirmed. Each camper can do it once per spot every 30 days; afterwards the button shows it's done. Reporting a change afterwards takes their "Still good" back. Two campers (other than the one who added it) saying "Still good" mark a spot confirmed. **Something changed** reports a washout, a locked gate, trash or a closure; it shows as a warning on the spot until someone says it's still good.
-- **Cleanups**: found trash at a site? The **Cleanups** tab (or a spot's page) posts it with a before photo from the camera, pinned where you stand and linked to a spot within 2 km. Open cleanups show as orange pins on the map and in the Cleanups tab, nearest first. Whoever packs it out (the camper who posted it too) taps **I cleaned it up** and sends an after photo, taken within 150 m of the pin, and a haul shot of what they carried out. It waits for a moderator; a camper can send a cleanup twice.
+- **Cleanups**: found trash at a site? The **Cleanups** tab (or a spot's page) posts it with a before photo from the camera, pinned where you stand and linked to a spot within 2 km. Open cleanups show as orange pins on the map and in the Cleanups tab, nearest first. Whoever packs it out (the camper who posted it too) taps **I cleaned it up** and sends an after photo, taken within 150 m of the pin, and a haul shot of what they carried out. It waits for a moderator; a camper can send a cleanup twice. Cleanups need the phone's precise location (iPhone's Precise Location, or Android's "Precise"); with an approximate one, the app says so and offers Settings.
 - **Review** (moderators only, from Account): the before, after and haul photos side by side, how far from the pin the after photo was taken, and who sent it. **Approve** at the size you see, or **Send back** with a reason the camper reads.
 - **Embers**: points for helping, shown on Account with your rank (Tenderfoot, Scout at 250, Trailblazer at 1,000, Pathfinder at 3,000, Steward at 7,500, Guardian at 15,000), how far to the next, today's count and what earned them. An approved cleanup earns 50, 100 or 150 by size, and 10 for whoever posted it; a spot you added that 2 campers confirm earns 50; your first "Still good" and first change report on a spot earn 10 each; photos earn 5 (3 a spot; deleting a photo takes its 5 back). Up to 300 a day, 100 a day in an account's first two weeks, and at most 50 a day from check-ins. Embers have no cash value and can't be bought; only the database adds them.
 - **Notifications**: campers hear when a moderator approves or sends back a cleanup they sent, and when someone cleans up one they posted; moderators hear about each new cleanup to review. The app asks after a camper first sends a cleanup (or from **Account > Notifications**), never on launch. They need the App Store or Google Play version; Expo Go can't receive them.
@@ -127,6 +127,7 @@ update public.spots set verified = true where id = 'smoky-gardens';
    Already ran some for an earlier version? Run only the ones after it (for 1.3: 0004 to 0009; for 1.4.0: 0005 to 0009; for 1.4.1: 0006 to 0009; for 1.5.0: 0007 to 0009; for 1.5.1: 0008 and 0009; for 1.6: just 0009), then the seed. Never rerun an older file after a newer one: newer files change things the older ones made. To switch a database set up by hand over to the script, tell it the last file that ran, for example `bash scripts/setup-database.sh --after 0005`.
 
 3. Copy your **Project URL** and **publishable key** from the project's API settings.
+   **Keep it awake:** Supabase pauses free projects after a week with no activity. Once DisCamp is on GitHub, `.github/workflows/keep-awake.yml` reads one starter spot every Monday and Thursday to prevent that, and emails you (through GitHub) if a read fails. It needs two repository secrets, `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` (GitHub > your repo > **Settings > Secrets and variables > Actions**), with the same values as in `.env`. Paid Supabase plans are never paused, so you can delete the workflow if you upgrade.
 4. For your phone: `cp .env.example .env`, put both values in `.env`, and restart `npx expo start`.
 5. For builds made on EAS: `.env` isn't uploaded, so add both values on expo.dev (your project > **Environment variables**) for the **preview** and **production** environments. Without them, a build quietly uses the starter spots only.
 
@@ -177,15 +178,15 @@ Without these, sign-in opens and then quietly comes back as "cancelled".
 
 - Apple requires Sign in with Apple in any app that offers Google, Microsoft or GitHub sign-in (App Review guideline 4.8), so switch Apple on before submitting.
 - Account deletion is in the app (Account > Delete account), as Apple requires. For accounts that used Sign in with Apple on an iPhone, Apple's sheet confirms it's them first, and the `apple-revoke` server function disconnects DisCamp from their Apple ID (App Store rule 5.1.1(v)). Set it up once:
-  1. In [Apple Developer](https://developer.apple.com/account/resources/authkeys/list) > **Keys**, make a key with **Sign in with Apple** on, for the `org.discamp.app` App ID. Download the `.p8` file (only once) and note the **Key ID** and your **Team ID** (top right, or Membership).
+  1. In [Apple Developer](https://developer.apple.com/account/resources/authkeys/list) > **Keys**, make a key with **Sign in with Apple** on, for your app's App ID (the bundle ID in `app.json`). Download the `.p8` file (only once) and note the **Key ID** and your **Team ID** (top right, or Membership).
   2. In Terminal, from the DisCamp folder (after `npx supabase login` and `link`, see MODERATION.md):
 
      ```sh
-     npx supabase secrets set APPLE_TEAM_ID=ABCDE12345 APPLE_KEY_ID=XYZ987WVUT APPLE_PRIVATE_KEY="$(cat ~/Downloads/AuthKey_XYZ987WVUT.p8)"
+     npx supabase secrets set APPLE_CLIENT_ID=com.yourname.discamp APPLE_TEAM_ID=ABCDE12345 APPLE_KEY_ID=XYZ987WVUT APPLE_PRIVATE_KEY="$(cat ~/Downloads/AuthKey_XYZ987WVUT.p8)"
      npx supabase functions deploy apple-revoke --no-verify-jwt
      ```
 
-     The key stays on Supabase; never put it in the app, `.env` or git (`.gitignore` skips `.p8` files). The function checks who's calling itself, which is why it's deployed with `--no-verify-jwt`.
+     `APPLE_CLIENT_ID` is your bundle ID, exactly as in `app.json` (it defaults to the placeholder `org.discamp.app`; with the wrong one, Apple turns the disconnect down and the app falls back to explaining the manual step). The key stays on Supabase; never put it in the app, `.env` or git (`.gitignore` skips `.p8` files). The function checks who's calling itself, which is why it's deployed with `--no-verify-jwt`.
 
   Until it's set up (and on Android, which has no Apple sheet), the app still deletes the account and explains how to remove DisCamp from the Apple Account (TN3194).
 
@@ -233,7 +234,7 @@ They're drafts written from what the app does, not legal advice: have someone qu
 
 ## Build for TestFlight and Android
 
-Builds run on Expo's servers with EAS (`eas.json` has a **preview** and a **production** profile). The first time, run `npx eas-cli@latest login` and `npx eas-cli@latest init`.
+[TESTFLIGHT.md](TESTFLIGHT.md) puts the steps to your first TestFlight build in order, with a test script for your iPhone. Builds run on Expo's servers with EAS (`eas.json` has a **preview** and a **production** profile). The first time, run `npx eas-cli@latest login` and `npx eas-cli@latest init`.
 
 - **Android needs a Google Maps key.** Android draws the map with Google Maps. Create a key with "Maps SDK for Android" turned on in Google Cloud, and add it on expo.dev as the environment variable `GOOGLE_MAPS_ANDROID_API_KEY` for each environment you build. An Android build stops with a clear message if it's missing, instead of shipping a blank map. iPhone uses Apple Maps and needs no key.
 - **Android test build (APK you can install directly):** `npx eas-cli@latest build --profile preview --platform android`
@@ -329,6 +330,7 @@ supabase/functions/         Small server functions (Deno, run on Supabase):
 docs/                       Privacy policy, terms and support page (GitHub Pages)
 store/                      Draft App Store Connect answers
 MODERATION.md               Acting on reports within 24 hours
+TESTFLIGHT.md               From here to TestFlight, and the test script for your iPhone
 scripts/seedSql.ts          The seed generator
 scripts/setup-database.sh   Loads (or updates) the Supabase database from Terminal
 __tests__/                  Tests; screens/ renders the whole app
@@ -347,7 +349,7 @@ test/                       Test helpers and stand-ins for native modules
 
 - Visitors can only read. Signed-in campers can change only their own spots and account, enforced by grants, row-level security and triggers in the database (see "What the database allows"). Reports, blocks and moderator tools are out of reach of the app. The database test checks every rule on each push.
 - Embers are written only by the database (an append-only ledger campers can read but not write), from what campers do; no request from the app can add any directly. A modified app can still claim to be where it isn't, which is why a moderator approves every cleanup, check-ins earn at most 50 a day, and deleting a photo takes its Embers back. Cleanup reviews run in database functions that check the camper is a moderator.
-- The camera is asked for only when a camper taps "Take a photo" (or a cleanup's photo button); choosing from the library uses the phone's own picker, which needs no permission. DisCamp never records sound, so Android's microphone permission is removed. Android 9 and older keep one storage permission, because their camera needs it to save the photo it takes.
+- The camera is asked for only when a camper taps "Take a photo" (or a cleanup's photo button); choosing from the library uses the phone's own picker, which needs no permission. DisCamp never records sound, so Android's microphone permission is removed and iPhone has no microphone message. Android 9 and older keep one storage permission, because their camera needs it to save the photo it takes.
 - iPhone asks for location only while the app is in use; the unused "always" and motion permission messages, background location, Android's overlay permission and (on Android 10 and newer) storage access are removed.
 - Every row from the server is validated. A bad field becomes "not reported"; a broken row is skipped; links can only be web links.
 - `npm audit` lists advisories in packages Expo uses at build time (its command-line tools and config plugins). They don't ship inside the app. Keep Expo up to date with `npx expo install --fix` to pick up their fixes.

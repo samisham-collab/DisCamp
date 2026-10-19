@@ -4,8 +4,9 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AppState } from 'react-native';
 
-import { REMOTE_TIMEOUT_MS } from '../config';
+import { REMOTE_TIMEOUT_MS, STALE_AFTER_MS } from '../config';
 import { useServerClient } from '../lib/server';
 import type { Spot } from '../types';
 import { SEED_SPOTS } from './seedSpots';
@@ -140,6 +141,21 @@ export function SpotsProvider({
   useEffect(() => {
     refreshRef.current = refresh;
   }, [refresh]);
+
+  // Back to the app after a while (or still showing a saved copy): load again.
+  const updatedAt = useRef<string | null>(null);
+  useEffect(() => {
+    updatedAt.current = state.source === 'remote' ? (state.updatedAt ?? null) : null;
+  }, [state.source, state.updatedAt]);
+  useEffect(() => {
+    if (!client) return undefined;
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') return;
+      const at = updatedAt.current ? Date.parse(updatedAt.current) : 0;
+      if (Date.now() - at > STALE_AFTER_MS) void refresh();
+    });
+    return () => subscription.remove();
+  }, [client, refresh]);
 
   // Who sees which spots depends on who's signed in (your own spots hidden
   // for review, campers you've blocked), so load again when that changes.

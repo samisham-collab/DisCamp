@@ -136,6 +136,9 @@ export async function turnOnPush(client: SupabaseClient, { ask }: { ask: boolean
  * effort: offline, the address stays until the next camper signs in here
  * (it moves to them) or the camper deletes their account.
  */
+/** Signing out waits at most this long on each step (offline, it shouldn't hang). */
+const SIGN_OUT_STEP_MS = 4_000;
+
 export async function forgetThisPhone(client: SupabaseClient): Promise<void> {
   generation += 1;
   let token = registered;
@@ -146,11 +149,11 @@ export async function forgetThisPhone(client: SupabaseClient): Promise<void> {
     if (!token) {
       const N = notificationsModule();
       if (!N || pushUnavailable() || (await pushPermission()) !== 'granted') return;
-      token = await thisPhonesAddress(N);
+      token = await thisPhonesAddress(N, SIGN_OUT_STEP_MS);
     }
     const { error } = await withDeadline(
       async (signal) => client.rpc('forget_push_token', { push_token: token }).abortSignal(signal),
-      REMOTE_TIMEOUT_MS,
+      SIGN_OUT_STEP_MS,
     );
     if (error) throw new Error(error.message);
   } catch (error) {
@@ -158,10 +161,10 @@ export async function forgetThisPhone(client: SupabaseClient): Promise<void> {
   }
 }
 
-async function thisPhonesAddress(N: Notifications): Promise<string> {
+async function thisPhonesAddress(N: Notifications, timeoutMs = REMOTE_TIMEOUT_MS): Promise<string> {
   const { data } = await withDeadline(
     async () => N.getExpoPushTokenAsync({ projectId: easProjectId() ?? undefined }),
-    REMOTE_TIMEOUT_MS,
+    timeoutMs,
   );
   return data;
 }

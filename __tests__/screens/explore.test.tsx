@@ -161,7 +161,7 @@ describe('Explore screen', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Sort by distance' }));
     expect(await screen.findByText(/best fit and nearest first/)).toBeTruthy();
     expect(screen.queryByText('Sort by distance')).toBeNull();
-    expect(screen.getByText(/11 mi S$/)).toBeTruthy();
+    expect(screen.getByText(/^11 mi S · /)).toBeTruthy();
   });
 
   it('lists every spot from the server and refreshes on pull', async () => {
@@ -228,7 +228,20 @@ describe('Explore screen', () => {
     fireEvent.press(screen.getByLabelText('Show my location'));
     await waitFor(() => expect(mapMethods.animateToRegion).toHaveBeenCalled());
     fireEvent.press(screen.getByTestId('marker-smoky-gardens'));
-    expect(await screen.findByText(/11 mi S$/)).toBeTruthy();
+    expect(await screen.findByText(/^11 mi S · /)).toBeTruthy();
+  });
+
+  it('shows a camper far from every spot the nearest ones too', async () => {
+    const BEND = { latitude: 44.06, longitude: -121.31 };
+    jest.mocked(Location.getCurrentPositionAsync).mockResolvedValueOnce({ coords: BEND } as never);
+    await renderApp('/');
+    fireEvent.press(screen.getByLabelText('Show my location'));
+    await waitFor(() =>
+      expect(mapMethods.fitToCoordinates).toHaveBeenCalledWith(
+        [BEND, { latitude: 39.19, longitude: -101.76 }],
+        expect.objectContaining({ animated: true }),
+      ),
+    );
   });
 
   it('fits the map to all spots', async () => {
@@ -498,7 +511,7 @@ describe('Explore screen on a phone', () => {
     await renderApp('/', { prefs: { view: 'list' } });
     expect(await screen.findByText('Impassable when wet')).toBeTruthy();
     fireEvent.press(screen.getByRole('button', { name: 'Sort by distance' }));
-    expect(await screen.findByText(/11 mi S$/)).toBeTruthy();
+    expect(await screen.findByText(/^11 mi S · /)).toBeTruthy();
     expect(screen.getByLabelText(/Road is impassable when wet\..*11 miles south$/)).toBeTruthy();
   });
 });

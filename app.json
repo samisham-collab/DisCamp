@@ -2,7 +2,7 @@
   "expo": {
     "name": "DisCamp",
     "slug": "discamp",
-    "version": "1.7.0",
+    "version": "1.7.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -139,7 +139,7 @@
         {
           "photosPermission": "DisCamp opens your photo library when you choose a photo to add to a spot.",
           "cameraPermission": "DisCamp uses the camera when you take a photo of a spot or a cleanup.",
-          "microphonePermission": "DisCamp only takes still photos and never records sound."
+          "microphonePermission": false
         }
       ],
       "expo-web-browser",

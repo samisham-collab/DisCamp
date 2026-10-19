@@ -10,6 +10,7 @@ import {
   formatDistance,
   formatDistanceSpoken,
   isValidCoordinate,
+  nearestCoordinates,
   nearestWithin,
   regionForCoordinates,
 } from '@/lib/geo';
@@ -27,6 +28,19 @@ describe('distanceMeters and nearestWithin', () => {
     expect(nearestWithin([near, far, nearer], here, 2_000)?.id).toBe('nearer');
     expect(nearestWithin([far], here, 2_000)).toBeNull();
     expect(nearestWithin([], here, 2_000)).toBeNull();
+  });
+});
+
+describe('nearestCoordinates', () => {
+  it('lists the places nearest a point, nearest first, skipping bad ones', () => {
+    const here = { latitude: 39.19, longitude: -101.76 };
+    const a = { latitude: 39.2, longitude: -101.76 };
+    const b = { latitude: 39.5, longitude: -101.76 };
+    const c = { latitude: 44, longitude: -121 };
+    const broken = { latitude: Number.NaN, longitude: 0 };
+    expect(nearestCoordinates(here, [c, broken, b, a], 2)).toEqual([a, b]);
+    expect(nearestCoordinates(here, [c], 3)).toEqual([c]);
+    expect(nearestCoordinates(here, [a, b], 0)).toEqual([]);
   });
 });
 

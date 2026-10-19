@@ -30,7 +30,7 @@ describe('Spot screen', () => {
     expect(screen.getByText('Fits your rig')).toBeTruthy();
     expect(screen.getByText('Cost to stay')).toBeTruthy();
     expect(screen.getByText('For your rig: Free (standard site)')).toBeTruthy();
-    expect(screen.getByText('Stay limit not reported · No camper reports yet')).toBeTruthy();
+    expect(screen.getByText('Stay limit not reported · No check-ins yet')).toBeTruthy();
     expect(screen.getByText(/Starter info from public listings/)).toBeTruthy();
     expect(screen.getByLabelText('Cost meter: Free, $0 a night')).toBeTruthy();
     expect(screen.getByText('39.19000, -101.76000 (approximate)')).toBeTruthy();

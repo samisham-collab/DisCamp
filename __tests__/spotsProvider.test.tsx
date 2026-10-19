@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ReactNode } from 'react';
+import { AppState } from 'react-native';
 
 import { STORAGE_KEYS } from '@/config';
 import { SEED_SPOTS } from '@/data/seedSpots';
@@ -39,6 +40,28 @@ describe('SpotsProvider', () => {
     expect(result.current.spots.map((s) => s.id)).toEqual(['server-spot']);
     expect(result.current.updatedAt).toEqual(expect.any(String));
     await waitFor(async () => expect(await kvStore.getItem(STORAGE_KEYS.spotsCache)).toContain('server-spot'));
+  });
+
+  it('loads again when the app comes back after a while, not after a moment', async () => {
+    const handlers: ((state: string) => void)[] = [];
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, handler) => {
+      handlers.push(handler as (state: string) => void);
+      return { remove: () => undefined } as never;
+    });
+    const respond = jest.fn(async () => ({ data: [makeRow({ id: 'server-spot' })], error: null }));
+    const { result } = renderSpots(respond);
+    await waitFor(() => expect(result.current.source).toBe('remote'));
+    expect(respond).toHaveBeenCalledTimes(1);
+
+    act(() => handlers.forEach((h) => h('active')));
+    expect(respond).toHaveBeenCalledTimes(1);
+
+    const later = Date.now() + 16 * 60 * 1000;
+    jest.spyOn(Date, 'now').mockReturnValue(later);
+    act(() => handlers.forEach((h) => h('background')));
+    expect(respond).toHaveBeenCalledTimes(1);
+    await act(async () => handlers.forEach((h) => h('active')));
+    await waitFor(() => expect(respond).toHaveBeenCalledTimes(2));
   });
 
   it('keeps the spots on screen when the server has none', async () => {

@@ -35,14 +35,18 @@ export function applyFilters(rows: SpotRow[], filters: readonly SpotFilter[]): S
   });
 }
 
-/** Best fit first, then nearest, then by name. */
+/**
+ * With the camper's location: nearest first (starter spots span the whole
+ * country, so a good fit 1,000 miles away shouldn't come before one down the
+ * road), then best fit. Without it: best fit first. Then by name.
+ */
 export function sortRows(rows: SpotRow[]): SpotRow[] {
   return [...rows].sort((a, b) => {
-    const byFit = FIT_ORDER[a.fit.status] - FIT_ORDER[b.fit.status];
-    if (byFit !== 0) return byFit;
     if (a.distanceMi != null && b.distanceMi != null && a.distanceMi !== b.distanceMi) {
       return a.distanceMi - b.distanceMi;
     }
+    const byFit = FIT_ORDER[a.fit.status] - FIT_ORDER[b.fit.status];
+    if (byFit !== 0) return byFit;
     return a.spot.name.localeCompare(b.spot.name);
   });
 }

@@ -12,6 +12,9 @@
 // EXPO_PUBLIC_SUPPORT_EMAIL: shown in the app (App Review requires a way to
 // contact you). A production build stops without it.
 //
+// EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: a
+// production build stops without them too (it would have no server).
+//
 // SENTRY_ORG and SENTRY_PROJECT (plus the SENTRY_AUTH_TOKEN secret): when
 // set, builds upload source maps so crash reports show DisCamp's own code.
 // Crash reports themselves only need EXPO_PUBLIC_SENTRY_DSN. See README.
@@ -57,6 +60,16 @@ export default function appConfig({ config }: ConfigContext): ExpoConfig {
   // And a store build without a support email, which App Review would reject.
   if (env.EAS_BUILD_PROFILE === 'production' && !env.EXPO_PUBLIC_SUPPORT_EMAIL?.trim()) {
     throw new Error('EXPO_PUBLIC_SUPPORT_EMAIL is not set; App Review needs a way to contact you. See app.config.ts.');
+  }
+  // And a store build without the server, which would quietly show only the
+  // starter spots, with no sign-in, to testers and App Review.
+  if (
+    env.EAS_BUILD_PROFILE === 'production' &&
+    (!env.EXPO_PUBLIC_SUPABASE_URL?.trim() || !env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim())
+  ) {
+    throw new Error(
+      'EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY is not set for the production environment on expo.dev, so this build would have no server or sign-in. See README, "Connect Supabase".',
+    );
   }
 
   const sentryOrg = env.SENTRY_ORG?.trim();

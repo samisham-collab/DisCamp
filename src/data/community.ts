@@ -20,6 +20,25 @@ export const MAX_PHOTOS_PER_SPOT = 3;
 export const MAX_CHECKIN_NOTE = 300;
 /** The after photo of a cleanup is taken within this many meters of its pin (0008). */
 export const CLEANUP_RADIUS_M = 150;
+/**
+ * A cleanup's photos need a location the phone is sure of to within this
+ * many meters. Approximate location (iPhone's Precise Location off, or
+ * Android's "Approximate") is off by a kilometer or more: a cleanup pinned
+ * there could never be found within 150 m.
+ */
+export const MAX_FIX_ACCURACY_M = 75;
+
+/** True when the phone only shared a rough location (see MAX_FIX_ACCURACY_M). */
+export function isRoughFix(fix: { accuracy?: number | null } | null): boolean {
+  return fix?.accuracy != null && fix.accuracy > MAX_FIX_ACCURACY_M;
+}
+
+/** What to tell a camper whose phone only shared a rough location. */
+export function roughFixMessage(fix: { accuracy?: number | null }, retake: string): string {
+  const within = Math.round(fix.accuracy ?? 0);
+  const rough = within >= 1000 ? `${(within / 1609.34).toFixed(1)} mi` : `${within} m`;
+  return `Your phone only shared an approximate location (within about ${rough}). Turn on Precise Location for DisCamp in Settings, then ${retake}.`;
+}
 /** A camper can say "Still good" about a spot once in this many days (0007). */
 export const CONFIRM_AGAIN_DAYS = 30;
 const DAY_MS = 86_400_000;

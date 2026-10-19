@@ -30,7 +30,7 @@ describe('Starter spots', () => {
 
   it('shows the Fish and Game stay limit and the approximate Packwood pin', async () => {
     await renderApp('/spot/sublett-dam');
-    expect(screen.getByText('10-day stay limit · No camper reports yet')).toBeTruthy();
+    expect(screen.getByText('10-day stay limit · No check-ins yet')).toBeTruthy();
     screen.unmount();
 
     await renderApp('/spot/forest-road-46-packwood');

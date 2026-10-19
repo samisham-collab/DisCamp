@@ -210,7 +210,11 @@ export default function ReportScreen() {
           label="Anything else we should know?"
           value={details}
           onChangeText={setDetails}
-          hint="Optional. For example: the gate is locked, or the road is on private land."
+          hint={
+            target.kind === 'spot'
+              ? 'Optional. For example: it’s on private land, or there’s no campsite there. A locked gate or washout? Use “Something changed” on the spot instead.'
+              : 'Optional. Anything that helps us review it.'
+          }
           maxLength={MAX_REPORT_DETAILS}
           multiline
         />

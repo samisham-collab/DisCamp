@@ -7,11 +7,11 @@
 //
 // Secrets (Supabase dashboard > Edge Functions > Secrets), from
 // developer.apple.com > Certificates, Identifiers & Profiles > Keys (a key
-// with Sign in with Apple, for the org.discamp.app App ID):
+// with Sign in with Apple, for the app's App ID):
 //   APPLE_TEAM_ID      your Team ID (Membership details)
 //   APPLE_KEY_ID       the key's Key ID
 //   APPLE_PRIVATE_KEY  the whole .p8 file, BEGIN and END lines included
-//   APPLE_CLIENT_ID    optional, default org.discamp.app (the bundle ID)
+//   APPLE_CLIENT_ID    the bundle ID in app.json (defaults to the placeholder org.discamp.app)
 // SUPABASE_URL and the API keys are provided by Supabase.
 //
 // The function checks who's calling itself (it asks Supabase Auth about the

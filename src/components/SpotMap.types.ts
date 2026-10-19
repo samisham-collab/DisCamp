@@ -11,6 +11,11 @@ export interface SpotMapHandle {
   /** Zoom to show every row on the map. */
   fitToRows: () => void;
   centerOn: (at: Coordinates) => void;
+  /**
+   * Show the camper and the few spots nearest them. Spots span the country,
+   * so a plain zoom on the camper often shows no pins at all.
+   */
+  showAround: (at: Coordinates) => void;
   /** Where the map is now (after the camper's last pan or zoom), if known. */
   currentRegion: () => Region | null;
 }

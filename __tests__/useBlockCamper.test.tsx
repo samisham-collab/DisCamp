@@ -3,6 +3,7 @@ import { renderHook } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { Alert } from 'react-native';
 
+import { CleanupsProvider } from '@/data/cleanupsStore';
 import { SpotsProvider } from '@/data/spots';
 import { AuthProvider } from '@/lib/auth';
 import { useBlockCamper } from '@/lib/useBlockCamper';
@@ -13,7 +14,9 @@ describe('useBlockCamper', () => {
     const { result } = renderHook(() => useBlockCamper(), {
       wrapper: ({ children }: { children: ReactNode }) => (
         <AuthProvider client={null}>
-          <SpotsProvider client={null}>{children}</SpotsProvider>
+          <SpotsProvider client={null}>
+            <CleanupsProvider>{children}</CleanupsProvider>
+          </SpotsProvider>
         </AuthProvider>
       ),
     });

@@ -31,8 +31,9 @@ function distanceSpoken(row: SpotRow): string | null {
   return row.direction && row.distanceMi >= 0.1 ? `${distance} ${COMPASS_WORDS[row.direction]}` : distance;
 }
 
+/** Distance first: long land-manager names would otherwise push it out of sight. */
 function metaLine(row: SpotRow): string {
-  return [siteTypeLabel(row.spot), row.spot.landManager, distanceLine(row)].filter(Boolean).join(' · ');
+  return [distanceLine(row), siteTypeLabel(row.spot), row.spot.landManager].filter(Boolean).join(' · ');
 }
 
 /** The newest change a camper reported, like "Gate locked or road closed, 2 days ago". */
@@ -136,7 +137,7 @@ export function SpotSummaryCard({
           <Text style={styles.sheetTitle} accessibilityRole="header" numberOfLines={2}>
             {row.spot.name}
           </Text>
-          <Text style={styles.meta} numberOfLines={1}>
+          <Text style={styles.meta} numberOfLines={2}>
             {metaLine(row)}
           </Text>
         </View>

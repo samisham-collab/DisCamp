@@ -2,6 +2,40 @@
 
 All notable changes to DisCamp. Dates are when the version was finished.
 
+## 1.7.1 (2026-10-19)
+
+A pre-TestFlight pass: fixes from going through every screen as a camper would, and native settings checked with a full `expo prebuild` for iPhone and Android. No database changes. Run `npm ci` after pulling (it adds `expo-system-ui`).
+
+### Added
+
+- **"Go to my location" on the add-spot map.** The location picker has a button that moves the map to where you are, so you can drop the pin without scrolling from across the country.
+- **Cleanups need a precise location.** If the phone only shares an approximate location (iPhone's Precise Location off, or Android's "Approximate"), posting or sending a cleanup says so, with a **Settings** button, instead of letting a pin land miles away. Post and Send wait until the location is precise. "Too far from the pin" shows metres under 1 km.
+- **Leaving an unsaved edit asks first.** Back, a swipe or Android's back button on **Edit spot** with changes asks "Discard your changes?" (Keep editing / Discard). After saving, it goes back to the spot without asking.
+- **Fresh data after a while away.** Coming back to DisCamp after 15 minutes or more reloads the spots and cleanups, so a cleanup someone finished while the phone was in a pocket doesn't still show as open.
+
+### Changed
+
+- **Nearest first.** Once your location is on, the list sorts nearest first (then best fit, then name); without it, best fit first. The summary card shows the distance first.
+- **The map frames you and what's near.** "Show my location" (and the first view after allowing location) centres on you, zoomed out just enough to show the 3 nearest spots, instead of fitting every spot in the country.
+- Spot pages say "No check-ins yet" / "3 check-ins" instead of "camper reports" (those are the on-site "Still good" and "Something changed" taps, not reports to moderators).
+- Reporting a spot explains the difference: private land or no campsite is a report; a locked gate or washout is "Something changed".
+- Sign-in says browsing never needs an account.
+- **No microphone permission on iPhone.** DisCamp never records sound, so the photo picker no longer adds a microphone message to the app.
+- Adds `expo-system-ui`, so the app's light/dark setting and background color apply to the native window (prebuild warned without it).
+- **A store build stops without the server.** A production build on EAS now stops at the start if `EXPO_PUBLIC_SUPABASE_URL` or `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` isn't set for the production environment on expo.dev, instead of building a TestFlight app with only the starter spots and no sign-in.
+- The Apple disconnect setup (README, "Sign-in") sets `APPLE_CLIENT_ID` to your bundle ID; without it, `apple-revoke` used the placeholder `org.discamp.app`, and Apple would turn the disconnect down once the bundle ID changes.
+- **TESTFLIGHT.md**: what to set up while Apple reviews your developer account, what to do the day it's approved, and a test script to run on your iPhone.
+- The tip jar gives up after 20 seconds if the App Store or Google Play doesn't answer, and shows **Try again** instead of a spinner forever. Signing out offline waits at most 4 seconds per step.
+
+### Fixed
+
+- Tapping **Add spot**, a photo or a check-in in the first second after launch, while the saved sign-in is still loading, says "One moment" instead of sending a signed-in camper to sign in (or to the rules again).
+- An add-spot draft saved by one camper isn't shown to the next camper who signs in on the same phone.
+- Blocking someone from a full-screen photo while signed out closes the photo before sign-in opens (sign-in used to open behind it). Blocking or unblocking someone updates the cleanups list too.
+- Opening a cleanup that has since been removed takes it off the lists.
+- On **Review**, the keyboard no longer covers the send-back reason.
+- **Edit spot** no longer says reports from other campers are "coming in a later version"; it points to "Something changed".
+
 ## 1.7.0 (2026-10-16)
 
 Notifications, the tip jar, disconnecting Apple on account deletion, an accessibility pass and 53 more starter spots. Run migration `0009_push.sql` along with this version: `bash scripts/setup-database.sh` runs just that file and reloads the starter spots. Notifications, tips and the Apple disconnect each need one-time setup outside the code (README and MODERATION.md say how); until then, the app explains instead of failing.
@@ -13,9 +47,12 @@ Notifications, the tip jar, disconnecting Apple on account deletion, an accessib
 - **Deleting an account disconnects Sign in with Apple.** On iPhone, Apple's sheet confirms it's the camper, and a new Edge Function, `apple-revoke`, revokes DisCamp's Apple tokens before the account is deleted (App Store rule 5.1.1(v), master task list Q6). It only revokes when Apple's answer is for the account's own Apple ID, so a phone signed in to someone else's Apple ID can't disconnect theirs. Closing Apple's sheet keeps the account, with an option to delete without Apple. If the function isn't set up (or on Android), the account is still deleted and the app explains the manual step, as before.
 - **53 more starter spots** across 24 states (59 in all): 38 dispersed spots, from Valley of the Gods and Alabama Hills to Gale River Road and Flagpole Knob, and 15 KOAs, including Goodland's. Each was checked against current sources for closures and rule changes (several popular spots now need designated sites or permits, and the entries say so), and lists its sources. They're in `src/data/seeds/`, one file per region.
 
+- **Keep Supabase awake.** A GitHub Actions workflow (`.github/workflows/keep-awake.yml`) reads one starter spot every Monday and Thursday, so the free Supabase project isn't paused after a week with no activity. It needs two repository secrets (README, "Connect Supabase").
+
 ### Changed
 
 - **Accessibility pass (master task list Q5).** Decorative icons are hidden from screen readers everywhere (VoiceOver and TalkBack no longer stop on them); photo thumbnails say when a photo is hidden for review; banners read their message without the icon; the tab names grow with the phone's text size up to what fits; the add-spot loading spinner has a label.
+- CI type-checks all three Edge Functions (report-alert, cleanup-push, apple-revoke).
 - The privacy policy covers push addresses, Expo's push service and tips; the support page covers notifications, tips and the Apple disconnect; the App Store Connect notes describe the tips and the token revocation.
 
 ## 1.6.1 (2026-10-15)
