@@ -127,7 +127,7 @@ update public.spots set verified = true where id = 'smoky-gardens';
    Already ran some for an earlier version? Run only the ones after it (for 1.3: 0004 to 0009; for 1.4.0: 0005 to 0009; for 1.4.1: 0006 to 0009; for 1.5.0: 0007 to 0009; for 1.5.1: 0008 and 0009; for 1.6: just 0009), then the seed. Never rerun an older file after a newer one: newer files change things the older ones made. To switch a database set up by hand over to the script, tell it the last file that ran, for example `bash scripts/setup-database.sh --after 0005`.
 
 3. Copy your **Project URL** and **publishable key** from the project's API settings.
-   **Keep it awake:** Supabase pauses free projects after a week with no activity. Once DisCamp is on GitHub, `.github/workflows/keep-awake.yml` reads one starter spot every Monday and Thursday to prevent that, and emails you (through GitHub) if a read fails. It needs two repository secrets, `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` (GitHub > your repo > **Settings > Secrets and variables > Actions**), with the same values as in `.env`. Paid Supabase plans are never paused, so you can delete the workflow if you upgrade.
+   **Keep it awake:** Supabase pauses free projects after a week with no activity. Once DisCamp is on GitHub, `.github/workflows/keep-awake.yml` reads one starter spot every Monday and Thursday to prevent that, and emails you (through GitHub) if a read fails. It needs two repository secrets, `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` (GitHub > your repo > **Settings > Secrets and variables > Actions**), with the same values as in `.env`. Paid Supabase plans are never paused, so you can delete the workflow if you upgrade. In a public repo, GitHub switches scheduled workflows off after 60 days without a commit: if Actions shows that banner, open **Keep Supabase awake** and click **Enable workflow**.
 4. For your phone: `cp .env.example .env`, put both values in `.env`, and restart `npx expo start`.
 5. For builds made on EAS: `.env` isn't uploaded, so add both values on expo.dev (your project > **Environment variables**) for the **preview** and **production** environments. Without them, a build quietly uses the starter spots only.
 
@@ -216,11 +216,14 @@ select moderation.add_moderator(camper_id) from moderation.find_camper('Sam');
 
 Then **Account > Review cleanups** shows what's waiting. MODERATION.md has the details.
 
-**Legal pages.** The privacy policy, terms of use and support page are in `docs/`, ready for GitHub Pages:
+**Website and legal pages.** `docs/` is DisCamp's website, built by GitHub Pages: a home page (`index.html`), the support page, the privacy policy and the terms of use, in one design (`_layouts/default.html`, `assets/site.css`) that follows the phone's light or dark setting.
 
 1. Fill in your name and support email at the top of `docs/_config.yml`.
-2. On GitHub: your DisCamp repo > **Settings > Pages** > Deploy from a branch: `main`, folder `/docs`. (Pages needs a public repo on a free account. Prefer a private repo? Copy `docs/` into a separate public one, then set `EXPO_PUBLIC_LEGAL_BASE_URL` to its address.)
-3. The pages appear at `https://<your GitHub username>.github.io/DisCamp/` (`privacy/`, `terms/`, `support/`). The app links there by default.
+2. On GitHub: your DisCamp repo > **Settings > Pages** > Deploy from a branch: `main`, folder `/docs`. (The repo is public, which free GitHub Pages needs.)
+3. The site appears at `https://samisham-collab.github.io/DisCamp/` within a few minutes, with `support/`, `privacy/` and `terms/`. The app links there by default.
+4. Later, for your own domain (like `discamp.app`): add it under **Settings > Pages > Custom domain**, set `baseurl: ''` in `docs/_config.yml`, and set `EXPO_PUBLIC_LEGAL_BASE_URL` to the new address on expo.dev.
+
+Once DisCamp is in the stores, add its App Store and Google Play links to the home page in place of "Coming soon".
 
 They're drafts written from what the app does, not legal advice: have someone qualified read them before launch.
 
@@ -327,7 +330,7 @@ supabase/seed.sql           Generated from seedSpots.ts (npm run seed:sql)
 supabase/functions/         Small server functions (Deno, run on Supabase):
                             report-alert emails you each report; cleanup-push sends cleanup notifications;
                             apple-revoke disconnects Sign in with Apple when an account is deleted
-docs/                       Privacy policy, terms and support page (GitHub Pages)
+docs/                       The website: home page, support, privacy policy, terms (GitHub Pages)
 store/                      Draft App Store Connect answers
 MODERATION.md               Acting on reports within 24 hours
 TESTFLIGHT.md               From here to TestFlight, and the test script for your iPhone

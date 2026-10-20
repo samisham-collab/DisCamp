@@ -16,7 +16,7 @@ None of these need the Apple account. The first six are what the TestFlight buil
    - put it in `.env` as `EXPO_PUBLIC_SUPPORT_EMAIL`,
    - put it and your name at the top of `docs/_config.yml`.
 
-4. **Publish the legal pages.** Push, then on GitHub: your repo > **Settings > Pages** > Deploy from a branch: `main`, folder `/docs`. Done when `https://<your-username>.github.io/DisCamp/privacy/`, `/terms/` and `/support/` open in a browser. (README, "Legal pages".)
+4. **Publish the website.** Once `docs/_config.yml` has the support email, push, then on GitHub: your repo > **Settings > Pages** > Deploy from a branch: `main`, folder `/docs`. Done when `https://samisham-collab.github.io/DisCamp/` and its `support/`, `privacy/` and `terms/` pages open in a browser. (README, "Website and legal pages".)
 
 5. **Keep Supabase awake.** If you haven't yet, unzip `discamp-keep-awake.zip` into the DisCamp folder (it adds `.github/workflows/`), commit and push. Add the two repository secrets `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` (GitHub > repo > **Settings > Secrets and variables > Actions**), then **Actions > Keep Supabase awake > Run workflow**. Done when the run is green.
 

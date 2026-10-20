@@ -19,7 +19,7 @@ Community map of campsites that checks whether a camper's rig can reach and fit 
 - Edge Functions (`supabase/functions/<name>/index.ts`, Deno) keep their logic in a sibling file of plain functions (`message.ts`, `apple.ts`) that Jest tests; `index.ts` is left out of typecheck and lint.
 - Accessibility: decorative `Ionicons` get `accessibilityElementsHidden importantForAccessibility="no"`; every pressable has a role and a label (an icon-only one needs `accessibilityLabel`).
 - Crash reports go through `log.error` (Sentry, when `EXPO_PUBLIC_SENTRY_DSN` is set). Never put emails, names, account ids or tokens in log messages; `src/lib/crashReports.ts` scrubs them as a backstop.
-- `docs/` is the public website (GitHub Pages): privacy policy, terms, support. When the app's data handling changes, update `docs/privacy.md` and `store/app-store-connect.md` too.
+- `docs/` is the public website (GitHub Pages, Jekyll): home page, privacy policy, terms, support, with one layout and stylesheet. The home page describes features: keep it true to the app. When the app's data handling changes, update `docs/privacy.md` and `store/app-store-connect.md` too.
 - Screens get the Supabase client from `useAuth().client` (one shared client via `ServerProvider`). Tests use the in-memory fake in `test/fakeSupabase.ts`, which follows the same ownership rules; connect it with `connectServer(backend)` from `test/helpers.ts`.
 - Sign-in uses PKCE and keeps the session in the keychain (`src/lib/secureStorage.ts`). Never log tokens, codes or email addresses.
 - Run `npm run check` (types, lint, formatting, tests with coverage thresholds) before calling a change done.

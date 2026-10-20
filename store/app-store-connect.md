@@ -8,8 +8,9 @@ update these and the privacy policy together.
 
 | Field                    | Value                                                   |
 | ------------------------ | ------------------------------------------------------- |
-| Privacy Policy URL       | `https://<github user>.github.io/DisCamp/privacy/`      |
-| Support URL              | `https://<github user>.github.io/DisCamp/support/`      |
+| Privacy Policy URL       | `https://samisham-collab.github.io/DisCamp/privacy/`    |
+| Support URL              | `https://samisham-collab.github.io/DisCamp/support/`    |
+| Marketing URL            | `https://samisham-collab.github.io/DisCamp/`            |
 | User Privacy Choices URL | Leave empty (no opt-outs to offer: no ads, no tracking) |
 
 These are the pages in `docs/`, published with GitHub Pages (see README). The

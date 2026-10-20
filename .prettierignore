@@ -6,3 +6,6 @@ android
 ios
 package-lock.json
 supabase/seed.sql
+# Jekyll templates with Liquid tags, which Prettier would reformat badly
+docs/_layouts
+docs/index.html
