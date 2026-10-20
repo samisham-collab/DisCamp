@@ -6,7 +6,7 @@ All notable changes to DisCamp. Dates are when the version was finished.
 
 ### Added
 
-- **DisCamp's website.** `docs/` is now a full site for GitHub Pages: a home page (what DisCamp does, how fit and the cost meter work, cleanups and Embers, privacy, donations only) and the support, privacy and terms pages in the same design, with light and dark modes and a phone layout. The pages name Samuel Isham as the owner; the support email is still to be filled in before publishing. The App Store Connect notes list the home page as the Marketing URL.
+- **DisCamp's website.** `docs/` is now a full site for GitHub Pages: a home page (what DisCamp does, how fit and the cost meter work, cleanups and Embers, privacy, donations only) and the support, privacy and terms pages in the same design, with light and dark modes and a phone layout. The pages name Samuel Isham as the owner and discamphelp@yahoo.com as the support email (also in the app). The App Store Connect notes list the home page as the Marketing URL.
 
 ## 1.7.1 (2026-10-19)
 
