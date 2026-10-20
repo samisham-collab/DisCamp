@@ -21,7 +21,7 @@ export interface AppleConfig {
 export const APPLE_TOKEN_URL = 'https://appleid.apple.com/auth/token';
 export const APPLE_REVOKE_URL = 'https://appleid.apple.com/auth/revoke';
 /** DisCamp's bundle ID (app.json), which codes from the iPhone's Apple sheet are issued to. */
-export const DEFAULT_CLIENT_ID = 'org.discamp.app';
+export const DEFAULT_CLIENT_ID = 'com.samuelisham.discamp';
 
 /** The settings, or the names of the ones that are missing. */
 export function readConfig(get: (name: string) => string): AppleConfig | { missing: string[] } {

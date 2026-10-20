@@ -49,7 +49,7 @@ describe('the client secret Apple asks for', () => {
       teamId: 'TEAM123456',
       keyId: 'KEY1234567',
       privateKey: pem,
-      clientId: 'org.discamp.app',
+      clientId: 'com.samuelisham.discamp',
     };
     const jwt = await clientSecret(config, 1_800_000_000);
     const [header, claims, signature] = jwt.split('.') as [string, string, string];
@@ -59,7 +59,7 @@ describe('the client secret Apple asks for', () => {
       iat: 1_800_000_000,
       exp: 1_800_000_300,
       aud: 'https://appleid.apple.com',
-      sub: 'org.discamp.app',
+      sub: 'com.samuelisham.discamp',
     });
     const valid = await subtle.verify(
       { name: 'ECDSA', hash: 'SHA-256' },
@@ -101,7 +101,7 @@ describe('asking Apple to revoke', () => {
       teamId: 'TEAM123456',
       keyId: 'KEY1234567',
       privateKey: (await makeKey()).pem,
-      clientId: 'org.discamp.app',
+      clientId: 'com.samuelisham.discamp',
     };
   });
 
@@ -131,7 +131,7 @@ describe('asking Apple to revoke', () => {
     expect(await revokeWithApple('code-1', config, doFetch, ['other', ME])).toEqual({ ok: true });
     expect(calls.map((c) => c.url)).toEqual([APPLE_TOKEN_URL, APPLE_REVOKE_URL]);
     expect(Object.fromEntries(calls[0]!.body)).toMatchObject({
-      client_id: 'org.discamp.app',
+      client_id: 'com.samuelisham.discamp',
       code: 'code-1',
       grant_type: 'authorization_code',
     });

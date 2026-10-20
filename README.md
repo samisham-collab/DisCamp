@@ -170,7 +170,7 @@ Without these, sign-in opens and then quietly comes back as "cancelled".
 - **GitHub** (easiest, free): GitHub > Settings > Developer settings > OAuth Apps > **New OAuth App**. Callback URL: the Supabase one. Copy the Client ID, generate a client secret, and paste both into Supabase's GitHub provider.
 - **Google** (free): in [Google Cloud Console](https://console.cloud.google.com), set up the **OAuth consent screen** (External), then **Credentials > Create credentials > OAuth client ID > Web application**. Authorized redirect URI: the Supabase one. Paste the client ID and secret into Supabase's Google provider.
 - **Microsoft** (free; Supabase calls it **Azure**): in the [Azure portal](https://portal.azure.com), **Microsoft Entra ID > App registrations > New registration**. Supported account types: **Accounts in any organizational directory and personal Microsoft accounts**. Redirect URI (Web): the Supabase one. Under **Certificates & secrets**, make a client secret and copy its **Value**. In Supabase's Azure provider, paste the Application (client) ID and the secret, and leave the tenant URL empty. Recommended: under **Token configuration**, add the optional claim `xms_edov`, so Supabase can tell whether the email address is verified.
-- **Apple** (needs the $99/year Apple Developer Program): in Supabase's Apple provider, put your app's bundle ID under **Client IDs** (replace the placeholder `org.discamp.app` in `app.json` with your own first), plus `host.exp.Exponent` to test in Expo Go. That's all iPhone needs. Sign in with Apple on Android goes through the browser and also needs a Services ID and a signing key; Supabase's Apple page walks through it. That secret expires every 6 months, so set a reminder.
+- **Apple** (needs the $99/year Apple Developer Program): in Supabase's Apple provider, put DisCamp's bundle ID, `com.samuelisham.discamp`, under **Client IDs**, plus `host.exp.Exponent` to test in Expo Go. That's all iPhone needs. Sign in with Apple on Android goes through the browser and also needs a Services ID and a signing key; Supabase's Apple page walks through it. That secret expires every 6 months, so set a reminder.
 
 **3. Show only the buttons you've set up.** Until a provider is on, hide its button: in `.env` (and on expo.dev for builds), set for example `EXPO_PUBLIC_AUTH_PROVIDERS=google,microsoft,github`. Leave it empty for all four.
 
@@ -182,11 +182,11 @@ Without these, sign-in opens and then quietly comes back as "cancelled".
   2. In Terminal, from the DisCamp folder (after `npx supabase login` and `link`, see MODERATION.md):
 
      ```sh
-     npx supabase secrets set APPLE_CLIENT_ID=com.yourname.discamp APPLE_TEAM_ID=ABCDE12345 APPLE_KEY_ID=XYZ987WVUT APPLE_PRIVATE_KEY="$(cat ~/Downloads/AuthKey_XYZ987WVUT.p8)"
+     npx supabase secrets set APPLE_TEAM_ID=ABCDE12345 APPLE_KEY_ID=XYZ987WVUT APPLE_PRIVATE_KEY="$(cat ~/Downloads/AuthKey_XYZ987WVUT.p8)"
      npx supabase functions deploy apple-revoke --no-verify-jwt
      ```
 
-     `APPLE_CLIENT_ID` is your bundle ID, exactly as in `app.json` (it defaults to the placeholder `org.discamp.app`; with the wrong one, Apple turns the disconnect down and the app falls back to explaining the manual step). The key stays on Supabase; never put it in the app, `.env` or git (`.gitignore` skips `.p8` files). The function checks who's calling itself, which is why it's deployed with `--no-verify-jwt`.
+     The function assumes the bundle ID `com.samuelisham.discamp`; if `app.json` ever says otherwise, also set `APPLE_CLIENT_ID` to it (with the wrong one, Apple turns the disconnect down and the app falls back to explaining the manual step). The key stays on Supabase; never put it in the app, `.env` or git (`.gitignore` skips `.p8` files). The function checks who's calling itself, which is why it's deployed with `--no-verify-jwt`.
 
   Until it's set up (and on Android, which has no Apple sheet), the app still deletes the account and explains how to remove DisCamp from the Apple Account (TN3194).
 
@@ -242,11 +242,11 @@ They're drafts written from what the app does, not legal advice: have someone qu
 - **Android needs a Google Maps key.** Android draws the map with Google Maps. Create a key with "Maps SDK for Android" turned on in Google Cloud, and add it on expo.dev as the environment variable `GOOGLE_MAPS_ANDROID_API_KEY` for each environment you build. An Android build stops with a clear message if it's missing, instead of shipping a blank map. iPhone uses Apple Maps and needs no key.
 - **Android test build (APK you can install directly):** `npx eas-cli@latest build --profile preview --platform android`
 - **iPhone for TestFlight:** `npx eas-cli@latest build --profile production --platform ios`, then `npx eas-cli@latest submit --platform ios`. This needs your Apple Developer account.
-- **App ID:** `org.discamp.app` in `app.json` is a placeholder. Change it to one you own before your first store build; it can't be changed after release.
+- **App ID:** DisCamp's bundle ID (iPhone) and package name (Android) are both `com.samuelisham.discamp`, in `app.json`. It can't change after the first store upload.
 - **Notifications** need three things from you, once:
   1. `npx eas-cli@latest init`, which puts the project id in `app.json` (Expo's push service needs it). Until then, Account says notifications aren't set up.
   2. **iPhone:** the first iOS build asks "Would you like to set up Push Notifications for your project?" Say yes and EAS makes the Apple push key for you.
-  3. **Android:** Android notifications go through Firebase. At [console.firebase.google.com](https://console.firebase.google.com), make a project, add an Android app with the package `org.discamp.app`, and download `google-services.json` into the DisCamp folder (next to `app.json`). Then in Firebase **Project settings > Service accounts**, generate a private key, and upload it with `npx eas-cli@latest credentials` (Android > production > Google Service Account > Push Notifications (FCM V1)). Keep that key out of git.
+  3. **Android:** Android notifications go through Firebase. At [console.firebase.google.com](https://console.firebase.google.com), make a project, add an Android app with the package `com.samuelisham.discamp`, and download `google-services.json` into the DisCamp folder (next to `app.json`). Then in Firebase **Project settings > Service accounts**, generate a private key, and upload it with `npx eas-cli@latest credentials` (Android > production > Google Service Account > Push Notifications (FCM V1)). Keep that key out of git.
 - **Tip jar:** tips are in-app purchases, so they only work in builds from the stores (TestFlight and internal testing included), never in Expo Go. Set up three **consumable** products with these exact ids in both stores, at $2.99, $4.99 and $9.99:
 
   | Product id   | Name (shown in the app) |

@@ -9,7 +9,7 @@
     "backgroundColor": "#F4F6F2",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "org.discamp.app",
+      "bundleIdentifier": "com.samuelisham.discamp",
       "config": {
         "usesNonExemptEncryption": false
       },
@@ -89,7 +89,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "org.discamp.app",
+      "package": "com.samuelisham.discamp",
       "blockedPermissions": [
         "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.FOREGROUND_SERVICE",

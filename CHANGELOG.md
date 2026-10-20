@@ -4,6 +4,10 @@ All notable changes to DisCamp. Dates are when the version was finished.
 
 ## Unreleased
 
+### Changed
+
+- **Bundle ID `com.samuelisham.discamp`.** The iPhone bundle ID and the Android package name replace the placeholder `org.discamp.app`, and the `apple-revoke` function now assumes it, so `APPLE_CLIENT_ID` is no longer needed. The app is also linked to the Expo project `@discamp/discamp`.
+
 ### Added
 
 - **DisCamp's website.** `docs/` is now a full site for GitHub Pages: a home page (what DisCamp does, how fit and the cost meter work, cleanups and Embers, privacy, donations only) and the support, privacy and terms pages in the same design, with light and dark modes and a phone layout. The pages name Samuel Isham as the owner and discamphelp@yahoo.com as the support email (also in the app). The App Store Connect notes list the home page as the Marketing URL.

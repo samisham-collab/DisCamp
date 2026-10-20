@@ -10,7 +10,7 @@ None of these need the Apple account. The first six are what the TestFlight buil
 
 1. **Update to 1.7.1.** In Terminal, from the DisCamp folder: `npm ci`. If you haven't run migration 0009 yet, run `bash scripts/setup-database.sh` (1.7.1 has no new migration).
 
-2. **Decide the bundle ID.** It's DisCamp's permanent id in both stores and can never change after the first upload. The usual form is `com.yourname.discamp` (lowercase, no spaces). Put it in both places in `app.json`: `ios.bundleIdentifier` and `android.package`, in place of the placeholder `org.discamp.app`. Do it before the steps below that use it (Firebase, Supabase's Apple provider, the `apple-revoke` secret).
+2. **Bundle ID: done.** DisCamp is `com.samuelisham.discamp` in both stores (`ios.bundleIdentifier` and `android.package` in `app.json`). It can never change after the first upload, so use exactly this wherever a step asks for it (Firebase, Supabase's Apple provider, App Store Connect).
 
 3. **Make a DisCamp support email.** It's public: it shows in the app, on the store listing and in the privacy policy. Use an address of your own (a new Gmail or iCloud address like `discamp.help@...` works), not your school district one: it outlives any job change and keeps campers' mail out of the district's systems. Then:
    - put it in `.env` as `EXPO_PUBLIC_SUPPORT_EMAIL`,
