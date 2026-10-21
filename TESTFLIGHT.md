@@ -74,6 +74,7 @@ Run it on the TestFlight build, top to bottom, the first time. Note anything off
 - [ ] Delete any old DisCamp first, then install from TestFlight. It opens to the map with no location question.
 - [ ] Pins show across the US. Tap one: a summary card appears and the pin stays in view. Tap the card: the spot's page opens.
 - [ ] On a spot's page: **Directions** opens Apple Maps, **Share** opens the share sheet, **Copy GPS** copies.
+- [ ] **Route** on a spot's page: the route appears in blue, with any unpaved stretch in orange, plus miles and drive time. Change your rig to the Sedan preset and open it again: the note says it stays on paved roads. **Start in Apple Maps** opens the drive.
 - [ ] **List**: sorted best fit first. Tap **Sort by distance**: iPhone asks for location "while using the app" only. Allow: the list is nearest first, and on the map **Show my location** centres on you with the nearest spots in view.
 - [ ] **My Rig**: change the preset; the fit colors change. Turn on **Fits my rig**. Close DisCamp fully (swipe it away) and reopen: the rig, the filter and map/list are remembered.
 - [ ] Airplane mode on, close and reopen: the last spots show with an offline banner. Airplane mode off, tap **Retry**.

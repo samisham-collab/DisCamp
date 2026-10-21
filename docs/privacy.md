@@ -11,8 +11,8 @@ DisCamp is a free map of dispersed campsites, run by {{ site.owner }} ("we"). Th
 collects, why, who else handles it, and the choices you have. Questions: **{{ site.support_email }}**.
 
 **In short:** browsing DisCamp needs no account and sends nothing about you. If you sign in to add spots, photos or
-cleanups, we keep your email address, your display name, what you post and the Embers you earn. Your location stays on
-your phone unless you use it to place a spot, or post or clean up a cleanup. We don't show ads, track you across apps, or sell or share your information for advertising.
+cleanups, we keep your email address, your display name, what you post and the Embers you earn. Your location stays on your phone unless you use it to place a spot, post or clean up a cleanup, or get a route
+preview. We don't show ads, track you across apps, or sell or share your information for advertising.
 
 ## Without an account
 
@@ -72,7 +72,9 @@ DisCamp asks for permission to use your location only when you first tap "Show m
 "Use my location" (while adding a spot). Once you allow it, the app uses your location only while it's open, on your
 phone, to show distances and center the map. It's sent to us only if you use it to place a spot, in which case it
 becomes that spot's public location, or when you post a cleanup (it becomes the cleanup's public pin) or send one you
-cleaned up (only moderators see it, to check you were there). DisCamp never tracks your location in the background.
+cleaned up (only moderators see it, to check you were there). If you open a route preview, your location and the
+spot's are sent to our routing service to work out the drive, with your rig's routing settings (such as its length)
+but nothing that identifies you; DisCamp doesn't keep them. DisCamp never tracks your location in the background.
 
 ## Crash reports
 
@@ -103,6 +105,9 @@ These companies process information for us, only to provide their service:
 - **Resend**, which emails us each report so we can review it quickly.
 - **Map providers.** The map uses Apple Maps on iPhone and Google Maps on Android, which load map images for the area
   you're viewing.
+- **FOSSGIS e.V.** (Germany) runs the routing server behind route previews (Valhalla, with OpenStreetMap data). It gets
+  your starting point and the spot's location for each route, and may keep standard server logs such as your IP
+  address.
 
 We may also share information if the law requires it, to protect campers' safety, or to respond to illegal activity,
 such as reporting child sexual abuse material to the authorities.

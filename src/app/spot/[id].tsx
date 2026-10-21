@@ -23,6 +23,7 @@ import { CostMeter } from '@/components/CostMeter';
 import { FitBanner } from '@/components/Fit';
 import { siteTypeLabel } from '@/components/SpotSummary';
 import { ActionButton, Banner, Button, Card, Chip, EmptyState, Row, SectionTitle } from '@/components/ui';
+import { ROUTING_URL } from '@/config';
 import { useSpot, useSpots } from '@/data/spots';
 import { CHANGE_LABELS } from '@/data/community';
 import { deleteSpot } from '@/data/spotWrites';
@@ -265,6 +266,13 @@ export default function SpotScreen() {
       <View style={styles.actions}>
         <Button label="Directions" icon="navigate-outline" onPress={() => void openDirections(spot)} />
         <View style={styles.actionRow}>
+          {ROUTING_URL ? (
+            <ActionButton
+              icon="map-outline"
+              label="Route"
+              onPress={() => router.push({ pathname: '/route/[id]', params: { id: spot.id } })}
+            />
+          ) : null}
           <ActionButton icon="share-outline" label="Share" onPress={() => void shareSpot(spot)} />
           <ActionButton
             icon={copied ? 'checkmark' : 'copy-outline'}

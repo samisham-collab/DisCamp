@@ -96,4 +96,9 @@ export function Marker({
   );
 }
 
+/** A route line: a plain view that carries its points for tests to read. */
+export function Polyline({ testID, coordinates }: { testID?: string; coordinates: unknown[] }) {
+  return <View testID={testID} accessibilityHint={`${coordinates.length} points`} />;
+}
+
 export default MapView;

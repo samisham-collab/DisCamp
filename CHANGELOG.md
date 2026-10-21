@@ -4,13 +4,14 @@ All notable changes to DisCamp. Dates are when the version was finished.
 
 ## Unreleased
 
+### Added
+
+- **Route preview.** **Route** on a spot's page draws the drive from where you are to the spot on DisCamp's own map (Apple Maps or Google Maps underneath): the route in blue, stretches the map data calls unpaved or rough in orange, miles and drive time, mapped gates, ferries and tolls. Routes are worked out for your rig: cars under 6" of clearance (without 4WD) stay on pavement until close to the spot; 4WDs with 8"+ may take rough tracks; trailers and big rigs are routed as long vehicles by length and height. **Start in Apple Maps** (or Google Maps) hands over the turn-by-turn drive. Routes come from a Valhalla routing server, by default the free public one run by FOSSGIS (`EXPO_PUBLIC_ROUTING_URL` changes it; `off` hides the button). The privacy policy now covers it.
+- **DisCamp's website.** `docs/` is now a full site for GitHub Pages: a home page (what DisCamp does, how fit and the cost meter work, cleanups and Embers, privacy, donations only) and the support, privacy and terms pages in the same design, with light and dark modes and a phone layout. The pages name Samuel Isham as the owner and discamphelp@yahoo.com as the support email (also in the app). The App Store Connect notes list the home page as the Marketing URL.
+
 ### Changed
 
 - **Bundle ID `com.samuelisham.discamp`.** The iPhone bundle ID and the Android package name replace the placeholder `org.discamp.app`, and the `apple-revoke` function now assumes it, so `APPLE_CLIENT_ID` is no longer needed. The app is also linked to the Expo project `@discamp/discamp`.
-
-### Added
-
-- **DisCamp's website.** `docs/` is now a full site for GitHub Pages: a home page (what DisCamp does, how fit and the cost meter work, cleanups and Embers, privacy, donations only) and the support, privacy and terms pages in the same design, with light and dark modes and a phone layout. The pages name Samuel Isham as the owner and discamphelp@yahoo.com as the support email (also in the app). The App Store Connect notes list the home page as the Marketing URL.
 
 ## 1.7.1 (2026-10-19)
 

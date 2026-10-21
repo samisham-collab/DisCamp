@@ -77,6 +77,7 @@ function AppStack() {
         <Stack.Screen name="spot/[id]" options={{ title: 'Spot details', headerBackTitle: 'Back' }} />
         <Stack.Screen name="spot/new" options={{ title: 'Add a spot', headerBackTitle: 'Back' }} />
         <Stack.Screen name="spot/edit/[id]" options={{ title: 'Edit spot', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="route/[id]" options={{ title: 'Route preview', headerBackTitle: 'Back' }} />
         <Stack.Screen name="sign-in" options={{ title: 'Sign in', presentation: 'modal' }} />
         <Stack.Screen name="report/[kind]/[id]" options={{ title: 'Report', presentation: 'modal' }} />
         <Stack.Screen name="checkin/[id]" options={{ title: 'Report a change', presentation: 'modal' }} />

@@ -24,16 +24,16 @@ elsewhere.
 **Tracking:** DisCamp does not track. Answer "No" to using data for tracking for
 every type below, and the app needs no App Tracking Transparency prompt.
 
-| Data type                           | Collected?                                         | Linked to the user? | Used for tracking? | Purposes          |
-| ----------------------------------- | -------------------------------------------------- | ------------------- | ------------------ | ----------------- |
-| Contact Info > Email Address        | Yes                                                | Yes                 | No                 | App Functionality |
-| Contact Info > Name                 | Yes (the display name)                             | Yes                 | No                 | App Functionality |
-| Identifiers > User ID               | Yes (account ID)                                   | Yes                 | No                 | App Functionality |
-| User Content > Photos or Videos     | Yes (photos of spots and cleanups)                 | Yes                 | No                 | App Functionality |
-| User Content > Other User Content   | Yes (spots, check-ins, cleanups and reports)       | Yes                 | No                 | App Functionality |
-| Location > Precise Location         | Yes (placing a spot, posting or sending a cleanup) | Yes                 | No                 | App Functionality |
-| Diagnostics > Crash Data            | Yes (Sentry)                                       | No                  | No                 | App Functionality |
-| Diagnostics > Other Diagnostic Data | Yes (Sentry error reports)                         | No                  | No                 | App Functionality |
+| Data type                           | Collected?                                     | Linked to the user? | Used for tracking? | Purposes          |
+| ----------------------------------- | ---------------------------------------------- | ------------------- | ------------------ | ----------------- |
+| Contact Info > Email Address        | Yes                                            | Yes                 | No                 | App Functionality |
+| Contact Info > Name                 | Yes (the display name)                         | Yes                 | No                 | App Functionality |
+| Identifiers > User ID               | Yes (account ID)                               | Yes                 | No                 | App Functionality |
+| User Content > Photos or Videos     | Yes (photos of spots and cleanups)             | Yes                 | No                 | App Functionality |
+| User Content > Other User Content   | Yes (spots, check-ins, cleanups and reports)   | Yes                 | No                 | App Functionality |
+| Location > Precise Location         | Yes (placing a spot, cleanups, route previews) | Yes                 | No                 | App Functionality |
+| Diagnostics > Crash Data            | Yes (Sentry)                                   | No                  | No                 | App Functionality |
+| Diagnostics > Other Diagnostic Data | Yes (Sentry error reports)                     | No                  | No                 | App Functionality |
 
 Not collected: phone number, physical address, payment info, contacts,
 browsing or search history, purchases, usage data, advertising data,
@@ -131,6 +131,9 @@ Mention its name in the notes.
       the report-alert and cleanup-push webhooks working (send yourself a
       test report and a test cleanup)
 - [ ] A TestFlight build passes the test list on a real iPhone
+- [ ] Route previews: FOSSGIS has OK'd DisCamp using their public Valhalla
+      server (webmaster@openstreetmap.de), or `EXPO_PUBLIC_ROUTING_URL` points
+      at another Valhalla server (or is `off`)
 - [ ] One spot added by a second account, for reviewers (see above)
 - [ ] Apple token revocation working: the `apple-revoke` function deployed
       with its three Apple secrets (README, "Before the App Store"). Test it:

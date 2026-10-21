@@ -81,6 +81,19 @@ export const LEGAL_URLS = {
   support: `${LEGAL_BASE_URL}support/`,
 } as const;
 
+/**
+ * The routing server for route previews (src/lib/routing.ts): any server that
+ * speaks the Valhalla routing API. The default is the free public Valhalla
+ * server run by FOSSGIS, fine for testing. Before launch, check with FOSSGIS
+ * (webmaster@openstreetmap.de) or point EXPO_PUBLIC_ROUTING_URL at another
+ * Valhalla server. EXPO_PUBLIC_ROUTING_URL=off hides route previews.
+ */
+export const DEFAULT_ROUTING_URL = 'https://valhalla1.openstreetmap.de';
+export const ROUTING_URL: string | null = routingUrl(process.env.EXPO_PUBLIC_ROUTING_URL);
+
+/** Give up on a route after this long and offer the phone's maps app instead. */
+export const ROUTE_TIMEOUT_MS = 20_000;
+
 /** Apple's help page for removing an app from Sign in with Apple. */
 export const APPLE_SIGN_IN_HELP_URL = 'https://support.apple.com/102571';
 
@@ -91,4 +104,12 @@ export function cleanEmail(value: string | undefined): string | null {
 
 export function withSlash(url: string): string {
   return url.endsWith('/') ? url : `${url}/`;
+}
+
+/** EXPO_PUBLIC_ROUTING_URL: empty for the default, "off" for none, or an https address. */
+export function routingUrl(value: string | undefined): string | null {
+  const url = value?.trim() ?? '';
+  if (url === '') return DEFAULT_ROUTING_URL;
+  if (url.toLowerCase() === 'off') return null;
+  return /^https:\/\/[^\s/]+/i.test(url) ? url.replace(/\/+$/, '') : null;
 }
