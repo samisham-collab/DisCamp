@@ -74,7 +74,9 @@ phone, to show distances and center the map. It's sent to us only if you use it 
 becomes that spot's public location, or when you post a cleanup (it becomes the cleanup's public pin) or send one you
 cleaned up (only moderators see it, to check you were there). If you open a route preview, your location and the
 spot's are sent to our routing service to work out the drive, with your rig's routing settings (such as its length)
-but nothing that identifies you; DisCamp doesn't keep them. DisCamp never tracks your location in the background.
+but nothing that identifies you; DisCamp doesn't keep them. In Drive mode, DisCamp follows your location on your phone
+to guide you, only while DisCamp is open on screen, and sends it again only if you tap Reroute. DisCamp never tracks
+your location in the background.
 
 ## Crash reports
 

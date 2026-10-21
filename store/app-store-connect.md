@@ -24,16 +24,16 @@ elsewhere.
 **Tracking:** DisCamp does not track. Answer "No" to using data for tracking for
 every type below, and the app needs no App Tracking Transparency prompt.
 
-| Data type                           | Collected?                                     | Linked to the user? | Used for tracking? | Purposes          |
-| ----------------------------------- | ---------------------------------------------- | ------------------- | ------------------ | ----------------- |
-| Contact Info > Email Address        | Yes                                            | Yes                 | No                 | App Functionality |
-| Contact Info > Name                 | Yes (the display name)                         | Yes                 | No                 | App Functionality |
-| Identifiers > User ID               | Yes (account ID)                               | Yes                 | No                 | App Functionality |
-| User Content > Photos or Videos     | Yes (photos of spots and cleanups)             | Yes                 | No                 | App Functionality |
-| User Content > Other User Content   | Yes (spots, check-ins, cleanups and reports)   | Yes                 | No                 | App Functionality |
-| Location > Precise Location         | Yes (placing a spot, cleanups, route previews) | Yes                 | No                 | App Functionality |
-| Diagnostics > Crash Data            | Yes (Sentry)                                   | No                  | No                 | App Functionality |
-| Diagnostics > Other Diagnostic Data | Yes (Sentry error reports)                     | No                  | No                 | App Functionality |
+| Data type                           | Collected?                                                    | Linked to the user? | Used for tracking? | Purposes          |
+| ----------------------------------- | ------------------------------------------------------------- | ------------------- | ------------------ | ----------------- |
+| Contact Info > Email Address        | Yes                                                           | Yes                 | No                 | App Functionality |
+| Contact Info > Name                 | Yes (the display name)                                        | Yes                 | No                 | App Functionality |
+| Identifiers > User ID               | Yes (account ID)                                              | Yes                 | No                 | App Functionality |
+| User Content > Photos or Videos     | Yes (photos of spots and cleanups)                            | Yes                 | No                 | App Functionality |
+| User Content > Other User Content   | Yes (spots, check-ins, cleanups and reports)                  | Yes                 | No                 | App Functionality |
+| Location > Precise Location         | Yes (placing a spot, cleanups, route previews and Drive mode) | Yes                 | No                 | App Functionality |
+| Diagnostics > Crash Data            | Yes (Sentry)                                                  | No                  | No                 | App Functionality |
+| Diagnostics > Other Diagnostic Data | Yes (Sentry error reports)                                    | No                  | No                 | App Functionality |
 
 Not collected: phone number, physical address, payment info, contacts,
 browsing or search history, purchases, usage data, advertising data,

@@ -14,8 +14,11 @@ export type { RouteMapProps } from './RouteMap.types';
 const START_DELTA = 0.4;
 const EDGE_PADDING = { top: 64, right: 48, bottom: 48, left: 48 };
 const CASING = '#FFFFFF';
+/** Drive mode's camera: Google Maps uses zoom, Apple Maps uses altitude (meters). */
+const FOLLOW_ZOOM = 17;
+const FOLLOW_ALTITUDE = 700;
 
-export function RouteMap({ path, roughSegments, destination, satellite }: RouteMapProps) {
+export function RouteMap({ path, roughSegments, destination, satellite, follow, onUserPan }: RouteMapProps) {
   const mapRef = useRef<MapView>(null);
   const [ready, setReady] = useState(false);
   const [initialRegion] = useState(() => ({
@@ -25,11 +28,30 @@ export function RouteMap({ path, roughSegments, destination, satellite }: RouteM
     longitudeDelta: START_DELTA,
   }));
 
-  // Frame the whole route once both the map and the route are ready.
+  const following = follow != null;
+  // Frame the whole route once both the map and the route are ready (not while driving).
   useEffect(() => {
-    if (!ready || path.length < 2) return;
+    if (!ready || path.length < 2 || following) return;
     mapRef.current?.fitToCoordinates(path, { edgePadding: EDGE_PADDING, animated: true });
-  }, [ready, path]);
+  }, [ready, path, following]);
+
+  // Drive mode: the camera rides along, tilted, facing the way the camper drives.
+  const followLat = follow?.center.latitude;
+  const followLng = follow?.center.longitude;
+  const followHeading = follow?.heading;
+  useEffect(() => {
+    if (!ready || followLat == null || followLng == null) return;
+    mapRef.current?.animateCamera(
+      {
+        center: { latitude: followLat, longitude: followLng },
+        heading: followHeading ?? 0,
+        pitch: 40,
+        zoom: FOLLOW_ZOOM,
+        altitude: FOLLOW_ALTITUDE,
+      },
+      { duration: 800 },
+    );
+  }, [ready, followLat, followLng, followHeading]);
 
   return (
     <MapView
@@ -41,6 +63,7 @@ export function RouteMap({ path, roughSegments, destination, satellite }: RouteM
       showsMyLocationButton={false}
       toolbarEnabled={false}
       onMapReady={() => setReady(true)}
+      onPanDrag={onUserPan}
       testID="route-map"
     >
       {path.length >= 2 ? (

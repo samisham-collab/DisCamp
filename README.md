@@ -26,7 +26,7 @@ The other 53 are in `src/data/seeds/`, one file per region (Southwest, Rockies a
 - **Cost meter**: Free / $ / $$ / $$$ per night. Trailers and big rigs are priced on the RV site fee and see the meter first. At Smoky Gardens that's $20 a night for an RV site, and free for dry camping.
 - **Filters**: "Fits my rig" and "Free for my rig". Filters, map or list, and satellite view are remembered.
 - **Works offline**: the last spots loaded are saved on the phone. If the server can't be reached, a banner says so and offers Retry.
-- **Route preview**: **Route** on a spot's page draws the drive there on DisCamp's map (Apple Maps or Google Maps underneath), with miles, drive time and the unpaved or rough stretches in orange. The route is worked out for your rig: low cars stay on pavement until close to the spot, high-clearance 4WDs may take rough tracks, and trailers and big rigs are routed by their length and height. **Start in Apple Maps** (or Google Maps) hands over the turn-by-turn drive. Routes come from a [Valhalla](https://github.com/valhalla/valhalla) routing server using OpenStreetMap roads; by default the free public one run by FOSSGIS, fine for testing. Before launch, ask FOSSGIS (webmaster@openstreetmap.de) whether DisCamp may use it, or set `EXPO_PUBLIC_ROUTING_URL` to another Valhalla server (`off` hides the button).
+- **Route preview**: **Route** on a spot's page draws the drive there on DisCamp's map (Apple Maps or Google Maps underneath), with miles, drive time and the unpaved or rough stretches in orange. The route is worked out for your rig: low cars stay on pavement until close to the spot, high-clearance 4WDs may take rough tracks, and trailers and big rigs are routed by their length and height. **Start** turns it into **Drive mode**: turn-by-turn guidance on DisCamp's map, spoken aloud ("In half a mile, turn left onto County Road 242"), with warnings before unpaved roads and mapped gates, an off-route alert and **Reroute**. The map follows you, tilted the way you're driving, and the screen stays on. Drive mode works while DisCamp is open on screen; it pauses if you switch apps or lock the phone and picks up when you come back. **Open in Apple Maps** (or Google Maps) hands the drive over instead. Routes come from a [Valhalla](https://github.com/valhalla/valhalla) routing server using OpenStreetMap roads; by default the free public one run by FOSSGIS, fine for testing. Before launch, ask FOSSGIS (webmaster@openstreetmap.de) whether DisCamp may use it, or set `EXPO_PUBLIC_ROUTING_URL` to another Valhalla server (`off` hides the button).
 - **Location only when asked**: DisCamp never asks for location on launch. Tap "Show my location" or "Sort by distance" when you want distances; the map then centres on you, zoomed to show the nearest spots.
 - **Screen readers and large text**: every control has a label and role, decorative icons are hidden from screen readers, photos say whose they are (and when they're hidden for review), and filter counts and connection problems are read out. Text grows with the phone's text size.
 - **Sign in** with Apple, Google, Microsoft or GitHub (Account tab, or "Add spot"). Only needed to post (spots, photos, check-ins, cleanups).
@@ -270,7 +270,7 @@ src/
     (tabs)/rig.tsx          My Rig
     (tabs)/account.tsx      Account: Embers and rank, notifications, name, your spots, blocked campers, tip jar, help, sign out, delete account
     spot/[id].tsx           Spot page (edit and delete if you added it; report and block otherwise)
-    route/[id].tsx          Route preview: the drive to a spot on DisCamp's map, for your rig
+    route/[id].tsx          Route preview and Drive mode: the drive to a spot on DisCamp's map, for your rig
     report/[kind]/[id].tsx  Report a spot, a photo, a check-in, a cleanup or a camper's name
     checkin/[id].tsx        Report a change at a spot (washout, locked gate, trash, closed)
     rules.tsx               The community rules on their own, before a first photo or check-in
@@ -306,6 +306,8 @@ src/
   lib/usePersistentState.ts Saved-on-phone state with safe loading and saving
   lib/links.ts              Directions, share, copy and call
   lib/routing.ts            Route previews: rig-aware routes from a Valhalla server
+  lib/guidance.ts           Drive mode's arithmetic: position on the route, next turn, what to say
+  lib/useDrive.ts           Drive mode: follows GPS along the route and speaks each turn
   lib/polyline.ts           Decodes a route's path
   lib/auth.tsx              Who's signed in; sign in, sign out, rename, delete account
   lib/authFlows.ts          The sign-in steps for each provider (PKCE, Apple nonce)

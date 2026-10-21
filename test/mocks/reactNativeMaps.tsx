@@ -37,6 +37,7 @@ interface MapProps {
   onPress?: (e: MapPress) => void;
   onMapReady?: () => void;
   onRegionChangeComplete?: (region: unknown) => void;
+  onPanDrag?: () => void;
   initialRegion?: unknown;
 }
 
@@ -46,7 +47,7 @@ export const lastMap: { initialRegion: unknown } = { initialRegion: null };
 // Tests tap the map with fireEvent(map, 'touchEnd', { nativeEvent: { action } }),
 // and pan it with fireEvent(map, 'regionChangeComplete', region).
 const MapView = forwardRef<typeof mapMethods, MapProps>(function MapView(
-  { children, testID, onPress, onMapReady, onRegionChangeComplete, initialRegion },
+  { children, testID, onPress, onMapReady, onRegionChangeComplete, onPanDrag, initialRegion },
   ref,
 ) {
   useImperativeHandle(ref, () => mapMethods);
@@ -64,7 +65,7 @@ const MapView = forwardRef<typeof mapMethods, MapProps>(function MapView(
   return (
     <View
       testID={testID}
-      {...({ onRegionChangeComplete } as object)}
+      {...({ onRegionChangeComplete, onPanDrag } as object)}
       onTouchEnd={(e) => {
         const { action } = (e as unknown as Partial<MapPress>).nativeEvent ?? {};
         onPress?.({ nativeEvent: { action } });

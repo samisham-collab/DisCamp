@@ -107,6 +107,39 @@ describe('reading a route', () => {
     expect(parseRoute(twoLegs).path).toHaveLength(9);
   });
 
+  it('lists the turns for Drive mode, in order, with where each one starts', () => {
+    const { steps } = parseRoute(routeAnswer());
+    expect(steps.map((s) => [s.instruction, s.begin, s.end, s.rough, s.gate, s.arrive])).toEqual([
+      ['Drive northwest on Main Avenue.', 0, 2, false, false, false],
+      ['Turn left onto County Road 242.', 2, 3, true, true, false],
+      ['Bear right onto Forest Road 46.', 3, 4, true, false, false],
+      ['You have arrived at your destination.', 4, 4, false, false, true],
+    ]);
+    expect(steps[0]).toMatchObject({
+      pre: 'Drive northwest on Main Avenue.',
+      post: 'Continue for 40 miles.',
+      alert: null,
+    });
+    expect(steps[1]).toMatchObject({ miles: 2.5, minutes: 4 });
+
+    // A second leg's turns point into the joined path; a maneuver without a shape is skipped.
+    const leg = firstLeg();
+    const second = {
+      shape: leg.shape,
+      maneuvers: [{ instruction: ' Turn right. ', begin_shape_index: 1, end_shape_index: 4 }, {}],
+    };
+    const joined = parseRoute({ trip: { ...routeAnswer().trip, legs: [leg, second] } }).steps;
+    expect(joined).toHaveLength(5);
+    expect(joined[4]).toMatchObject({
+      instruction: 'Turn right.',
+      begin: 5,
+      end: 8,
+      alert: null,
+      miles: 0,
+      minutes: 0,
+    });
+  });
+
   it('notes ferries and tolls, and skips rough maneuvers without a shape', () => {
     const answer = routeAnswer({
       maneuvers: [
@@ -173,6 +206,10 @@ describe('asking the routing server', () => {
     await fetchRoute(ROUTE_FROM, ROUTE_TO, preset('Sedan'), { url: URL, fetchFn });
     expect(fetchFn).toHaveBeenCalledTimes(3);
     jest.restoreAllMocks();
+
+    // A reroute always asks again.
+    await fetchRoute(ROUTE_FROM, ROUTE_TO, preset('Sedan'), { url: URL, fetchFn, fresh: true });
+    expect(fetchFn).toHaveBeenCalledTimes(4);
   });
 
   it("tells a missing route apart from a server that can't be reached", async () => {

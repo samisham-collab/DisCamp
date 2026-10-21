@@ -32,6 +32,9 @@ jest.mock('expo-linking', () => ({
   createURL: jest.fn((path: string) => `discamp://${path}`),
 }));
 jest.mock('expo-haptics', () => ({ selectionAsync: jest.fn(() => Promise.resolve()) }));
+// Drive mode's voice and screen-on: recorded, never played.
+jest.mock('expo-speech', () => ({ speak: jest.fn(), stop: jest.fn(() => Promise.resolve()) }));
+jest.mock('expo-keep-awake', () => ({ useKeepAwake: jest.fn() }));
 jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn(() => Promise.resolve(true)) }));
 jest.mock('expo-splash-screen', () => ({
   preventAutoHideAsync: jest.fn(() => Promise.resolve(true)),
@@ -58,6 +61,7 @@ beforeEach(() => {
   jest.requireMock<{ store: Map<string, string> }>('expo-secure-store').store.clear();
   jest.requireMock<{ reset: () => void }>('expo-notifications').reset();
   jest.requireMock<{ reset: () => void }>('expo-iap').reset();
+  jest.requireMock<{ resetWatchers: () => void }>('expo-location').resetWatchers();
 
   unexpectedLogs.length = 0;
   for (const level of ['error', 'warn'] as const) {

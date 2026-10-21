@@ -7,4 +7,8 @@ export interface RouteMapProps {
   roughSegments: Coordinates[][];
   destination: Coordinates & { name: string };
   satellite: boolean;
+  /** Drive mode: keep the camera on the camper, turned the way they're heading. */
+  follow?: { center: Coordinates; heading: number } | null;
+  /** The camper moved the map themselves (Drive mode stops following until they re-center). */
+  onUserPan?: () => void;
 }

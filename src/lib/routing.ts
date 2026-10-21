@@ -82,6 +82,29 @@ export interface RoutePlan {
   gates: number;
   ferry: boolean;
   toll: boolean;
+  /** Turn by turn, in order, for Drive mode. */
+  steps: RouteStep[];
+}
+
+/** One maneuver: "Turn left onto County Road 242", and the stretch of road after it. */
+export interface RouteStep {
+  /** Shown on screen. */
+  instruction: string;
+  /** Spoken well before the turn ("Turn left onto County Road 242."), if the server sent one. */
+  alert: string | null;
+  /** Spoken just before the turn. */
+  pre: string | null;
+  /** Spoken just after it ("Continue for 3 miles."). */
+  post: string | null;
+  /** Where the maneuver starts and the stretch after it ends, as indexes into `path`. */
+  begin: number;
+  end: number;
+  miles: number;
+  minutes: number;
+  rough: boolean;
+  gate: boolean;
+  /** The last step: "You have arrived at your destination." */
+  arrive: boolean;
 }
 
 export type RouteErrorKind = 'off' | 'no-route' | 'timeout' | 'unavailable';
@@ -105,6 +128,12 @@ export const ROUTE_ERROR_MESSAGES: Record<RouteErrorKind, string> = {
 };
 
 interface Maneuver {
+  type?: unknown;
+  instruction?: unknown;
+  verbal_transition_alert_instruction?: unknown;
+  verbal_pre_transition_instruction?: unknown;
+  verbal_post_transition_instruction?: unknown;
+  time?: unknown;
   length?: unknown;
   rough?: unknown;
   gate?: unknown;
@@ -115,6 +144,9 @@ interface Maneuver {
 }
 
 const isNumber = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+const text = (s: unknown): string | null => (typeof s === 'string' && s.trim() ? s.trim() : null);
+/** Valhalla's maneuver types for arriving: straight ahead, on the right, on the left. */
+const ARRIVE_TYPES: readonly unknown[] = [4, 5, 6];
 
 /** Reads a Valhalla /route answer (units: miles). Throws RouteError('unavailable') if it isn't one. */
 export function parseRoute(json: unknown): RoutePlan {
@@ -131,12 +163,30 @@ export function parseRoute(json: unknown): RoutePlan {
   let gates = 0;
   let ferry = false;
   let toll = false;
+  const steps: RouteStep[] = [];
 
   for (const leg of trip.legs as { shape?: unknown; maneuvers?: unknown }[]) {
     if (typeof leg?.shape !== 'string') throw new RouteError('unavailable');
     const points = decodePolyline(leg.shape, 6);
     const maneuvers = Array.isArray(leg.maneuvers) ? (leg.maneuvers as Maneuver[]) : [];
+    // This leg's first point is the previous leg's last.
+    const offset = path.length > 0 ? path.length - 1 : 0;
     for (const m of maneuvers) {
+      if (isNumber(m.begin_shape_index) && isNumber(m.end_shape_index)) {
+        steps.push({
+          instruction: text(m.instruction) ?? '',
+          alert: text(m.verbal_transition_alert_instruction),
+          pre: text(m.verbal_pre_transition_instruction),
+          post: text(m.verbal_post_transition_instruction),
+          begin: offset + m.begin_shape_index,
+          end: offset + m.end_shape_index,
+          miles: isNumber(m.length) ? m.length : 0,
+          minutes: isNumber(m.time) ? m.time / 60 : 0,
+          rough: m.rough === true,
+          gate: m.gate === true,
+          arrive: ARRIVE_TYPES.includes(m.type),
+        });
+      }
       if (m.gate === true) gates += 1;
       if (m.ferry === true) ferry = true;
       if (m.toll === true) toll = true;
@@ -169,6 +219,7 @@ export function parseRoute(json: unknown): RoutePlan {
     gates,
     ferry,
     toll,
+    steps,
   };
 }
 
@@ -186,6 +237,8 @@ interface FetchRouteOptions {
   url?: string | null;
   timeoutMs?: number;
   fetchFn?: FetchLike;
+  /** Ask the server even if a recent route is saved (rerouting). */
+  fresh?: boolean;
 }
 
 /** The route from `from` to `to` for this rig. Throws RouteError. */
@@ -193,7 +246,7 @@ export async function fetchRoute(
   from: Coordinates,
   to: Coordinates,
   rig: FitRig,
-  { url = ROUTING_URL, timeoutMs = ROUTE_TIMEOUT_MS, fetchFn }: FetchRouteOptions = {},
+  { url = ROUTING_URL, timeoutMs = ROUTE_TIMEOUT_MS, fetchFn, fresh = false }: FetchRouteOptions = {},
 ): Promise<RoutePlan> {
   if (!url) throw new RouteError('off');
   const { costing, options } = costingFor(rig);
@@ -207,7 +260,7 @@ export async function fetchRoute(
     to.longitude,
   ].join('|');
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.plan;
+  if (!fresh && hit && Date.now() - hit.at < CACHE_MS) return hit.plan;
 
   const body = {
     locations: [
