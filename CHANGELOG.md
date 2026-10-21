@@ -12,6 +12,7 @@ All notable changes to DisCamp. Dates are when the version was finished.
 
 ### Changed
 
+- **Database grants written out (migration `0010_explicit_grants.sql`).** From October 30, 2026, Supabase stops giving the API roles access to new tables in `public` automatically, including on new projects, preview branches and `supabase db reset`. The app's own access was already granted explicitly; the service role (which the report-alert Edge Function uses to read reports, spots, photos, check-ins and cleanups) relied on the old default. 0010 grants it the same access it has on the existing project, so a new project works the same. Nothing changes on the existing project. The database tests now start from Supabase's new rule and fail if a table or view in `public` is missing its grants.
 - **Bundle ID `com.samuelisham.discamp`.** The iPhone bundle ID and the Android package name replace the placeholder `org.discamp.app`, and the `apple-revoke` function now assumes it, so `APPLE_CLIENT_ID` is no longer needed. The app is also linked to the Expo project `@discamp/discamp`.
 
 ## 1.7.1 (2026-10-19)

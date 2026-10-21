@@ -123,7 +123,8 @@ update public.spots set verified = true where id = 'smoky-gardens';
    7. `supabase/migrations/0007_still_good_once.sql` makes "Still good" once per spot every 30 days, and lets a change report take it back (1.5.1).
    8. `supabase/migrations/0008_cleanups_embers.sql` adds cleanups, the moderators' review, and Embers (1.6.0). It also gives earlier photos and check-ins their Embers.
    9. `supabase/migrations/0009_push.sql` keeps each camper's push address for notifications, and says who to tell about a cleanup (1.7.0).
-   10. `supabase/seed.sql` adds the starter spots.
+   10. `supabase/migrations/0010_explicit_grants.sql` writes out the service role's access to each table, which Supabase stops granting automatically on October 30, 2026 (1.8.0). A new table needs its own `grant` statements in the migration that creates it.
+   11. `supabase/seed.sql` adds the starter spots.
 
    Already ran some for an earlier version? Run only the ones after it (for 1.3: 0004 to 0009; for 1.4.0: 0005 to 0009; for 1.4.1: 0006 to 0009; for 1.5.0: 0007 to 0009; for 1.5.1: 0008 and 0009; for 1.6: just 0009), then the seed. Never rerun an older file after a newer one: newer files change things the older ones made. To switch a database set up by hand over to the script, tell it the last file that ran, for example `bash scripts/setup-database.sh --after 0005`.
 

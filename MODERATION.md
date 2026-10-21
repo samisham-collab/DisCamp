@@ -50,7 +50,7 @@ approved before.
 ### 1. Run the migration
 
 `bash scripts/setup-database.sh` runs every migration that hasn't run yet,
-`0004_moderation.sql` through `0009_push.sql` included (README, "Connect
+`0004_moderation.sql` through `0010_explicit_grants.sql` included (README, "Connect
 Supabase"). They're all safe to run again, as long as they run in order.
 
 ### 2. Get an email for every report

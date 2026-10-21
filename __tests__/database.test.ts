@@ -160,13 +160,16 @@ const sendCleanup = (uid: string, id: string, haul: string, task: string, where:
       '0007_still_good_once.sql',
       '0008_cleanups_embers.sql',
       '0009_push.sql',
+      '0010_explicit_grants.sql',
     ]);
     sql('drop schema if exists moderation cascade; drop schema if exists public cascade; create schema public;');
     // Recreate what a new Supabase project has: the API roles, default
-    // privileges that give them everything on new tables, views and
-    // functions, and the auth schema with its users table and auth.uid().
-    // The migrations must lock things down themselves, so the test starts
-    // from the same generous defaults instead of granting less.
+    // privileges that give them everything on new functions, and the auth
+    // schema with its users table and auth.uid(). The migrations must lock
+    // functions down themselves, so the test starts from the same generous
+    // defaults. New tables and views get no grants at all (Supabase's rule
+    // from October 30, 2026), so every grant the app and the Edge Functions
+    // rely on has to be in a migration.
     sql(
       'do $$ begin ' +
         "if not exists (select from pg_roles where rolname = 'anon') then create role anon nologin; end if; " +
@@ -200,7 +203,6 @@ const sendCleanup = (uid: string, id: string, haul: string, task: string, where:
         'grant all on storage.objects, storage.buckets to anon, authenticated, service_role;',
     );
     sql('grant usage on schema public to anon, authenticated, service_role;');
-    sql('alter default privileges in schema public grant all on tables to anon, authenticated, service_role;');
     sql('alter default privileges in schema public grant all on functions to anon, authenticated, service_role;');
     for (const file of MIGRATIONS) {
       runFile(`supabase/migrations/${file}`);
@@ -220,6 +222,30 @@ const sendCleanup = (uid: string, id: string, haul: string, task: string, where:
     // app sorts spots itself anyway.
     const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
     expect([...spots].sort(byId)).toEqual([...SEED_SPOTS].sort(byId));
+  });
+
+  it('grants every table and view explicitly, including what the Edge Functions read', () => {
+    // A table or view in public that the service role can't read was made
+    // without its grants.
+    const ungranted = sql(
+      "select coalesce(string_agg(c.relname, ',' order by c.relname), '') from pg_class c " +
+        "join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind in ('r', 'v', 'm', 'p') " +
+        "and not has_table_privilege('service_role', c.oid, 'select');",
+    );
+    expect(ungranted).toBe('');
+    // What report-alert reads with the service-role key.
+    for (const query of [
+      'select name, created_by, hidden_at from public.spots limit 1',
+      'select display_name from public.profiles limit 1',
+      'select reporter_id, status from public.flags limit 1',
+      'select spot_id, path, created_by, hidden_at from public.spot_photos limit 1',
+      'select spot_id, camper_id, kind, note, hidden_at from public.checkins limit 1',
+      'select spot_id, before_path, created_by, kind, note, hidden_at from public.cleanup_tasks limit 1',
+    ]) {
+      expect(fails(() => sql(`${query};`, 'service_role'))).toBe(false);
+    }
+    // And campers read spots through the API view.
+    expect(readSpots('authenticated')).toHaveLength(SEED_SPOTS.length);
   });
 
   it('lets visitors read spots and nothing else', () => {
