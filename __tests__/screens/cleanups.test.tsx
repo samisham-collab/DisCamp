@@ -481,7 +481,8 @@ describe('Cleaning one up', () => {
     ).toBeTruthy();
     // Both photos it uploaded are removed.
     expect(backend.storageCalls.at(-1)).toMatchObject({ op: 'remove' });
-    expect(backend.storageCalls.at(-1)?.paths).toHaveLength(2);
+    // The after photo and haul shot, each with its preview.
+    expect(backend.storageCalls.at(-1)?.paths).toHaveLength(4);
   });
 
   it('shows a cleanup sent back, with one more try, then none', async () => {
@@ -533,7 +534,10 @@ describe('Cleaning one up', () => {
     fireEvent.press(await screen.findByText('Delete this cleanup'));
     await act(async () => alerts.press('Delete'));
     await waitFor(() => expect(backend.cleanups.has(id)).toBe(false));
-    expect(backend.storageCalls.at(-1)).toMatchObject({ op: 'remove', paths: [`${SAM.id}/${id}.jpg`] });
+    expect(backend.storageCalls.at(-1)).toMatchObject({
+      op: 'remove',
+      paths: [`${SAM.id}/${id}.jpg`, `${SAM.id}/${id}.preview.jpg`],
+    });
     await waitFor(() => expect(app.getPathname()).not.toBe(`/cleanup/${id}`));
   });
 

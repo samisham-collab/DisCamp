@@ -19,6 +19,7 @@ import {
 import { AccountGate } from '@/components/AccountGate';
 import { CleanupPhoto, cleanupTitle } from '@/components/Cleanups';
 import { ChoiceField, TextField } from '@/components/form';
+import { FreePlanCard } from '@/components/FreePlanCard';
 import { KeyboardSafe } from '@/components/KeyboardSafe';
 import { Banner, Button, Card, EmptyState, Row, Segmented } from '@/components/ui';
 import {
@@ -209,6 +210,7 @@ export default function ReviewScreen() {
   const [items, setItems] = useState<ReviewItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [usageKey, setUsageKey] = useState(0);
 
   const load = useCallback(async () => {
     if (!client) return;
@@ -275,6 +277,7 @@ export default function ReviewScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
+    setUsageKey((n) => n + 1);
     await load();
     setRefreshing(false);
   };
@@ -293,6 +296,7 @@ export default function ReviewScreen() {
         automaticallyAdjustKeyboardInsets
         keyboardDismissMode="interactive"
       >
+        <FreePlanCard refreshKey={usageKey} />
         {error ? (
           <Banner tone="error" message={error} actionLabel="Retry" onAction={() => void load()} announceKey={error} />
         ) : null}

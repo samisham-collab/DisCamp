@@ -50,7 +50,7 @@ approved before.
 ### 1. Run the migration
 
 `bash scripts/setup-database.sh` runs every migration that hasn't run yet,
-`0004_moderation.sql` through `0010_explicit_grants.sql` included (README, "Connect
+`0004_moderation.sql` through `0011_free_plan_guard.sql` included (README, "Connect
 Supabase"). They're all safe to run again, as long as they run in order.
 
 ### 2. Get an email for every report
@@ -206,6 +206,68 @@ Good to know:
   campers type) only learns them in its next version: add the phrase to
   `ALLOWED_PHRASES` in `src/lib/wordFilter.ts` (or ask Claude to), and it
   goes out with the next migration.
+
+## Free plan
+
+DisCamp runs on Supabase's free plan: 500 MB of database and 1 GB of files
+(photos). Photos fill it first: about 4,000 of them. Migration 0011 keeps an
+eye on both, and near a limit DisCamp pauses instead of letting Supabase
+restrict the project:
+
+- **At 75%** the "Keep Supabase awake" check on GitHub fails, so GitHub emails
+  you (twice a week until it's sorted). The **Review** tab shows the numbers:
+  how full each is, and how much they grew in the last month.
+- **At 90% of photo storage**, new photos pause, and so do new cleanups (they
+  need photos). Spots, check-ins, reports, blocking and edits keep working.
+- **At 90% of the database**, new spots, photos and check-ins pause too.
+  Reports still work.
+- Nothing is deleted. The pause lifts by itself once there's room again
+  (the numbers are checked at most once an hour).
+
+### The switches
+
+In Supabase, **Table Editor**, choose the **moderation** schema, then
+**settings** (one row):
+
+- `photos_paused` / `posting_paused`: pause new photos, or all new posts, by
+  hand (a spam wave, say). Turn them back off to lift it.
+- `storage_limit_mb` (1024) and `database_limit_mb` (500): the plan's limits.
+  Change them if the plan changes.
+- `pause_at_percent` (90) and `warn_at_percent` (75).
+
+The numbers for each day are in **moderation.usage_daily**.
+
+### When it's getting full
+
+1. **Make room.** Photos you removed after reports may still have files:
+   in **Storage > spot-photos**, delete the files of photos that are no longer
+   on DisCamp (and their `.preview.jpg`). Deleting files never touches
+   anything that's still listed.
+2. **Pay for the next step**: Supabase's Pro plan (from $25 a month, with a
+   spend cap on by default) has 100 GB of files, an 8 GB database and daily
+   backups. Upgrade in the dashboard's billing settings, then set
+   `storage_limit_mb` to 102400 and `database_limit_mb` to 8192 in
+   **moderation.settings**. Tips from the tip jar could cover it.
+3. **Move photos to cheaper storage** (a bigger change, ask Claude): photos
+   could live on Cloudflare R2, which has 10 GB free and no download fees,
+   while the database stays on Supabase's free plan.
+
+Running Supabase on your own server is possible (it's open source) but
+means keeping it patched, secured and backed up yourself; for one person
+it's usually more work than it saves.
+
+### Backups
+
+The free plan keeps no backups. Every week or so (and before anything big),
+on your Mac, in the DisCamp folder:
+
+```sh
+bash scripts/backup-database.sh
+```
+
+It saves everything into **Documents/DisCamp backups** (the newest 10) and
+copies new photos. Backups hold campers' email addresses: keep them on your
+Mac. `scripts/restore-database.sh` puts one back (the steps are at its top).
 
 ## Serious cases
 

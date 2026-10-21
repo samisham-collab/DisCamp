@@ -109,6 +109,9 @@ Run it on the TestFlight build, top to bottom, the first time. Note anything off
 - [ ] iPhone **Settings > DisCamp > Location**: turn **Precise Location** off. Back in DisCamp, posting says the location is approximate, with a **Settings** button, and **Post** waits. Turn it back on.
 - [ ] As the second account: **I cleaned it up**, with the after photo and the haul shot. Allow notifications when DisCamp offers.
 - [ ] As the moderator: **Account > Review cleanups**. Send it back with a reason: the keyboard doesn't cover the reason box, and the sender gets a notification with the reason. Tapping it opens the cleanup.
+- [ ] Still on **Review cleanups**: the **Free plan** card shows photos and files, and the database, as "X MB of 1 GB" and "X MB of 500 MB". Pull down to refresh it.
+- [ ] Add a photo to a spot, then look at the spot's photo strip: it loads quickly (the small preview). Tap it: the full photo opens. In Supabase **Storage > spot-photos**, the photo's folder has both `<id>.jpg` and `<id>.preview.jpg`.
+- [ ] Pause by hand: in Supabase **Table Editor**, schema **moderation**, table **settings**, turn on `photos_paused`. Close and reopen DisCamp (it checks every 10 minutes): a spot's **Add a photo** shows "New photos are paused for now…", and trying anyway explains it. Check-ins still work. Turn it back off.
 - [ ] Send it again and approve it: a notification arrives, and the Embers show on **Account**.
 - [ ] Leave DisCamp in the background for 15 minutes or more, then open it: the lists are up to date.
 

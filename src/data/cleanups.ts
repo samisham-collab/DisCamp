@@ -14,7 +14,16 @@ import { describeError, log } from '../lib/log';
 import type { PreparedPhoto } from '../lib/photoPicker';
 import { toIsoTime } from '../lib/schemas';
 import type { Coordinates, Fix } from '../types';
-import { CommunityError, PHOTO_BUCKET, removeRefusedFiles, uploadPhotoFile, withTimeout } from './community';
+import {
+  CommunityError,
+  PHOTO_BUCKET,
+  photoUrl,
+  previewPathFor,
+  removeRefusedFiles,
+  uploadPhotoFile,
+  withPreviews,
+  withTimeout,
+} from './community';
 
 export type { CleanupSize } from '../lib/embers';
 export type CleanupKind = 'litter' | 'fire_ring' | 'dumping' | 'other';
@@ -62,8 +71,7 @@ export const CLEANUP_LIST_LIMIT = 500;
 
 const PHOTO_PATH = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.jpg$/;
 
-const publicUrl = (client: SupabaseClient, path: string) =>
-  client.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl;
+const publicUrl = photoUrl;
 
 /** "SRID=4326;POINT(lng lat)", rounded to about 10 cm, as PostGIS reads it. */
 function pointText(at: Coordinates): string {
@@ -83,6 +91,8 @@ export interface CleanupTask extends Coordinates {
   status: CleanupStatus;
   beforePath: string;
   beforeUrl: string;
+  /** Its small preview, for lists (older photos may not have one). */
+  beforePreviewUrl: string;
   createdBy?: string;
   postedBy?: string;
   createdAt: string;
@@ -140,6 +150,7 @@ export function toCleanup(client: SupabaseClient, row: unknown): CleanupTask | n
     status: r.status,
     beforePath: r.before_path,
     beforeUrl: publicUrl(client, r.before_path),
+    beforePreviewUrl: publicUrl(client, previewPathFor(r.before_path)),
     ...(r.created_by ? { createdBy: r.created_by } : {}),
     ...(postedBy ? { postedBy } : {}),
     createdAt: toIsoTime(r.created_at) ?? r.created_at,
@@ -297,7 +308,7 @@ export function deleteCleanup(
       }
       const removed = await client.storage
         .from(PHOTO_BUCKET)
-        .remove([task.beforePath])
+        .remove(withPreviews([task.beforePath]))
         .catch((e: unknown) => ({ error: e }));
       if (removed.error) log.warn('Could not delete a cleanup photo file', { error: describeError(removed.error) });
     },
@@ -409,7 +420,7 @@ export function sendCleanup(
         if (error instanceof CommunityError && !signal.aborted) {
           await client.storage
             .from(PHOTO_BUCKET)
-            .remove([afterPath])
+            .remove(withPreviews([afterPath]))
             .catch(() => undefined);
         }
         throw error;

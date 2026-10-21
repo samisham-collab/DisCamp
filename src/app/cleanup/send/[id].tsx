@@ -12,6 +12,7 @@ import { AccountGate } from '@/components/AccountGate';
 import { cleanupEmbers, cleanupTitle } from '@/components/Cleanups';
 import { TextField } from '@/components/form';
 import { KeyboardSafe } from '@/components/KeyboardSafe';
+import { PausedNotice } from '@/components/PausedNotice';
 import { TermsGate } from '@/components/TermsGate';
 import { Banner, Button, Card, EmptyState, SectionTitle } from '@/components/ui';
 import { MAX_CLEANUP_NOTE, sendCleanup } from '@/data/cleanups';
@@ -168,6 +169,7 @@ export default function SendCleanupScreen() {
         automaticallyAdjustKeyboardInsets
         keyboardDismissMode="interactive"
       >
+        <PausedNotice what="photos" />
         <View style={styles.intro}>
           <Text style={styles.title} accessibilityRole="header">
             You cleaned it up

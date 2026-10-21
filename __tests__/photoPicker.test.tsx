@@ -4,6 +4,7 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { renderHook, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
+import { ImageManipulator } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import type { ReactNode } from 'react';
 import { Alert, Platform } from 'react-native';
@@ -21,13 +22,18 @@ afterEach(() => {
 });
 
 describe('pickPhoto', () => {
-  it('takes a photo, shrinks it to 1600 pixels and saves it as a JPEG', async () => {
+  it('takes a photo, shrinks it to 1280 pixels and saves it as a JPEG, with a 480-pixel preview', async () => {
     const result = await pickPhoto('camera');
     expect(ImagePicker.requestCameraPermissionsAsync).toHaveBeenCalled();
     expect(ImagePicker.launchCameraAsync).toHaveBeenCalledWith({ mediaTypes: ['images'], quality: 1, exif: false });
     expect(result).toEqual({
       status: 'picked',
-      photo: { uri: 'file:///cache/manipulated-1600x1200.jpg', width: 1600, height: 1200 },
+      photo: {
+        uri: 'file:///cache/manipulated-1280x960.jpg',
+        width: 1280,
+        height: 960,
+        preview: { uri: 'file:///cache/manipulated-480x360.jpg', width: 480, height: 360 },
+      },
     });
   });
 
@@ -37,7 +43,12 @@ describe('pickPhoto', () => {
     expect(ImagePicker.requestCameraPermissionsAsync).not.toHaveBeenCalled();
     expect(result).toEqual({
       status: 'picked',
-      photo: { uri: 'file:///cache/manipulated-1200x1600.jpg', width: 1200, height: 1600 },
+      photo: {
+        uri: 'file:///cache/manipulated-960x1280.jpg',
+        width: 960,
+        height: 1280,
+        preview: { uri: 'file:///cache/manipulated-360x480.jpg', width: 360, height: 480 },
+      },
     });
   });
 
@@ -62,6 +73,32 @@ describe('preparePhoto', () => {
       uri: 'file:///cache/manipulated-800x600.jpg',
       width: 800,
       height: 600,
+      preview: { uri: 'file:///cache/manipulated-480x360.jpg', width: 480, height: 360 },
+    });
+    // A tiny one is its own preview size.
+    imageSizes.set('file:///tiny.jpg', { width: 400, height: 300 });
+    expect((await preparePhoto('file:///tiny.jpg')).preview).toEqual({
+      uri: 'file:///cache/manipulated-400x300.jpg',
+      width: 400,
+      height: 300,
+    });
+  });
+
+  it('still sends the photo if its preview fails', async () => {
+    const manipulate = jest.mocked(ImageManipulator.manipulate);
+    const real = manipulate.getMockImplementation();
+    if (!real) throw new Error('The stand-in has no implementation');
+    // Opening and shrinking work; the preview's resize runs out of memory.
+    manipulate
+      .mockImplementationOnce(real)
+      .mockImplementationOnce(real)
+      .mockImplementationOnce(() => {
+        throw new Error('Out of memory');
+      });
+    expect(await preparePhoto('file:///big.jpg')).toEqual({
+      uri: 'file:///cache/manipulated-1280x960.jpg',
+      width: 1280,
+      height: 960,
     });
   });
 

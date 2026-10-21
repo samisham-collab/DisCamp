@@ -37,6 +37,8 @@ import { useBlockCamper } from '../lib/useBlockCamper';
 import { usePostingGate } from '../lib/usePostingGate';
 import type { Spot } from '../types';
 import { colors, TOUCH_TARGET } from '../theme';
+import { PausedNotice } from './PausedNotice';
+import { PreviewImage } from './PreviewImage';
 import { Button, Card, SectionTitle } from './ui';
 
 const THUMB = 112;
@@ -182,7 +184,13 @@ export function SpotPhotos({ spot }: { spot: Spot }) {
               accessibilityLabel={`Photo ${i + 1} of ${photos.length}${photo.addedBy ? `, by ${photo.addedBy}` : ''}${photo.hidden ? ', hidden while reports are reviewed' : ''}`}
               accessibilityHint="Opens it full size"
             >
-              <Image source={{ uri: photo.url }} style={styles.thumb} contentFit="cover" transition={150} />
+              <PreviewImage
+                previewUrl={photo.previewUrl}
+                url={photo.url}
+                style={styles.thumb}
+                contentFit="cover"
+                transition={150}
+              />
               {photo.hidden ? (
                 <View style={styles.hiddenTag}>
                   <Ionicons
@@ -201,7 +209,10 @@ export function SpotPhotos({ spot }: { spot: Spot }) {
       {full ? (
         <Text style={styles.muted}>You&apos;ve added {MAX_PHOTOS_PER_SPOT} photos here, the most for one camper.</Text>
       ) : (
-        <Button label="Add a photo" icon="camera-outline" kind="secondary" loading={adding} onPress={onAdd} />
+        <>
+          <PausedNotice what="photos" />
+          <Button label="Add a photo" icon="camera-outline" kind="secondary" loading={adding} onPress={onAdd} />
+        </>
       )}
       <PhotoViewer
         photo={open}

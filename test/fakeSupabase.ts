@@ -60,6 +60,9 @@ type Row = Record<string, unknown>;
 
 /** Storage's rule for photo file names: "<camper id>/<photo id>.jpg". */
 const PHOTO_PATH = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.jpg$/;
+/** A photo's preview, next to it (migration 0011). */
+const PREVIEW_PATH = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.preview\.jpg$/;
+const photoForPreview = (path: string) => path.replace(/\.preview\.jpg$/, '.jpg');
 
 /** "SRID=4326;POINT(lng lat)" as the app sends it, or null. */
 function readPoint(text: unknown): { latitude: number; longitude: number } | null {
@@ -267,6 +270,32 @@ export class FakeBackend {
   /** Campers who review cleanups. */
   readonly moderators = new Set<string>();
   /**
+   * What public.app_status says (migration 0011): new photos (and cleanups)
+   * or all new posts paused near the free plan's limits.
+   */
+  readonly paused = { photos: false, posting: false };
+  /** What public.free_plan_usage answers moderators. */
+  usage: Row = {
+    database_bytes: 30 * 1024 * 1024,
+    database_limit_bytes: 500 * 1024 * 1024,
+    storage_bytes: 140 * 1024 * 1024,
+    storage_limit_bytes: 1024 * 1024 * 1024,
+    pause_at_percent: 90,
+    warn_at_percent: 75,
+    photos_paused: false,
+    posting_paused: false,
+    level: 'ok',
+    files: 700,
+    spots: 312,
+    photos: 340,
+    checkins: 80,
+    cleanups: 12,
+    campers: 40,
+    active_campers: 23,
+    checked_at: '2026-10-21T16:00:00Z',
+    month_ago: null,
+  };
+  /**
    * Answers a Storage call before the default rules do (return undefined to
    * fall through), like `intercept` for queries.
    */
@@ -325,6 +354,13 @@ export class FakeBackend {
   }
 
   /** What the database's write checks say about this camper: null when they may post. */
+  /** The free plan guard (migration 0011), checked before a camper adds something. */
+  private pauseBlock(photos: boolean): QueryError | null {
+    if (this.paused.posting) return { message: 'posting_paused', code: 'P0001' };
+    if (photos && this.paused.photos) return { message: 'photos_paused', code: 'P0001' };
+    return null;
+  }
+
   private postingBlock(uid: string): QueryError | null {
     if (this.banned.has(uid)) return { message: 'banned', code: 'P0001' };
     if ((this.terms.get(uid) ?? 0) < TERMS_VERSION) return { message: 'terms_required', code: 'P0001' };
@@ -405,7 +441,10 @@ export class FakeBackend {
 
     if (query.table === 'spots') {
       if (!uid) return { data: null, error: { message: 'permission denied for table spots', code: '42501' } };
-      const refused = query.op === 'delete' ? null : this.postingBlock(uid);
+      const refused =
+        query.op === 'delete'
+          ? null
+          : ((query.op === 'insert' ? this.pauseBlock(false) : null) ?? this.postingBlock(uid));
       if (refused) return { data: null, error: refused };
       if (query.op === 'insert') {
         const { id: chosen, ...written } = query.payload ?? {};
@@ -447,6 +486,13 @@ export class FakeBackend {
 
   private answerRpc(name: string, args: Row): QueryResult {
     const uid = this.auth.userId;
+    if (name === 'app_status') {
+      const photos = this.paused.photos || this.paused.posting;
+      return {
+        data: { photos_paused: photos, posting_paused: this.paused.posting, level: photos ? 'paused' : 'ok' },
+        error: null,
+      };
+    }
     if (!uid) return { data: null, error: { message: 'not_signed_in', code: 'P0001' } };
     switch (name) {
       case 'delete_my_account':
@@ -465,6 +511,9 @@ export class FakeBackend {
         return { data: null, error: null };
       case 'am_moderator':
         return { data: this.moderators.has(uid), error: null };
+      case 'free_plan_usage':
+        if (!this.moderators.has(uid)) return { data: null, error: { message: 'not_moderator', code: 'P0001' } };
+        return { data: this.usage, error: null };
       case 'cleanup_review_queue':
         if (!this.moderators.has(uid)) return { data: null, error: { message: 'not_moderator', code: 'P0001' } };
         return {
@@ -643,7 +692,9 @@ export class FakeBackend {
         const uid = this.auth.userId;
         // Your own files, and not while a photo on a spot (or a cleanup) uses one.
         const listed = this.listedPaths();
-        const removed = paths.filter((path) => this.files.get(path)?.owner === uid && uid != null && !listed.has(path));
+        const removed = paths.filter(
+          (path) => this.files.get(path)?.owner === uid && uid != null && !listed.has(photoForPreview(path)),
+        );
         for (const path of removed) this.files.delete(path);
         return Promise.resolve({ data: removed.map((name) => ({ name })), error: null });
       },
@@ -654,7 +705,11 @@ export class FakeBackend {
   private answerUpload(path: string, body: ArrayBuffer): StorageResult {
     const uid = this.auth.userId;
     const denied = { data: null, error: { message: 'new row violates row-level security policy', statusCode: '403' } };
-    if (!uid || !path.startsWith(`${uid}/`) || !PHOTO_PATH.test(path) || this.postingBlock(uid)) return denied;
+    if (!uid || !path.startsWith(`${uid}/`) || this.postingBlock(uid) || this.pauseBlock(true)) return denied;
+    // A preview only after its photo (migration 0011).
+    const preview = PREVIEW_PATH.test(path);
+    if (!PHOTO_PATH.test(path) && !preview) return denied;
+    if (preview && this.files.get(photoForPreview(path))?.owner !== uid) return denied;
     if (this.files.has(path))
       return { data: null, error: { message: 'The resource already exists', statusCode: '409' } };
     this.files.set(path, { owner: uid, bytes: body.byteLength });
@@ -694,7 +749,7 @@ export class FakeBackend {
     if (query.op !== 'insert') {
       return { data: null, error: { message: 'permission denied for table spot_photos', code: '42501' } };
     }
-    const refused = this.postingBlock(uid);
+    const refused = this.pauseBlock(true) ?? this.postingBlock(uid);
     if (refused) return { data: null, error: refused };
     const { id, spot_id: spotId, path, width, height } = query.payload ?? {};
     const fail = (message: string) => ({ data: null, error: { message, code: 'P0001' } });
@@ -736,7 +791,7 @@ export class FakeBackend {
     if (!uid || query.op !== 'insert') {
       return { data: null, error: { message: 'permission denied for table checkins', code: '42501' } };
     }
-    const refused = this.postingBlock(uid);
+    const refused = this.pauseBlock(false) ?? this.postingBlock(uid);
     if (refused) return { data: null, error: refused };
     const { spot_id: spotId, kind, note } = query.payload ?? {};
     const fail = (message: string) => ({ data: null, error: { message, code: 'P0001' } });
@@ -855,7 +910,7 @@ export class FakeBackend {
     if (query.op !== 'insert') {
       return { data: null, error: { message: 'permission denied for table cleanup_tasks', code: '42501' } };
     }
-    const refused = this.postingBlock(uid);
+    const refused = this.pauseBlock(true) ?? this.postingBlock(uid);
     if (refused) return { data: null, error: refused };
     const { id, location, kind, size, note, before_path: path, spot_id: spotId } = query.payload ?? {};
     const fail = (message: string) => ({ data: null, error: { message, code: 'P0001' } });
@@ -902,7 +957,7 @@ export class FakeBackend {
     if (!uid || query.op !== 'insert') {
       return { data: null, error: { message: 'permission denied for table cleanup_completions', code: '42501' } };
     }
-    const refused = this.postingBlock(uid);
+    const refused = this.pauseBlock(true) ?? this.postingBlock(uid);
     if (refused) return { data: null, error: refused };
     const {
       id,

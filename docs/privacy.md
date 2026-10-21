@@ -124,7 +124,9 @@ Embers record is deleted; you can delete
 spots and photos you added before deleting your account (except while one has reports waiting for review). Reports you sent are kept
 without your account ID. Reports about your name are removed; reports about a spot or photo stay with it. A photo removed after review is
 hidden right away, and we delete its file when we review it. Copies may
-remain in our host's backups for up to 30 days before they're overwritten.
+remain in our backups until they're replaced. We keep backups on DisCamp's owner's computer, only to recover DisCamp if
+something goes wrong, and never share them. We keep the 10 most recent (usually about 10 weeks), and a deleted photo leaves
+them at the next backup.
 
 If we ban an account for breaking the [terms of use](../terms/), we keep a scrambled, one-way code (a hash) of its
 email address and sign-in IDs, so the ban still applies if the account is deleted and made again. We keep the code,

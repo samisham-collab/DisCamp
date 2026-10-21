@@ -11,10 +11,32 @@ import { describeError, log } from '../lib/log';
 import type { PreparedPhoto } from '../lib/photoPicker';
 import { checkinKind, toIsoTime } from '../lib/schemas';
 import type { ChangeKind, CheckinKind } from '../types';
+import { PHOTOS_PAUSED_MESSAGE, POSTING_PAUSED_MESSAGE } from './appStatus';
 import { bannedMessage } from './moderation';
 
 /** Where photo files live in Supabase Storage. */
 export const PHOTO_BUCKET = 'spot-photos';
+/**
+ * Photo files never change (each has its own name, and none is ever
+ * overwritten), so phones and Supabase's CDN may keep them for a year
+ * instead of downloading them again.
+ */
+export const PHOTO_CACHE_SECONDS = '31536000';
+
+/** Where a photo's small preview lives: next to it, "<camper id>/<photo id>.preview.jpg". */
+export function previewPathFor(path: string): string {
+  return path.replace(/\.jpg$/, '.preview.jpg');
+}
+
+/** A photo's file and its preview's, for removing both. */
+export function withPreviews(paths: readonly string[]): string[] {
+  return paths.flatMap((path) => [path, previewPathFor(path)]);
+}
+
+/** The public address of a file in the photo bucket. */
+export function photoUrl(client: SupabaseClient, path: string): string {
+  return client.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl;
+}
 /** Photos one camper can add to one spot (the database holds this too). */
 export const MAX_PHOTOS_PER_SPOT = 3;
 export const MAX_CHECKIN_NOTE = 300;
@@ -83,6 +105,11 @@ export function toCommunityError(error: unknown, fallback: string): CommunityErr
   switch (e.message) {
     case 'banned':
       return new CommunityError(bannedMessage(), 'banned');
+    // Near the free plan's limits (migration 0011).
+    case 'photos_paused':
+      return new CommunityError(PHOTOS_PAUSED_MESSAGE, 'limit');
+    case 'posting_paused':
+      return new CommunityError(POSTING_PAUSED_MESSAGE, 'limit');
     case 'terms_required':
       return new CommunityError('Agree to the DisCamp community rules first.', 'terms');
     case 'blocked_words':
@@ -176,6 +203,8 @@ export interface SpotPhoto {
   path: string;
   /** The public address of the file. */
   url: string;
+  /** Its small preview, for photo strips (older photos may not have one). */
+  previewUrl: string;
   width: number;
   height: number;
   createdBy?: string;
@@ -206,7 +235,8 @@ function toPhoto(client: SupabaseClient, row: unknown): SpotPhoto | null {
     id: r.id,
     spotId: r.spot_id,
     path: r.path,
-    url: client.storage.from(PHOTO_BUCKET).getPublicUrl(r.path).data.publicUrl,
+    url: photoUrl(client, r.path),
+    previewUrl: photoUrl(client, previewPathFor(r.path)),
     width: r.width,
     height: r.height,
     ...(r.created_by ? { createdBy: r.created_by } : {}),
@@ -278,8 +308,11 @@ export async function uploadPhotoFile(
   const bytes = await readBytes(photo.uri);
   const upload = await client.storage
     .from(PHOTO_BUCKET)
-    .upload(path, bytes, { contentType: 'image/jpeg', upsert: false });
-  if (!upload.error || ALREADY_UPLOADED.test(upload.error.message)) return;
+    .upload(path, bytes, { contentType: 'image/jpeg', upsert: false, cacheControl: PHOTO_CACHE_SECONDS });
+  if (!upload.error || ALREADY_UPLOADED.test(upload.error.message)) {
+    await uploadPreview(client, path, photo, readBytes);
+    return;
+  }
   if (STORAGE_REFUSED.test(upload.error.message) || String(upload.error.statusCode ?? '') === '403') {
     const { error } = await explain();
     if (error && error.message !== 'photo_missing') throw error;
@@ -289,6 +322,30 @@ export async function uploadPhotoFile(
     );
   }
   throw upload.error;
+}
+
+/**
+ * The photo's preview, after the photo (Storage takes it only then). Without
+ * one, lists show the full photo, so a failure here doesn't stop the post.
+ */
+async function uploadPreview(
+  client: SupabaseClient,
+  path: string,
+  photo: PreparedPhoto,
+  readBytes: (uri: string) => Promise<ArrayBuffer>,
+): Promise<void> {
+  if (!photo.preview) return;
+  try {
+    const bytes = await readBytes(photo.preview.uri);
+    const { error } = await client.storage.from(PHOTO_BUCKET).upload(previewPathFor(path), bytes, {
+      contentType: 'image/jpeg',
+      upsert: false,
+      cacheControl: PHOTO_CACHE_SECONDS,
+    });
+    if (error && !ALREADY_UPLOADED.test(error.message)) throw error;
+  } catch (error) {
+    log.info('Photo preview not uploaded', { error: describeError(error) });
+  }
 }
 
 /**
@@ -305,7 +362,7 @@ export async function removeRefusedFiles(
   if (signal.aborted || !REFUSED.test(error.code ?? '')) return;
   await client.storage
     .from(PHOTO_BUCKET)
-    .remove(paths)
+    .remove(withPreviews(paths))
     .catch(() => undefined);
 }
 
@@ -373,7 +430,7 @@ export function deletePhoto(
       // The listing is gone either way; a file left behind is only clutter.
       const removed = await client.storage
         .from(PHOTO_BUCKET)
-        .remove([photo.path])
+        .remove(withPreviews([photo.path]))
         .catch((e: unknown) => ({ error: e }));
       if (removed.error) log.warn('Could not delete a photo file', { error: describeError(removed.error) });
     },

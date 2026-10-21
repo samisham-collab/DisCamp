@@ -450,8 +450,10 @@ describe('Photos', () => {
     await act(async () => alerts.press('Try again'));
     expect(await screen.findByLabelText('Photo 1 of 1, by Sam')).toBeTruthy();
     const uploads = backend.storageCalls.filter((c) => c.op === 'upload').map((c) => c.paths[0]);
-    expect(uploads).toHaveLength(2);
+    // The photo twice (the first try lost), then its preview once.
+    expect(uploads).toHaveLength(3);
     expect(uploads[0]).toBe(uploads[1]);
+    expect(uploads[2]).toBe(uploads[0]?.replace(/\.jpg$/, '.preview.jpg'));
   });
 
   it('stops offering to add after three of your own', async () => {

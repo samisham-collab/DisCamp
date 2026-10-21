@@ -2,7 +2,7 @@
 // location are required; everything else can stay "Not sure", which shows as
 // "Not reported" until a camper fills it in.
 
-import { useEffect, useEffectEvent, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { CLEARANCE_TIERS, SPOT_DRIVETRAINS, tierInfo } from '../lib/fit';
@@ -73,6 +73,8 @@ export interface SpotFormProps {
   onSubmit: () => void;
   /** New spots only: start over. */
   onDiscard?: () => void;
+  /** Shown at the top, e.g. that new spots are paused for now. */
+  notice?: ReactNode;
 }
 
 export function SpotForm({
@@ -86,6 +88,7 @@ export function SpotForm({
   submitLabel,
   onSubmit,
   onDiscard,
+  notice,
 }: SpotFormProps) {
   const { coords: here, locating, locate } = useLocation();
   const [picking, setPicking] = useState(false);
@@ -122,6 +125,7 @@ export function SpotForm({
         keyboardDismissMode="interactive"
         testID="spot-form"
       >
+        {notice}
         <View
           onLayout={(e) => {
             sectionTop.current.where = e.nativeEvent.layout.y;

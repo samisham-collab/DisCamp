@@ -7,6 +7,7 @@ import { useCallback, useRef } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
 
 import { AccountGate } from '@/components/AccountGate';
+import { PausedNotice } from '@/components/PausedNotice';
 import { SpotForm } from '@/components/SpotForm';
 import { TermsGate } from '@/components/TermsGate';
 import { STORAGE_KEYS } from '@/config';
@@ -111,6 +112,7 @@ export default function NewSpotScreen() {
       formError={editor.formError}
       saving={editor.saving}
       submitLabel="Add spot"
+      notice={<PausedNotice what="posting" />}
       onSubmit={() => void onSubmit()}
       onDiscard={isBlankDraft(draft) ? undefined : onDiscard}
     />

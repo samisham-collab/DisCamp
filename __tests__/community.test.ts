@@ -82,6 +82,44 @@ describe('photos', () => {
     expect(backend.files.size).toBe(1);
   });
 
+  it('sends a small preview after the photo, cached for a year, and goes on without one', async () => {
+    const backend = server();
+    const uploads: { path: string; options: unknown }[] = [];
+    const bucket = backend.client.storage.from('spot-photos');
+    const realUpload = bucket.upload.bind(bucket);
+    jest.spyOn(backend.client.storage, 'from').mockReturnValue({
+      ...bucket,
+      upload: (path: string, body: ArrayBuffer, options?: unknown) => {
+        uploads.push({ path, options });
+        return realUpload(path, body, options as never);
+      },
+    } as never);
+    const withPreview = { ...photo, preview: { uri: 'file:///cache/preview.jpg', width: 480, height: 360 } };
+    const added = await addPhoto(
+      backend.client,
+      { spotId: SPOT, id: id(1), userId: SAM.id, photo: withPreview },
+      bytes,
+    );
+    expect(uploads.map((u) => u.path)).toEqual([`${SAM.id}/${id(1)}.jpg`, `${SAM.id}/${id(1)}.preview.jpg`]);
+    for (const u of uploads) expect(u.options).toMatchObject({ cacheControl: '31536000', upsert: false });
+    expect(added.previewUrl).toMatch(new RegExp(`${SAM.id}/${id(1)}\\.preview\\.jpg$`));
+    expect(backend.files.has(`${SAM.id}/${id(1)}.preview.jpg`)).toBe(true);
+
+    // A preview that won't upload doesn't stop the photo.
+    jest.restoreAllMocks();
+    backend.storageIntercept = (call) =>
+      call.paths[0]?.endsWith('.preview.jpg')
+        ? Promise.resolve({ data: null, error: { message: 'Network request failed' } })
+        : undefined;
+    const second = await addPhoto(
+      backend.client,
+      { spotId: SPOT, id: id(2), userId: SAM.id, photo: withPreview },
+      bytes,
+    );
+    expect(second.id).toBe(id(2));
+    expect(backend.files.has(`${SAM.id}/${id(2)}.preview.jpg`)).toBe(false);
+  });
+
   it('removes the file when the photo is refused', async () => {
     const backend = server();
     for (const n of [1, 2, 3]) await add(backend, n);
@@ -90,7 +128,10 @@ describe('photos', () => {
       message: 'You can add up to 3 photos to a spot.',
     });
     expect(backend.files.has(`${SAM.id}/${id(4)}.jpg`)).toBe(false);
-    expect(backend.storageCalls.at(-1)).toEqual({ op: 'remove', paths: [`${SAM.id}/${id(4)}.jpg`] });
+    expect(backend.storageCalls.at(-1)).toEqual({
+      op: 'remove',
+      paths: [`${SAM.id}/${id(4)}.jpg`, `${SAM.id}/${id(4)}.preview.jpg`],
+    });
   });
 
   it('still reports the refusal when the file cannot be cleaned up', async () => {

@@ -9,6 +9,7 @@ import { AccessibilityInfo, ScrollView, StyleSheet, Text, View } from 'react-nat
 import { AccountGate } from '@/components/AccountGate';
 import { ChoiceField, TextField } from '@/components/form';
 import { KeyboardSafe } from '@/components/KeyboardSafe';
+import { PausedNotice } from '@/components/PausedNotice';
 import { useMyConfirmation, withCheckin } from '@/components/SpotCheckins';
 import { TermsGate } from '@/components/TermsGate';
 import { Banner, Button, EmptyState } from '@/components/ui';
@@ -87,6 +88,7 @@ export default function CheckinScreen() {
         automaticallyAdjustKeyboardInsets
         keyboardDismissMode="interactive"
       >
+        <PausedNotice what="posting" />
         <View style={styles.intro}>
           <Text style={styles.title} accessibilityRole="header">
             What changed?

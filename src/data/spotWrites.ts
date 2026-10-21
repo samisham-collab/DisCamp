@@ -8,6 +8,7 @@ import * as Crypto from 'expo-crypto';
 import { REMOTE_TIMEOUT_MS } from '../config';
 import { DeadlineError, withDeadline } from '../lib/deadline';
 import { describeError, log } from '../lib/log';
+import { POSTING_PAUSED_MESSAGE } from './appStatus';
 import { bannedMessage } from './moderation';
 import type { SpotInput } from '../lib/spotDraft';
 import { spotRowSchema } from '../lib/schemas';
@@ -82,6 +83,8 @@ export function toWriteError(error: unknown, action: 'save' | 'delete'): SpotWri
   if (e.message === 'daily_limit') {
     return new SpotWriteError('You can add up to 20 spots a day. Try again tomorrow.', 'limit');
   }
+  // Near the free plan's database limit, or paused by a moderator (migration 0011).
+  if (e.message === 'posting_paused') return new SpotWriteError(POSTING_PAUSED_MESSAGE, 'limit');
   // Moderation (migration 0004).
   if (e.message === 'banned') return new SpotWriteError(bannedMessage(), 'banned');
   if (e.message === 'terms_required') {

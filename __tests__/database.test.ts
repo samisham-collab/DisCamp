@@ -7,7 +7,8 @@
 
 import { describe, expect, it } from '@jest/globals';
 import { execFileSync } from 'child_process';
-import { readdirSync } from 'fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'fs';
+import { tmpdir } from 'os';
 import { join } from 'path';
 
 import { TERMS_VERSION } from '@/config';
@@ -148,6 +149,56 @@ const sendCleanup = (uid: string, id: string, haul: string, task: string, where:
       `values ('${id}', '${task}', '${uid}/${id}.jpg', '${uid}/${haul}.jpg', ${where}, 12)`,
   );
 
+/**
+ * Recreates what a new Supabase project has, in the database `run` reaches
+ * (see the first test).
+ */
+function simulateSupabase(run: (statement: string) => unknown): void {
+  run('drop schema if exists moderation cascade; drop schema if exists public cascade; create schema public;');
+  // Recreate what a new Supabase project has: the API roles, default
+  // privileges that give them everything on new functions, and the auth
+  // schema with its users table and auth.uid(). The migrations must lock
+  // functions down themselves, so the test starts from the same generous
+  // defaults. New tables and views get no grants at all (Supabase's rule
+  // from October 30, 2026), so every grant the app and the Edge Functions
+  // rely on has to be in a migration.
+  run(
+    'do $$ begin ' +
+      "if not exists (select from pg_roles where rolname = 'anon') then create role anon nologin; end if; " +
+      "if not exists (select from pg_roles where rolname = 'authenticated') then create role authenticated nologin; end if; " +
+      "if not exists (select from pg_roles where rolname = 'service_role') then create role service_role nologin bypassrls; end if; " +
+      'end $$;',
+  );
+  run(
+    'drop schema if exists auth cascade; create schema auth; ' +
+      'create table auth.users (id uuid primary key default gen_random_uuid(), email text, raw_user_meta_data jsonb, ' +
+      'last_sign_in_at timestamptz); ' +
+      'create table auth.identities (id uuid primary key default gen_random_uuid(), ' +
+      'user_id uuid not null references auth.users (id) on delete cascade, provider text not null, provider_id text not null); ' +
+      'create function auth.uid() returns uuid language sql stable as ' +
+      "$$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$; " +
+      'grant usage on schema auth to anon, authenticated, service_role; ' +
+      'grant execute on function auth.uid() to anon, authenticated, service_role;',
+  );
+  // And Supabase Storage's tables, as far as the migrations use them: the
+  // Storage service writes storage.objects as the signed-in camper, so row-
+  // level security decides who may upload what.
+  run(
+    'drop schema if exists storage cascade; create schema storage; ' +
+      'create table storage.buckets (id text primary key, name text not null, public boolean default false, ' +
+      'file_size_limit bigint, allowed_mime_types text[]); ' +
+      'create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text references storage.buckets (id), ' +
+      'name text not null, owner_id text, created_at timestamptz default now(), metadata jsonb, unique (bucket_id, name)); ' +
+      'alter table storage.objects enable row level security; ' +
+      'create function storage.foldername(name text) returns text[] language sql immutable as ' +
+      "$$ select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1] $$; " +
+      'grant usage on schema storage to anon, authenticated, service_role; ' +
+      'grant all on storage.objects, storage.buckets to anon, authenticated, service_role;',
+  );
+  run('grant usage on schema public to anon, authenticated, service_role;');
+  run('alter default privileges in schema public grant all on functions to anon, authenticated, service_role;');
+}
+
 (DB_URL ? describe : describe.skip)('database (Postgres + PostGIS)', () => {
   it('applies every migration and the seed, each twice in a row, without errors', () => {
     expect(MIGRATIONS).toEqual([
@@ -161,49 +212,9 @@ const sendCleanup = (uid: string, id: string, haul: string, task: string, where:
       '0008_cleanups_embers.sql',
       '0009_push.sql',
       '0010_explicit_grants.sql',
+      '0011_free_plan_guard.sql',
     ]);
-    sql('drop schema if exists moderation cascade; drop schema if exists public cascade; create schema public;');
-    // Recreate what a new Supabase project has: the API roles, default
-    // privileges that give them everything on new functions, and the auth
-    // schema with its users table and auth.uid(). The migrations must lock
-    // functions down themselves, so the test starts from the same generous
-    // defaults. New tables and views get no grants at all (Supabase's rule
-    // from October 30, 2026), so every grant the app and the Edge Functions
-    // rely on has to be in a migration.
-    sql(
-      'do $$ begin ' +
-        "if not exists (select from pg_roles where rolname = 'anon') then create role anon nologin; end if; " +
-        "if not exists (select from pg_roles where rolname = 'authenticated') then create role authenticated nologin; end if; " +
-        "if not exists (select from pg_roles where rolname = 'service_role') then create role service_role nologin bypassrls; end if; " +
-        'end $$;',
-    );
-    sql(
-      'drop schema if exists auth cascade; create schema auth; ' +
-        'create table auth.users (id uuid primary key default gen_random_uuid(), email text, raw_user_meta_data jsonb); ' +
-        'create table auth.identities (id uuid primary key default gen_random_uuid(), ' +
-        'user_id uuid not null references auth.users (id) on delete cascade, provider text not null, provider_id text not null); ' +
-        'create function auth.uid() returns uuid language sql stable as ' +
-        "$$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$; " +
-        'grant usage on schema auth to anon, authenticated, service_role; ' +
-        'grant execute on function auth.uid() to anon, authenticated, service_role;',
-    );
-    // And Supabase Storage's tables, as far as the migrations use them: the
-    // Storage service writes storage.objects as the signed-in camper, so row-
-    // level security decides who may upload what.
-    sql(
-      'drop schema if exists storage cascade; create schema storage; ' +
-        'create table storage.buckets (id text primary key, name text not null, public boolean default false, ' +
-        'file_size_limit bigint, allowed_mime_types text[]); ' +
-        'create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text references storage.buckets (id), ' +
-        'name text not null, owner_id text, created_at timestamptz default now(), unique (bucket_id, name)); ' +
-        'alter table storage.objects enable row level security; ' +
-        'create function storage.foldername(name text) returns text[] language sql immutable as ' +
-        "$$ select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1] $$; " +
-        'grant usage on schema storage to anon, authenticated, service_role; ' +
-        'grant all on storage.objects, storage.buckets to anon, authenticated, service_role;',
-    );
-    sql('grant usage on schema public to anon, authenticated, service_role;');
-    sql('alter default privileges in schema public grant all on functions to anon, authenticated, service_role;');
+    simulateSupabase(sql);
     for (const file of MIGRATIONS) {
       runFile(`supabase/migrations/${file}`);
       runFile(`supabase/migrations/${file}`);
@@ -1469,6 +1480,8 @@ const sendCleanup = (uid: string, id: string, haul: string, task: string, where:
     expect(mine(TRAIL)).toBe('spot_confirmed:50');
     runFile('supabase/migrations/0008_cleanups_embers.sql');
     expect(mine(PAT)).toBe('still_good:10,change_report:10,photo:5,photo:5');
+    // Put back what later migrations changed in 0008's functions.
+    for (const file of MIGRATIONS.filter((f) => f > '0009')) runFile(`supabase/migrations/${file}`);
   });
 
   it('takes reports on cleanups: never your own, 3 hide one, and a ban takes them down', () => {
@@ -1611,6 +1624,132 @@ const sendCleanup = (uid: string, id: string, haul: string, task: string, where:
     expect(targets(cleanupId(52), 'rejected')).toBe('');
   });
 
+  it('pauses new photos and posts near the free plan limits, says so, and never deletes', () => {
+    const CASEY = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    sql(
+      'insert into auth.users (id, email, raw_user_meta_data, last_sign_in_at) ' +
+        `values ('${CASEY}', 'casey@example.com', '{"given_name": "Casey"}', now());`,
+    );
+    acceptTerms(CASEY);
+    const status = (role = 'anon') => JSON.parse(sql('select public.app_status();', role)) as Record<string, unknown>;
+    const settings = (change: string) => sql(`update moderation.settings set ${change};`);
+    const refresh = () => sql('select day from moderation.refresh_usage(true);');
+    const spot = sql('select id from public.spots where created_by is null order by id limit 1;');
+    const photo = photoId(70);
+    const ok = { photos_paused: false, posting_paused: false, level: 'ok' };
+
+    // Usage is kept, a row a day; everyone can see whether things are paused.
+    expect(sql('select count(*) from moderation.usage_daily where day = current_date;')).toBe('1');
+    expect(status()).toEqual(ok);
+    expect(status('authenticated')).toEqual(ok);
+    // The numbers themselves are for moderators.
+    expect(fails(() => sql('select count(*) from moderation.usage_daily;', 'authenticated'))).toBe(true);
+    expect(errorOf(() => asCamper(CASEY, 'select public.free_plan_usage()'))).toMatch(/not_moderator/);
+    expect(fails(() => sql('select public.free_plan_usage();', 'anon'))).toBe(true);
+
+    // Storage at 93% of its limit (a 1 MB limit and a 950 KB file): new photos
+    // pause. Storage refuses the file, and the database says why.
+    settings('storage_limit_mb = 1');
+    sql(
+      "insert into storage.objects (bucket_id, name, metadata) values ('spot-photos', 'test/big.jpg', '{\"size\": 972800}');",
+    );
+    expect(refresh()).toBe(sql('select current_date;'));
+    expect(status()).toEqual({ photos_paused: true, posting_paused: false, level: 'paused' });
+    expect(fails(() => upload(CASEY, photo))).toBe(true);
+    expect(errorOf(() => addPhoto(CASEY, photo, spot))).toMatch(/photos_paused/);
+    expect(errorOf(() => postCleanup(CASEY, cleanupId(70)))).toMatch(/photos_paused/);
+    // Spots, check-ins and reports go on, and the server (the seed, say) is never paused.
+    asCamper(CASEY, addSpot('Casey Flat'));
+    checkIn(CASEY, spot, 'road_damage', 'Washboard for a mile');
+    flagName(CASEY, SAM, 'spam');
+    sql(addSpot('Server Flat'));
+    sql("delete from public.spots where name = 'Server Flat';");
+
+    // Paused by hand: no new spots, photos or check-ins. Reports still work.
+    settings('storage_limit_mb = 1024, posting_paused = true');
+    expect(status()).toEqual({ photos_paused: true, posting_paused: true, level: 'paused' });
+    expect(errorOf(() => asCamper(CASEY, addSpot('Casey Ridge')))).toMatch(/posting_paused/);
+    expect(errorOf(() => checkIn(CASEY, spot, 'trash'))).toMatch(/posting_paused/);
+    expect(errorOf(() => addPhoto(CASEY, photo, spot))).toMatch(/posting_paused/);
+    sql(`delete from public.flags where reporter_id = '${CASEY}';`);
+    flagName(CASEY, SAM, 'spam');
+    sql(`delete from public.flags where reporter_id = '${CASEY}';`);
+
+    // The database near its limit pauses posting by itself.
+    settings('posting_paused = false, database_limit_mb = 1');
+    refresh();
+    expect(status()).toEqual({ photos_paused: true, posting_paused: true, level: 'paused' });
+
+    // Past the warning line but short of the pause: 'warn' (the GitHub check emails).
+    settings('database_limit_mb = 500, storage_limit_mb = 1, pause_at_percent = 100');
+    refresh();
+    expect(status()).toEqual({ photos_paused: false, posting_paused: false, level: 'warn' });
+
+    // Room again: the pause lifts by itself, and nothing was deleted.
+    sql("delete from storage.objects where name = 'test/big.jpg';");
+    settings('storage_limit_mb = 1024, pause_at_percent = 90');
+    refresh();
+    expect(status()).toEqual(ok);
+    expect(sql("select count(*) from public.spots where name = 'Casey Flat';")).toBe('1');
+    upload(CASEY, photo);
+    addPhoto(CASEY, photo, spot);
+
+    // Moderators see the numbers, and the free plan's limits.
+    sql(`select moderation.add_moderator('${SAM}');`);
+    const usage = JSON.parse(asCamper(SAM, 'select public.free_plan_usage()')) as Record<string, unknown>;
+    expect(usage).toMatchObject({
+      storage_limit_bytes: 1024 * 1024 * 1024,
+      database_limit_bytes: 500 * 1024 * 1024,
+      pause_at_percent: 90,
+      warn_at_percent: 75,
+      level: 'ok',
+      active_campers: 1,
+    });
+    expect(Number(usage.database_bytes)).toBeGreaterThan(0);
+    expect(Number(usage.photos)).toBeGreaterThan(0);
+
+    // A deleted settings row falls back to the free plan's limits.
+    sql('delete from moderation.settings;');
+    expect(status()).toEqual(ok);
+    sql('insert into moderation.settings (id) values (true);');
+  });
+
+  it("takes a small preview next to each photo, only after the photo, and keeps it while it's used", () => {
+    const CASEY = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const spot = sql('select id from public.spots where created_by is null order by id desc limit 1;');
+    const preview = (uid: string, id: string, folder = uid) =>
+      asCamper(
+        uid,
+        `insert into storage.objects (bucket_id, name, owner_id) values ('spot-photos', '${folder}/${id}.preview.jpg', '${uid}')`,
+      );
+    const photo = photoId(71);
+    // Not before its photo, and not in someone else's folder.
+    expect(fails(() => preview(CASEY, photo))).toBe(true);
+    upload(CASEY, photo);
+    expect(fails(() => preview(ALEX, photo, CASEY))).toBe(true);
+    preview(CASEY, photo);
+    // Only one per photo, and only previews of photos.
+    expect(fails(() => preview(CASEY, photo))).toBe(true);
+    expect(
+      fails(() =>
+        asCamper(
+          CASEY,
+          `insert into storage.objects (bucket_id, name, owner_id) values ('spot-photos', '${CASEY}/${photo}.preview.preview.jpg', '${CASEY}')`,
+        ),
+      ),
+    ).toBe(true);
+    // Previews don't count toward the 25 files a day: Casey uploaded two photos today.
+    expect(sql(`select moderation.photo_files_today('${CASEY}');`)).toBe('2');
+
+    // While the photo is on a spot, its preview stays (a reported photo keeps it for review).
+    addPhoto(CASEY, photo, spot);
+    const removePreview = () =>
+      asCamper(CASEY, `delete from storage.objects where name = '${CASEY}/${photo}.preview.jpg' returning name`);
+    expect(removePreview()).toBe('');
+    asCamper(CASEY, `delete from public.spot_photos where id = '${photo}'`);
+    expect(removePreview()).toBe(`${CASEY}/${photo}.preview.jpg`);
+  });
+
   it('deletes an account but keeps the spots it added, without a name', () => {
     const id = asCamper(SAM, `${addSpot('Keeper')} returning id`);
     expect(fails(() => sql('select public.delete_my_account();', 'anon'))).toBe(true);
@@ -1707,5 +1846,85 @@ const sendCleanup = (uid: string, id: string, haul: string, task: string, where:
     const after = sql("select updated_at from public.spots where id = 'smoky-gardens';");
     expect(Date.parse(after)).toBeGreaterThanOrEqual(Date.parse(before));
     expect(after).not.toBe(before);
+  });
+  it('backs up the database on the Mac, and restores the backup into a fresh database exactly', () => {
+    const url = new URL(DB_URL ?? '');
+    const restoreName = `${url.pathname.slice(1)}_restore`;
+    const restoreUrl = Object.assign(new URL(url.href), { pathname: `/${restoreName}` }).href;
+    const env = { ...process.env, DISCAMP_DB_URL: url.href, PGPASSWORD: url.password || 'postgres' };
+    const script = (file: string, args: string[], extra: Record<string, string>) =>
+      execFileSync('bash', [join(ROOT, 'scripts', file), ...args], {
+        cwd: ROOT,
+        env: { ...env, ...extra },
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+    // Back up, as Sam would on his Mac (photos aside: there's no Storage here).
+    const backups = mkdtempSync(join(tmpdir(), 'discamp-backups-'));
+    const out = script('backup-database.sh', [], { DISCAMP_BACKUP_DIR: backups, DISCAMP_SKIP_PHOTOS: '1' });
+    expect(out).toMatch(/Backup saved/);
+    const [folder] = readdirSync(backups).filter((name) => name.startsWith('discamp-'));
+    if (!folder) throw new Error('No backup folder');
+    const backup = join(backups, folder);
+    for (const file of ['accounts.sql', 'data.sql', 'files.txt', 'migrations.txt']) {
+      expect(existsSync(join(backup, file))).toBe(true);
+    }
+    const accounts = readFileSync(join(backup, 'accounts.sql'), 'utf8');
+    expect(accounts).toMatch(/COPY auth\.users/);
+    expect(accounts).toContain(sql('select id from auth.users order by id limit 1;'));
+
+    // A fresh database, set up the way setup-database.sh does.
+    sql(`drop database if exists ${restoreName};`);
+    sql(`create database ${restoreName};`);
+    const inRestore = (statement: string) =>
+      execFileSync('psql', [restoreUrl, '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-At', '-c', statement], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim();
+    const fileInRestore = (file: string) =>
+      execFileSync('psql', [restoreUrl, '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-f', join(ROOT, file)], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    simulateSupabase(inRestore);
+    for (const file of MIGRATIONS) {
+      fileInRestore(`supabase/migrations/${file}`);
+      inRestore('grant usage on schema extensions to anon, authenticated, service_role;');
+    }
+    fileInRestore('supabase/seed.sql');
+
+    // Restoring needs "replace", and the backup folder.
+    expect(fails(() => script('restore-database.sh', [backup], { DISCAMP_DB_URL: restoreUrl }))).toBe(true);
+    expect(fails(() => script('restore-database.sh', [backups], { DISCAMP_DB_URL: restoreUrl }))).toBe(true);
+    const restored = script('restore-database.sh', [backup], {
+      DISCAMP_DB_URL: restoreUrl,
+      DISCAMP_RESTORE_CONFIRM: 'replace',
+    });
+    expect(restored).toMatch(/Restored/);
+
+    // Every table, row for row, and where each counter left off.
+    const fingerprint = (read: (statement: string) => string) => {
+      const tables = read(
+        "select string_agg(format('%I.%I', schemaname, tablename), ',' order by schemaname, tablename) " +
+          "from pg_tables where schemaname in ('public', 'moderation') or (schemaname = 'auth' and tablename in ('users', 'identities'))",
+      ).split(',');
+      return [
+        ...tables.map(
+          (table) =>
+            `${table}:${read(`select count(*) || ':' || coalesce(md5(string_agg(t::text, '|' order by t::text)), '') from ${table} t`)}`,
+        ),
+        read(
+          "select string_agg(sequencename || '=' || coalesce(last_value::text, '-'), ',' order by sequencename) from pg_sequences where schemaname = 'public'",
+        ),
+      ];
+    };
+    const before = fingerprint((statement) => sql(statement));
+    const after = fingerprint(inRestore);
+    expect(after).toEqual(before);
+    expect(before.some((line) => line.startsWith('public.spots:0:'))).toBe(false);
+    // And the app reads it the same way.
+    expect(inRestore('select count(*) from public.spots_api;')).toBe(sql('select count(*) from public.spots_api;'));
+
+    sql(`drop database ${restoreName};`);
   });
 });

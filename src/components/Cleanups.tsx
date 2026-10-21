@@ -17,6 +17,7 @@ import { timeAgo } from '../lib/time';
 import { usePostingGate } from '../lib/usePostingGate';
 import type { Coordinates, Spot } from '../types';
 import { colors, radius, TOUCH_TARGET } from '../theme';
+import { PreviewImage } from './PreviewImage';
 import { Button, Card, SectionTitle } from './ui';
 
 /** "Litter · small". */
@@ -64,7 +65,12 @@ export function CleanupRow({ task, from }: { task: CleanupTask; from: Coordinate
       accessibilityHint="Opens the cleanup"
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
-      <Image source={{ uri: task.beforeUrl }} style={styles.rowThumb} contentFit="cover" />
+      <PreviewImage
+        previewUrl={task.beforePreviewUrl}
+        url={task.beforeUrl}
+        style={styles.rowThumb}
+        contentFit="cover"
+      />
       <View style={styles.rowText}>
         <Text style={styles.rowTitle} numberOfLines={1}>
           {cleanupTitle(task)}

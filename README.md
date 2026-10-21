@@ -124,9 +124,10 @@ update public.spots set verified = true where id = 'smoky-gardens';
    8. `supabase/migrations/0008_cleanups_embers.sql` adds cleanups, the moderators' review, and Embers (1.6.0). It also gives earlier photos and check-ins their Embers.
    9. `supabase/migrations/0009_push.sql` keeps each camper's push address for notifications, and says who to tell about a cleanup (1.7.0).
    10. `supabase/migrations/0010_explicit_grants.sql` writes out the service role's access to each table, which Supabase stops granting automatically on October 30, 2026 (1.8.0). A new table needs its own `grant` statements in the migration that creates it.
-   11. `supabase/seed.sql` adds the starter spots.
+   11. `supabase/migrations/0011_free_plan_guard.sql` keeps DisCamp on Supabase's free plan: it tracks the database and photo storage, and near the limits pauses new photos (or posts) instead of letting Supabase restrict the project. It also takes the photo previews (1.8.0). See "Staying on the free plan" below.
+   12. `supabase/seed.sql` adds the starter spots.
 
-   Already ran some for an earlier version? Run only the ones after it (for 1.3: 0004 to 0009; for 1.4.0: 0005 to 0009; for 1.4.1: 0006 to 0009; for 1.5.0: 0007 to 0009; for 1.5.1: 0008 and 0009; for 1.6: just 0009), then the seed. Never rerun an older file after a newer one: newer files change things the older ones made. To switch a database set up by hand over to the script, tell it the last file that ran, for example `bash scripts/setup-database.sh --after 0005`.
+   Already ran some for an earlier version? Run only the ones after it (for 1.3: 0004 to 0011; for 1.4.0: 0005 to 0011; for 1.4.1: 0006 to 0011; for 1.5.0: 0007 to 0011; for 1.5.1: 0008 to 0011; for 1.6: 0009 to 0011; for 1.7: 0010 and 0011), then the seed. Never rerun an older file after a newer one: newer files change things the older ones made. To switch a database set up by hand over to the script, tell it the last file that ran, for example `bash scripts/setup-database.sh --after 0005`.
 
 3. Copy your **Project URL** and **publishable key** from the project's API settings.
    **Keep it awake:** Supabase pauses free projects after a week with no activity. Once DisCamp is on GitHub, `.github/workflows/keep-awake.yml` reads one starter spot every Monday and Thursday to prevent that, and emails you (through GitHub) if a read fails. It needs two repository secrets, `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` (GitHub > your repo > **Settings > Secrets and variables > Actions**), with the same values as in `.env`. Paid Supabase plans are never paused, so you can delete the workflow if you upgrade. In a public repo, GitHub switches scheduled workflows off after 60 days without a commit: if Actions shows that banner, open **Keep Supabase awake** and click **Enable workflow**.
@@ -146,7 +147,10 @@ If 0006 printed a warning that Storage was not set up (some projects don't let t
 1. **Storage > New bucket**: name `spot-photos`, turn on **Public bucket**, set the file size limit to 3 MB and the allowed MIME types to `image/jpeg`.
 2. On the bucket's **Policies**, add three policies "For full customization", each for the `authenticated` role:
    - **INSERT**, named "Campers upload spot photos to their folder", with this check:
-     `bucket_id = 'spot-photos' and (storage.foldername(name))[1] = (select auth.uid()::text) and name ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}\.jpg$' and moderation.camper_status((select auth.uid())) = 'ok' and moderation.photo_files_today((select auth.uid())) < 25`
+     `bucket_id = 'spot-photos' and (storage.foldername(name))[1] = (select auth.uid()::text) and moderation.camper_status((select auth.uid())) = 'ok' and ((name ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}\.jpg$' and moderation.photo_files_today((select auth.uid())) < 25) or (name ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}\.preview\.jpg$' and moderation.photo_uploaded(moderation.photo_for_preview(name), (select auth.uid())))) and moderation.room_for_photos()`
+
+     (That's the rule from migration 0011. Before 0011 has run, leave out the preview part and `room_for_photos()`.)
+
    - **SELECT**, named "Campers see their own spot photo files", using:
      `bucket_id = 'spot-photos' and owner_id = (select auth.uid()::text)`
    - **DELETE**, named "Campers delete their own spot photos", using:
@@ -154,7 +158,30 @@ If 0006 printed a warning that Storage was not set up (some projects don't let t
 
 Cleanup photos (before, after and haul shots) use the same bucket and rules: 0008 adds nothing to Storage. They don't count toward the 25 files a day (cleanups have their own limits: 10 posted and 10 sent a day), and a photo already on DisCamp can't be used again.
 
-Photos are public files: anyone with a photo's address can open it, which is what lets them show on spot pages. File names are random, so they can't be guessed. Campers can only upload files named like a photo into their own folder, up to 25 a day, and can't delete a file while a photo on a spot uses it (so a reported photo's file stays for you to review). When you remove a photo after a report, delete its file too (MODERATION.md says how). The free plan's 1 GB of Storage holds about 3,000 photos.
+Photos are public files: anyone with a photo's address can open it, which is what lets them show on spot pages. File names are random, so they can't be guessed. Campers can only upload files named like a photo into their own folder, up to 25 a day, and can't delete a file while a photo on a spot uses it (so a reported photo's file stays for you to review). When you remove a photo after a report, delete its file too (MODERATION.md says how).
+
+Each photo is saved at up to 1280 pixels (about 200 KB) with a 480-pixel preview next to it (about 30 KB, "<photo id>.preview.jpg"). Photo strips and cleanup lists download the preview; the full photo opens when tapped. Files are never overwritten, so phones and Supabase's CDN keep them for a year instead of downloading them again. The free plan's 1 GB of Storage holds about 4,000 photos.
+
+### Staying on the free plan
+
+DisCamp is built to stay on Supabase's free plan: 500 MB of database, 1 GB of files and 5 GB of downloads a month (plus 5 GB more served from Supabase's cache). Going over doesn't cost money, but Supabase warns, then restricts the project until the next month. So:
+
+- **Near a limit, things pause instead.** At 90% of photo storage, new photos (and cleanups, which need photos) pause; at 90% of the database, new spots, photos and check-ins pause. Posting screens say so. Reports, blocking, sign-ups and edits always work, and nothing is ever deleted to make room. You can also pause by hand. MODERATION.md, "Free plan", has the switches and what to do when it fills up.
+- **You hear about it early.** The Review tab shows how full the plan is, and the twice-weekly "Keep Supabase awake" check on GitHub fails (so GitHub emails you) past 75%.
+- **Downloads stay small**: previews in lists, long caching, and spots that refresh at most every 15 minutes.
+- **Backups**: the free plan has none, so `scripts/backup-database.sh` saves one on your Mac (below).
+
+### Backups
+
+Run this every week or so, and before anything big (a new migration, moving to another project), from Terminal in the DisCamp folder:
+
+```sh
+bash scripts/backup-database.sh
+```
+
+It asks for the same connection string and password as `setup-database.sh` and saves the database (accounts, spots, photo details, check-ins, cleanups, Embers, reports, moderation) into **Documents/DisCamp backups**, a dated folder each time, keeping the newest 10. Photos are copied once each into the `photos` folder there. Backups hold campers' email addresses, so they stay on your Mac (only your user can open the folder): never share or upload them. Something deleted from DisCamp leaves the backups within 10 backups (photos at the next one).
+
+To put a backup back (into a fresh Supabase project after a disaster), follow the steps at the top of `scripts/restore-database.sh`. A test restores a backup into an empty database on every CI run, row for row.
 
 ## Sign-in
 
@@ -293,6 +320,7 @@ src/
   data/spotWrites.ts        Adding, editing and deleting spots on the server
   data/moderation.ts        Reports, blocks and agreeing to the terms, on the server
   data/community.ts         Photos and check-ins on the server
+  data/appStatus.ts         Staying on the free plan: paused photos or posts, and the usage numbers
   data/cleanups.ts          Cleanups, reviews and Embers on the server
   data/cleanupsStore.tsx    Shares cleanups with the map, Cleanups tab and spot pages
   data/tipsStore.tsx        The tip jar's store connection, for the whole app (finishes paid tips)
@@ -315,7 +343,7 @@ src/
   lib/secureStorage.ts      Keeps the sign-in session in the phone's keychain
   lib/spotDraft.ts          The add/edit form as data: checks and conversions
   lib/wordFilter.ts         The word filter (and the database's copy of it)
-  lib/photoPicker.ts        Takes or picks a photo, shrinks it and strips its details
+  lib/photoPicker.ts        Takes or picks a photo, shrinks it (and makes its preview) and strips its details
   lib/usePostingGate.ts     Before posting: signed in and agreed to the rules
   lib/crashReports.ts       Sentry crash reports, scrubbed of anything personal
   lib/push.ts               Notifications: asking, this phone's push address, which screen a tap opens
@@ -324,6 +352,9 @@ src/
   lib/expoGo.ts             Whether this is Expo Go (no notifications or tips there)
   components/TermsGate.tsx  Community rules and "I agree", before a first post
   components/SpotPhotos.tsx A spot's photos: thumbnails, add, full-size view
+  components/PreviewImage.tsx A photo's small preview, or the full photo if it has none
+  components/PausedNotice.tsx Says on posting screens when new photos or posts are paused
+  components/FreePlanCard.tsx How full the free plan is, on the Review tab (moderators)
   components/SpotCheckins.tsx "Were you here?": Still good, Something changed, recent check-ins
   components/Cleanups.tsx   Cleanup rows, photos, and the Cleanups card on spot pages
   components/EmbersCard.tsx Embers and rank on Account, and the moderators' way into Review
@@ -343,6 +374,8 @@ MODERATION.md               Acting on reports within 24 hours
 TESTFLIGHT.md               From here to TestFlight, and the test script for your iPhone
 scripts/seedSql.ts          The seed generator
 scripts/setup-database.sh   Loads (or updates) the Supabase database from Terminal
+scripts/backup-database.sh  Saves a backup of the database (and photos) on your Mac
+scripts/restore-database.sh Puts a backup back, into a fresh project after a disaster
 __tests__/                  Tests; screens/ renders the whole app
 test/                       Test helpers and stand-ins for native modules
 ```

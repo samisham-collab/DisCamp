@@ -11,6 +11,7 @@ import { AccessibilityInfo, Linking, ScrollView, StyleSheet, Text, View } from '
 import { AccountGate } from '@/components/AccountGate';
 import { ChoiceField, TextField } from '@/components/form';
 import { KeyboardSafe } from '@/components/KeyboardSafe';
+import { PausedNotice } from '@/components/PausedNotice';
 import { TermsGate } from '@/components/TermsGate';
 import { Banner, Button, Card, SectionTitle } from '@/components/ui';
 import {
@@ -137,6 +138,7 @@ export default function NewCleanupScreen() {
         automaticallyAdjustKeyboardInsets
         keyboardDismissMode="interactive"
       >
+        <PausedNotice what="photos" />
         <View style={styles.intro}>
           <Text style={styles.title} accessibilityRole="header">
             Post a cleanup
