@@ -84,6 +84,8 @@ export default function CleanupScreen() {
   // The server's copy, once loaded (null: not found). Until then, the list's.
   const [loaded, setLoaded] = useState<CleanupTask | null | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Bumped by "Try again", to load once more.
+  const [attempt, setAttempt] = useState(0);
   const [tries, setTries] = useState<CleanupTry[] | null>(null);
   const [deleting, setDeleting] = useState(false);
   const userId = user?.id;
@@ -122,7 +124,9 @@ export default function CleanupScreen() {
       return () => {
         active = false;
       };
-    }, [client, id, userId, upsert, remove]),
+      // `attempt` isn't read, but a new one loads again.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [client, id, userId, upsert, remove, attempt]),
   );
 
   const task = loaded === undefined ? cleanups.find((t) => t.id === id) : loaded;
@@ -134,13 +138,28 @@ export default function CleanupScreen() {
         {loaded === undefined && !loadError && client ? (
           <ActivityIndicator size="large" color={colors.pine} accessibilityLabel="Loading the cleanup" />
         ) : (
-          <EmptyState
-            icon="leaf-outline"
-            title={loadError ? "Couldn't load the cleanup" : 'Cleanup not found'}
-            message={loadError ?? 'It may have been removed.'}
-            actionLabel="Back to Cleanups"
-            onAction={() => router.replace('/cleanups')}
-          />
+          <>
+            <EmptyState
+              icon={loadError ? 'cloud-offline-outline' : 'leaf-outline'}
+              title={loadError ? "Couldn't load the cleanup" : 'Cleanup not found'}
+              message={loadError ?? 'It may have been removed.'}
+            />
+            {loadError ? (
+              <Button
+                label="Try again"
+                icon="refresh"
+                onPress={() => {
+                  setLoadError(null);
+                  setAttempt((n) => n + 1);
+                }}
+              />
+            ) : null}
+            <Button
+              label="Back to Cleanups"
+              kind={loadError ? 'secondary' : 'primary'}
+              onPress={() => router.replace('/cleanups')}
+            />
+          </>
         )}
       </View>
     );
@@ -289,6 +308,7 @@ export default function CleanupScreen() {
           onPress={onDelete}
           disabled={deleting}
           accessibilityRole="button"
+          accessibilityLabel="Delete this cleanup"
           accessibilityState={{ busy: deleting, disabled: deleting }}
           style={styles.textButton}
         >

@@ -7,24 +7,43 @@ import { StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-na
 import { colors, radius } from '../theme';
 import { Pills } from './ui';
 
-export function FieldLabel({ children, required = false }: { children: ReactNode; required?: boolean }) {
+/** Screen readers skip it when the field itself already says it (TextField). */
+const hiddenFromReaders = {
+  accessibilityElementsHidden: true,
+  importantForAccessibility: 'no-hide-descendants',
+} as const;
+
+export function FieldLabel({
+  children,
+  required = false,
+  hidden = false,
+}: {
+  children: ReactNode;
+  required?: boolean;
+  hidden?: boolean;
+}) {
   return (
-    <Text style={styles.label}>
+    <Text style={styles.label} {...(hidden ? hiddenFromReaders : {})}>
       {children}
       {required ? <Text style={styles.required}> (required)</Text> : null}
     </Text>
   );
 }
 
-export function FieldNote({ hint, error }: { hint?: string; error?: string | null }) {
+export function FieldNote({ hint, error, hidden = false }: { hint?: string; error?: string | null; hidden?: boolean }) {
   if (error) {
     return (
+      // Errors stay readable on their own too: they're what a camper is looking for.
       <Text style={styles.error} accessibilityRole="alert">
         {error}
       </Text>
     );
   }
-  return hint ? <Text style={styles.hint}>{hint}</Text> : null;
+  return hint ? (
+    <Text style={styles.hint} {...(hidden ? hiddenFromReaders : {})}>
+      {hint}
+    </Text>
+  ) : null;
 }
 
 interface TextFieldProps extends Omit<TextInputProps, 'style' | 'accessibilityLabel' | 'accessibilityHint'> {
@@ -36,9 +55,13 @@ interface TextFieldProps extends Omit<TextInputProps, 'style' | 'accessibilityLa
 }
 
 export function TextField({ ref, label, hint, error, required = false, multiline, ...input }: TextFieldProps) {
+  // The field says its label, the problem and the hint, so the text around
+  // it isn't read a second time.
   return (
     <View style={styles.field}>
-      <FieldLabel required={required}>{label}</FieldLabel>
+      <FieldLabel required={required} hidden>
+        {label}
+      </FieldLabel>
       <TextInput
         ref={ref}
         {...input}
@@ -46,10 +69,10 @@ export function TextField({ ref, label, hint, error, required = false, multiline
         style={[styles.input, multiline && styles.multiline, error ? styles.inputError : null]}
         placeholderTextColor={colors.muted}
         accessibilityLabel={required ? `${label}, required` : label}
-        accessibilityHint={error ?? hint}
+        accessibilityHint={error ? [error, hint].filter(Boolean).join('. ') : hint}
         textAlignVertical={multiline ? 'top' : 'center'}
       />
-      <FieldNote hint={hint} error={error} />
+      <FieldNote hint={hint} error={error} hidden />
     </View>
   );
 }
@@ -64,6 +87,7 @@ export function ChoiceField<T extends string>({
   error,
   notSureLabel = 'Not sure',
   allowNotSure = true,
+  required = false,
 }: {
   label: string;
   options: readonly { value: T; label: string }[];
@@ -73,18 +97,20 @@ export function ChoiceField<T extends string>({
   error?: string | null;
   notSureLabel?: string;
   allowNotSure?: boolean;
+  /** Says "(required)", to everyone, not just in red when it's missed. */
+  required?: boolean;
 }) {
   const NOT_SURE = '__not_sure__';
   const all = allowNotSure ? [...options, { value: NOT_SURE as T, label: notSureLabel }] : options;
   return (
     <View style={styles.field}>
-      <FieldLabel>{label}</FieldLabel>
+      <FieldLabel required={required}>{label}</FieldLabel>
       <Pills
         mode="single"
         options={all}
         isSelected={(v) => (v === NOT_SURE ? value === null : v === value)}
         onPress={(v) => onChange(v === NOT_SURE ? null : v)}
-        accessibilityLabel={label}
+        accessibilityLabel={required ? `${label}, required` : label}
       />
       <FieldNote hint={hint} error={error} />
     </View>

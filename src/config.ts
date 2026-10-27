@@ -33,8 +33,9 @@ export const UPLOAD_TIMEOUT_MS = 90_000;
 
 /**
  * Supabase returns at most this many rows per request (its "Max rows" API
- * setting). DisCamp loads every spot in one request, which is fine for now;
- * before the map holds this many spots, switch to loading by map area.
+ * setting), so DisCamp loads spots in pages of this size. Every camper loads
+ * every spot, which is fine for now; with tens of thousands of spots, switch
+ * to loading by map area.
  */
 export const SERVER_ROW_LIMIT = 1_000;
 

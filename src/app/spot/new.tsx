@@ -51,6 +51,8 @@ export default function NewSpotScreen() {
   );
   const editor = useSpotEditor(draft, save, reloadProfile);
   const stillHere = useStillHere();
+  // A double tap must not pick two ids (two spots) before the screen updates.
+  const submitting = useRef(false);
 
   const gate = <AccountGate status={status} next="/spot/new" action="Adding a spot" />;
   if (status !== 'signed-in') return gate;
@@ -66,6 +68,16 @@ export default function NewSpotScreen() {
   const near = nearbySpot(spots, parseCoordinates(draft.coordinates));
 
   const onSubmit = async () => {
+    if (submitting.current) return;
+    submitting.current = true;
+    try {
+      await send();
+    } finally {
+      submitting.current = false;
+    }
+  };
+
+  const send = async () => {
     // A retry (even after a restart) reuses the draft's id, unless another
     // camper on this phone picked it.
     if (draft.clientId && (draft.ownerId === me || draft.ownerId === '')) {

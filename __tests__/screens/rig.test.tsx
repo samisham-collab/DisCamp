@@ -47,6 +47,23 @@ describe('My Rig screen', () => {
     expect(saved.clearanceIn).toBe(9.5);
   });
 
+  it('offers Undo when a preset replaces a custom rig', async () => {
+    await renderApp('/rig', { rig: { ...preset('Mid-size 4x4 + RTT'), name: 'Old Blue', clearanceIn: 11 } });
+    expect(screen.getByText('11 in · 4WD · Rooftop tent')).toBeTruthy();
+    fireEvent.press(screen.getByRole('radio', { name: '40 ft Class A' }));
+    expect(
+      await screen.findByText('Switched to 40 ft Class A. Your own rig (11 in · 4WD · Rooftop tent) was replaced.'),
+    ).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Undo' }));
+    expect(await screen.findByText('11 in · 4WD · Rooftop tent')).toBeTruthy();
+    expect(screen.getByLabelText('Rig name').props.value).toBe('Old Blue');
+    expect(screen.queryByText(/was replaced/)).toBeNull();
+    // Switching between presets needs no undo.
+    fireEvent.press(screen.getByRole('radio', { name: '40 ft Class A' }));
+    fireEvent.press(await screen.findByRole('radio', { name: 'Mid-size 4x4 + RTT' }));
+    expect(screen.queryByText(/was replaced/)).toBeNull();
+  });
+
   it('supports screen-reader increment and decrement on the steppers', async () => {
     await renderApp('/rig');
     const stepper = screen.getByRole('adjustable', { name: 'Ground clearance' });

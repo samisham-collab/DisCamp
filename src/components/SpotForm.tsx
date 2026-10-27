@@ -7,6 +7,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { CLEARANCE_TIERS, SPOT_DRIVETRAINS, tierInfo } from '../lib/fit';
 import { formatDistance } from '../lib/geo';
+import { useReducedMotion } from '../lib/accessibility';
 import { useLocation } from '../lib/location';
 import { coordinatesText, parseCoordinates, type DraftErrors, type DraftField, type SpotDraft } from '../lib/spotDraft';
 import type { ClearanceTier, Hookup, Reservations, SpotDrivetrain } from '../types';
@@ -58,6 +59,10 @@ const SECTIONS = {
 
 type Section = keyof typeof SECTIONS;
 
+/** "Use my location" listens this long for a fix within SPOT_FIX_M meters. */
+const SPOT_FIX_M = 50;
+const SPOT_REFINE_MS = 15_000;
+
 export interface SpotFormProps {
   draft: SpotDraft;
   onChange: (patch: Partial<SpotDraft>) => void;
@@ -90,7 +95,11 @@ export function SpotForm({
   onDiscard,
   notice,
 }: SpotFormProps) {
-  const { coords: here, locating, locate } = useLocation();
+  const { coords: here, locating, refine } = useLocation();
+  const reducedMotion = useReducedMotion();
+  // How sure "Use my location" was, when it wasn't very.
+  const [fixNote, setFixNote] = useState<string | null>(null);
+  const [finding, setFinding] = useState(false);
   const [picking, setPicking] = useState(false);
   const pin = parseCoordinates(draft.coordinates);
   const scroll = useRef<ScrollView>(null);
@@ -103,16 +112,29 @@ export function SpotForm({
       SECTIONS[section].some((field) => errors[field]),
     );
     const y = first ? sectionTop.current[first] : undefined;
-    if (y != null) scroll.current?.scrollTo({ y: Math.max(0, y - 8), animated: true });
+    if (y != null) scroll.current?.scrollTo({ y: Math.max(0, y - 8), animated: !reducedMotion });
   });
   useEffect(() => {
     if (failedTries > 0) scrollToFirstError();
   }, [failedTries]);
   const tier = draft.clearanceTier;
 
+  // A fix from right now (never one from minutes ago, a few miles back down
+  // the road), listening a little longer for one within 50 m.
   const fillFromMyLocation = async () => {
-    const found = await locate();
-    if (found) onChange({ coordinates: coordinatesText(found) });
+    setFinding(true);
+    try {
+      const found = await refine(SPOT_FIX_M, SPOT_REFINE_MS);
+      if (!found) return;
+      onChange({ coordinates: coordinatesText(found) });
+      setFixNote(
+        found.accuracy != null && found.accuracy > SPOT_FIX_M
+          ? `Your phone placed you within about ${Math.round(found.accuracy)} m. Check it with Drop a pin, or type the exact spot.`
+          : null,
+      );
+    } finally {
+      setFinding(false);
+    }
   };
 
   return (
@@ -138,7 +160,10 @@ export function SpotForm({
               label="GPS location"
               required
               value={draft.coordinates}
-              onChangeText={(coordinates) => onChange({ coordinates })}
+              onChangeText={(coordinates) => {
+                setFixNote(null);
+                onChange({ coordinates });
+              }}
               placeholder="e.g. 46.65300, -121.61400"
               hint="Latitude, longitude in decimal degrees. Drop a pin, use your location, or paste it."
               error={errors.coordinates}
@@ -163,11 +188,21 @@ export function SpotForm({
                   label="Use my location"
                   icon="locate"
                   kind="secondary"
-                  loading={locating}
+                  loading={finding || locating}
                   onPress={() => void fillFromMyLocation()}
                 />
               </View>
             </View>
+            {fixNote ? <Banner tone="info" icon="locate-outline" message={fixNote} announceKey={fixNote} /> : null}
+            {pin && pin.longitude > 0 ? (
+              // A dropped minus sign puts a Washington spot in China.
+              <Banner
+                tone="warning"
+                icon="globe-outline"
+                message={`That's east of Greenwich, outside North America. For a spot in the US the second number is negative, like ${pin.latitude}, -${pin.longitude}.`}
+                announceKey="east-longitude"
+              />
+            ) : null}
             {nearby ? (
               <Banner
                 tone="info"
@@ -419,7 +454,8 @@ export function SpotForm({
           </Card>
         </View>
 
-        {formError ? <Banner tone="error" message={formError} announceKey={formError} /> : null}
+        {/* Announced by useSpotEditor on every refused save, once. */}
+        {formError ? <Banner tone="error" message={formError} silent /> : null}
         <Button label={submitLabel} icon="checkmark" loading={saving} onPress={onSubmit} />
         {onDiscard ? (
           <Pressable onPress={onDiscard} accessibilityRole="button" style={styles.discard} disabled={saving}>
@@ -437,6 +473,7 @@ export function SpotForm({
           onCancel={() => setPicking(false)}
           onPick={(point) => {
             setPicking(false);
+            setFixNote(null);
             onChange({ coordinates: coordinatesText(point) });
           }}
         />

@@ -152,14 +152,32 @@ export function draftFromSpot(spot: Spot): SpotDraft {
   };
 }
 
+/** One coordinate: a decimal number, maybe with ° and a compass letter before or after it. */
+const COORDINATE = String.raw`([NSEW])?\s*(-?\d+(?:\.\d+)?)\s*°?\s*([NSEW])?`;
+const COORDINATES = new RegExp(String.raw`^\s*${COORDINATE}\s*(?:,|\s)\s*${COORDINATE}\s*$`, 'i');
+
+/** The signed value of one coordinate, or null if its letter doesn't fit (or there are two). */
+function signed(number: string, before: string | undefined, after: string | undefined, axis: 'NS' | 'EW') {
+  const value = Number(number);
+  const letter = (before ?? after)?.toUpperCase();
+  if (before && after) return null;
+  if (!letter) return value;
+  if (!axis.includes(letter) || value < 0) return null;
+  return letter === 'S' || letter === 'W' ? -value : value;
+}
+
 /**
- * Reads "46.653, -121.614" (or with a space instead of the comma) as a point.
- * Null if it isn't two decimal numbers in range.
+ * Reads "46.653, -121.614" (or with a space instead of the comma) as a
+ * point, and the way map apps copy it too: "46.653° N, 121.614° W" or
+ * "N46.653 W121.614". Null if it isn't two numbers in range.
  */
 export function parseCoordinates(text: string): { latitude: number; longitude: number } | null {
-  const match = /^\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*$/.exec(text);
+  const match = COORDINATES.exec(text);
   if (!match) return null;
-  const point = { latitude: Number(match[1]), longitude: Number(match[2]) };
+  const latitude = signed(match[2] ?? '', match[1], match[3], 'NS');
+  const longitude = signed(match[5] ?? '', match[4], match[6], 'EW');
+  if (latitude == null || longitude == null) return null;
+  const point = { latitude, longitude };
   return isValidCoordinate(point) ? point : null;
 }
 

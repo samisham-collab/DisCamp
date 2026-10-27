@@ -50,6 +50,33 @@ describe('Stepper', () => {
     fireEvent.press(screen.getByLabelText('Decrease Size'));
     expect(onChange).toHaveBeenCalledWith(9);
   });
+
+  it('keeps stepping while held, and stops at the end of its range or when let go', () => {
+    jest.useFakeTimers();
+    try {
+      const onChange = jest.fn();
+      const { rerender } = render(
+        <Stepper label="Size" value={5} min={2} max={7} step={1} unit="in" unitSpoken="inches" onChange={onChange} />,
+      );
+      fireEvent(screen.getByLabelText('Increase Size'), 'longPress');
+      act(() => jest.advanceTimersByTime(1_000));
+      // 6, then 7, then the top of the range: it stops on its own.
+      expect(onChange.mock.calls.map(([v]) => v)).toEqual([6, 7]);
+      onChange.mockClear();
+      rerender(
+        <Stepper label="Size" value={7} min={2} max={7} step={1} unit="in" unitSpoken="inches" onChange={onChange} />,
+      );
+      fireEvent(screen.getByLabelText('Decrease Size'), 'longPress');
+      act(() => jest.advanceTimersByTime(250));
+      fireEvent(screen.getByLabelText('Decrease Size'), 'pressOut');
+      const stepped = onChange.mock.calls.length;
+      expect(stepped).toBeGreaterThan(0);
+      act(() => jest.advanceTimersByTime(1_000));
+      expect(onChange).toHaveBeenCalledTimes(stepped);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
 
 describe('Pills', () => {

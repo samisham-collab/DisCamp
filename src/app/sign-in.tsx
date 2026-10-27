@@ -162,5 +162,5 @@ const styles = StyleSheet.create({
   appleButton: { height: 50, width: '100%' },
   dimmed: { opacity: 0.4 },
   fine: { fontSize: 13, color: colors.muted, textAlign: 'center' },
-  legal: { flexDirection: 'row', justifyContent: 'center', gap: 20 },
+  legal: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: 20 },
 });

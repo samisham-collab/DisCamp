@@ -11,7 +11,8 @@ export const colors = {
   body: '#3A4A42',
   muted: '#55635B',
   line: '#D5DDD6',
-  lineStrong: '#B8C4BC',
+  /** Outlines of fields, chips and toggles: 3:1 on white and on bg, so they can be seen. */
+  lineStrong: '#7D8A82',
   lineSoft: '#E6ECE7',
   bg: '#F4F6F2',
   card: '#FFFFFF',

@@ -79,6 +79,8 @@ export function useDrive(plan: RoutePlan | null, destinationName: string, active
       const found = guidanceAt(plan, track, at, {
         accuracy: fix.coords.accuracy,
         previousAlong: previousAlong.current,
+        // Turns are called earlier at speed.
+        speed: fix.coords.speed,
       });
       if (found.arrived) hasArrived.current = true;
       const g = hasArrived.current ? { ...found, arrived: true, offRoute: false } : found;

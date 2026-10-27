@@ -3,7 +3,7 @@
 // It also takes back this camper's own "Still good" on the spot.
 
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AccessibilityInfo, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AccountGate } from '@/components/AccountGate';
@@ -12,13 +12,16 @@ import { KeyboardSafe } from '@/components/KeyboardSafe';
 import { PausedNotice } from '@/components/PausedNotice';
 import { useMyConfirmation, withCheckin } from '@/components/SpotCheckins';
 import { TermsGate } from '@/components/TermsGate';
-import { Banner, Button, EmptyState } from '@/components/ui';
+import { SpotMissing } from '@/components/SpotMissing';
+import { Banner, Button } from '@/components/ui';
 import { CHANGE_OPTIONS, MAX_CHECKIN_NOTE, sendCheckin } from '@/data/community';
 import { useSpot, useSpots } from '@/data/spots';
 import { useAuth } from '@/lib/auth';
 import { formatDay } from '@/lib/time';
 import { hasBlockedWords } from '@/lib/wordFilter';
 import { useStillHere } from '@/lib/useStillHere';
+import { useDiscardGuard } from '@/lib/useDiscardGuard';
+import { useOnce } from '@/lib/useOnce';
 import type { ChangeKind } from '@/types';
 import { colors } from '@/theme';
 
@@ -31,7 +34,7 @@ export default function CheckinScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const { status, client, termsAccepted } = useAuth();
-  const { spot } = useSpot(id);
+  const { spot, loading } = useSpot(id);
   const { saveLocal, reload } = useSpots();
   const { mine } = useMyConfirmation(spot);
   const stillHere = useStillHere();
@@ -39,19 +42,24 @@ export default function CheckinScreen() {
   const [note, setNote] = useState('');
   const [tried, setTried] = useState(false);
   const [sending, setSending] = useState(false);
+  const once = useOnce();
   const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+
+  useDiscardGuard(
+    !sent && !sending && (kind != null || note.trim() !== ''),
+    'Discard this report?',
+    "What you picked and wrote hasn't been sent.",
+  );
+  useEffect(() => {
+    if (sent && stillHere()) close();
+  }, [sent, stillHere]);
 
   if (status !== 'signed-in') {
     return <AccountGate status={status} next={`/checkin/${id ?? ''}`} action="Reporting a change" />;
   }
   if (termsAccepted !== true) return <TermsGate />;
-  if (!spot) {
-    return (
-      <View style={styles.center}>
-        <EmptyState icon="compass-outline" title="Spot not found" message="It may have been removed." />
-      </View>
-    );
-  }
+  if (!spot) return <SpotMissing loading={loading} />;
 
   const kindError = tried && !kind ? 'Choose what changed.' : null;
   const noteError = hasBlockedWords(note) ? "Some words aren't allowed on DisCamp." : null;
@@ -72,7 +80,7 @@ export default function CheckinScreen() {
       // confirmed; the server's copy has it.
       if (mine && !mine.withdrawn) void reload();
       AccessibilityInfo.announceForAccessibility('Thanks for the update');
-      if (stillHere()) close();
+      setSent(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't send that. Please try again.");
     } finally {
@@ -108,6 +116,7 @@ export default function CheckinScreen() {
           value={kind}
           onChange={(value) => setKind(value)}
           allowNotSure={false}
+          required
           error={kindError}
         />
         <TextField
@@ -120,7 +129,7 @@ export default function CheckinScreen() {
           multiline
         />
         {error ? <Banner tone="error" message={error} announceKey={error} /> : null}
-        <Button label="Send" icon="send-outline" loading={sending} onPress={() => void send()} />
+        <Button label="Send" icon="send-outline" loading={sending} onPress={() => once(send)} />
         <Button label="Cancel" kind="secondary" disabled={sending} onPress={close} />
       </ScrollView>
     </KeyboardSafe>
@@ -128,7 +137,6 @@ export default function CheckinScreen() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, padding: 20, justifyContent: 'center', backgroundColor: colors.bg },
   content: { padding: 16, gap: 16, paddingBottom: 40 },
   intro: { gap: 6 },
   title: { fontSize: 24, fontWeight: '800', color: colors.ink },

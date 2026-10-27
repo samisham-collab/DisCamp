@@ -322,6 +322,21 @@ describe('Adding a spot', () => {
     expect([...backend.spots.values()].filter((r) => r.name === 'Bluff Pull-off')).toHaveLength(1);
   });
 
+  it('adds one spot for a quick double tap', async () => {
+    const backend = signedIn();
+    const app = await renderApp('/spot/new');
+    await fillRequired();
+    const add = screen.getByText('Add spot');
+    // Both taps land before the screen updates.
+    act(() => {
+      fireEvent.press(add);
+      fireEvent.press(add);
+    });
+    await waitFor(() => expect(app.getPathname()).toMatch(/^\/spot\/[0-9a-f-]{36}$/));
+    expect(backend.writes('spots', 'insert')).toHaveLength(1);
+    expect([...backend.spots.values()].filter((r) => r.name === 'Bluff Pull-off')).toHaveLength(1);
+  });
+
   it('stays put if the camper leaves while it saves, and starts the next spot fresh', async () => {
     const backend = signedIn();
     let land: () => void = () => undefined;

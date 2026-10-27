@@ -12,6 +12,7 @@ import {
   isValidCoordinate,
   nearestCoordinates,
   nearestWithin,
+  longitudeArc,
   regionForCoordinates,
 } from '@/lib/geo';
 
@@ -133,6 +134,36 @@ describe('regionForCoordinates', () => {
     );
     expect(region.latitudeDelta).toBe(0.05);
     expect(region.longitudeDelta).toBe(0.05);
+  });
+
+  it('frames spots on both sides of the 180th meridian across it, not around the world', () => {
+    const region = regionForCoordinates(
+      [
+        { latitude: 52.9, longitude: 172.9 }, // Attu Island
+        { latitude: 51.9, longitude: -176.6 }, // Adak
+      ],
+      DEFAULT_REGION,
+    );
+    expect(region.longitude).toBeCloseTo(178.15);
+    expect(region.longitudeDelta).toBeCloseTo(10.5 * 1.4);
+  });
+});
+
+describe('longitudeArc', () => {
+  it('is the plain range for spots that don’t cross the 180th meridian', () => {
+    expect(longitudeArc([-120, -80, -100])).toEqual({ center: -100, span: 40 });
+  });
+
+  it('wraps across it, centering on the far side when that’s closer', () => {
+    const arc = longitudeArc([179, -179, -178]);
+    expect(arc.span).toBeCloseTo(3);
+    expect(arc.center).toBeCloseTo(-179.5);
+    expect(longitudeArc([170, -170]).center).toBeCloseTo(180);
+  });
+
+  it('handles nothing, and one longitude', () => {
+    expect(longitudeArc([])).toEqual({ center: 0, span: 0 });
+    expect(longitudeArc([-101])).toEqual({ center: -101, span: 0 });
   });
 });
 

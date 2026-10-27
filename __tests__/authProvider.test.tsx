@@ -1,20 +1,39 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { AuthRetryableFetchError, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
-import { AuthProvider, useAuth } from '@/lib/auth';
+import { AuthProvider, useAuth, type SavedSessionStore } from '@/lib/auth';
 import { ServerProvider, useServerClient } from '@/lib/server';
 import { getSupabase } from '@/lib/supabase';
 
-import { ALEX, fakeBackend, NEWBIE, SAM, type FakeBackend } from '../test/fakeSupabase';
+import { ALEX, fakeBackend, NEWBIE, SAM, sessionFor, type FakeBackend } from '../test/fakeSupabase';
 
-function renderAuth(backend: FakeBackend | null) {
+function renderAuth(backend: FakeBackend | null, savedSession?: SavedSessionStore) {
   const client: SupabaseClient | null = backend?.client ?? null;
   return renderHook(() => useAuth(), {
-    wrapper: ({ children }: { children: ReactNode }) => <AuthProvider client={client}>{children}</AuthProvider>,
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <AuthProvider client={client} savedSession={savedSession}>
+        {children}
+      </AuthProvider>
+    ),
   });
+}
+
+/** A sign-in saved on the phone that Supabase can't renew (offline, token expired). */
+function savedOnPhone(session: Session | null) {
+  const store = { session };
+  return {
+    store,
+    saved: {
+      read: jest.fn(async () => store.session),
+      forget: jest.fn(async () => {
+        store.session = null;
+        return true;
+      }),
+    },
+  };
 }
 
 const silence = (level: 'warn' | 'error') => jest.spyOn(console, level).mockImplementation(() => undefined);
@@ -230,6 +249,66 @@ describe('AuthProvider', () => {
     });
     backend.auth.signOut.mockResolvedValueOnce({ error: { message: 'Failed to fetch' } });
     expect((await result.current.signOut()).ok).toBe(false);
+  });
+
+  it('stays signed in offline when the saved sign-in can’t be renewed yet', async () => {
+    silence('warn');
+    const backend = fakeBackend();
+    // Supabase says "nobody" (it couldn't renew the token), but kept it.
+    const { saved } = savedOnPhone(sessionFor(SAM));
+    const { result } = renderAuth(backend, saved);
+    await waitFor(() => expect(result.current.status).toBe('signed-in'));
+    expect(result.current.user).toMatchObject({ id: SAM.id, email: 'sam@example.com' });
+    // Back online, the renewed token arrives as usual.
+    act(() => backend.auth.setUser(SAM, 'TOKEN_REFRESHED'));
+    expect(result.current.user?.id).toBe(SAM.id);
+  });
+
+  it('shows the saved sign-in while Supabase is still checking it', async () => {
+    const backend = fakeBackend();
+    backend.auth.onAuthStateChange.mockImplementationOnce(() => ({
+      data: { subscription: { unsubscribe: () => true } },
+    }));
+    const { saved } = savedOnPhone(sessionFor(SAM));
+    const { result } = renderAuth(backend, saved);
+    await waitFor(() => expect(result.current.status).toBe('signed-in'));
+  });
+
+  it('reports signed out when nothing is saved, or the saved sign-in can’t be read', async () => {
+    const backend = fakeBackend();
+    const { result } = renderAuth(backend, {
+      read: jest.fn(async () => {
+        throw new Error('keychain locked');
+      }),
+      forget: jest.fn(async () => false),
+    });
+    await waitFor(() => expect(result.current.status).toBe('signed-out'));
+  });
+
+  it('signs out offline even when the token has expired', async () => {
+    const warn = silence('warn');
+    const backend = fakeBackend();
+    backend.auth.setUser(SAM);
+    const { saved, store } = savedOnPhone(sessionFor(SAM));
+    const { result } = renderAuth(backend, saved);
+    await waitFor(() => expect(result.current.termsAccepted).toBe(true));
+    const offline = new AuthRetryableFetchError('Failed to fetch', 0);
+    // Supabase can't read the session without renewing it, so it keeps it.
+    backend.auth.getSession.mockResolvedValue({ data: { session: null }, error: offline });
+    backend.auth.signOut.mockResolvedValueOnce({ error: offline });
+    // Forgetting it on the phone fails once: still signed in, and says why.
+    saved.forget.mockResolvedValueOnce(false);
+    expect(await result.current.signOut()).toEqual({
+      ok: false,
+      message: "You're offline or the server can't be reached. Try again when you have signal.",
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    backend.auth.signOut.mockResolvedValueOnce({ error: offline });
+    await act(async () => {
+      expect(await result.current.signOut()).toEqual({ ok: true });
+    });
+    expect(store.session).toBeNull();
+    expect(result.current).toMatchObject({ status: 'signed-out', user: null });
   });
 
   it('deletes the account on the server, then forgets it here', async () => {

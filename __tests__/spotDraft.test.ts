@@ -31,8 +31,29 @@ describe('coordinates', () => {
     expect(parseCoordinates('46,-121')).toEqual({ latitude: 46, longitude: -121 });
   });
 
+  it('reads coordinates the way map apps copy them, with degrees and compass letters', () => {
+    const point = { latitude: 46.653, longitude: -121.614 };
+    expect(parseCoordinates('46.653° N, 121.614° W')).toEqual(point);
+    expect(parseCoordinates('46.653°N 121.614°W')).toEqual(point);
+    expect(parseCoordinates('N46.653 W121.614')).toEqual(point);
+    expect(parseCoordinates('46.653n, 121.614w')).toEqual(point);
+    expect(parseCoordinates('46.653°, -121.614°')).toEqual(point);
+    expect(parseCoordinates('S 33.9, E 18.4')).toEqual({ latitude: -33.9, longitude: 18.4 });
+  });
+
   it('rejects anything else', () => {
-    for (const bad of ['', '46.653', 'N46 W121', '95, 10', '46.6, -190', '46.6; -121.6', '46.6, -121.6, 3']) {
+    for (const bad of [
+      '',
+      '46.653',
+      '95, 10',
+      '46.6, -190',
+      '46.6; -121.6',
+      '46.6, -121.6, 3',
+      // A letter on the wrong number, a letter and a minus, or two letters.
+      'W46 N121',
+      'N-46 W121',
+      'N46N W121',
+    ]) {
       expect(parseCoordinates(bad)).toBeNull();
     }
   });

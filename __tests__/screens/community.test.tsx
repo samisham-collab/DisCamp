@@ -234,7 +234,7 @@ describe('Still good', () => {
     expect(await screen.findByText('Nothing to report')).toBeTruthy();
   });
 
-  it('keeps going without the list when it cannot load', async () => {
+  it('keeps going without the list when it cannot load, and tries again', async () => {
     const backend = server();
     backend.intercept = (query) =>
       query.table === 'checkins_api'
@@ -243,6 +243,11 @@ describe('Still good', () => {
     await renderApp('/spot/alex-spot');
     expect(await screen.findByText('Were you here?')).toBeTruthy();
     await waitFor(() => expect(screen.queryByLabelText('Loading check-ins')).toBeNull());
+    expect(screen.getByText("Couldn't load what campers said.")).toBeTruthy();
+    backend.intercept = null;
+    fireEvent.press(screen.getByRole('button', { name: 'Try loading check-ins again' }));
+    await waitFor(() => expect(screen.queryByText("Couldn't load what campers said.")).toBeNull());
+    expect(screen.queryByLabelText('Loading check-ins')).toBeNull();
   });
 
   it('asks signed-out campers to sign in first, and comes back', async () => {
@@ -317,6 +322,8 @@ describe('Something changed', () => {
     expect(await screen.findByText("Some words aren't allowed on DisCamp.")).toBeTruthy();
     fireEvent.press(screen.getByText('Send'));
     expect(backend.checkins).toHaveLength(0);
+    // Let that refusal finish: Send takes one press at a time.
+    await act(async () => undefined);
 
     fireEvent.changeText(screen.getByLabelText('Details'), 'New gate at the cattle guard');
     fireEvent.press(screen.getByText('Send'));
@@ -333,8 +340,9 @@ describe('Something changed', () => {
     );
   });
 
-  it('shows why a change report was not sent, and cancels', async () => {
+  it('shows why a change report was not sent, and cancels after asking', async () => {
     const backend = server();
+    const alerts = spyOnAlerts();
     const app = await renderApp('/spot/alex-spot');
     fireEvent.press(await screen.findByText('Something changed'));
     await waitFor(() => expect(app.getPathname()).toBe('/checkin/alex-spot'));
@@ -342,14 +350,45 @@ describe('Something changed', () => {
     fireEvent.press(screen.getByText('Camping closed here now'));
     fireEvent.press(screen.getByText('Send'));
     expect(await screen.findByText(/account/i)).toBeTruthy();
+    // What was picked isn't thrown away without asking.
+    fireEvent.press(screen.getByText('Cancel'));
+    expect(alerts.lastTitle()).toBe('Discard this report?');
+    act(() => alerts.press('Keep editing'));
+    expect(app.getPathname()).toBe('/checkin/alex-spot');
+    fireEvent.press(screen.getByText('Cancel'));
+    act(() => alerts.press('Discard'));
+    await waitFor(() => expect(app.getPathname()).toBe('/spot/alex-spot'));
+  });
+
+  it('leaves without asking when nothing was picked', async () => {
+    server();
+    const alerts = spyOnAlerts();
+    const app = await renderApp('/spot/alex-spot');
+    fireEvent.press(await screen.findByText('Something changed'));
+    await waitFor(() => expect(app.getPathname()).toBe('/checkin/alex-spot'));
     fireEvent.press(screen.getByText('Cancel'));
     await waitFor(() => expect(app.getPathname()).toBe('/spot/alex-spot'));
+    expect(alerts.alert).not.toHaveBeenCalled();
   });
 
   it('says so when the spot is gone', async () => {
     server();
     await renderApp('/checkin/nope');
     expect(await screen.findByText('Spot not found')).toBeTruthy();
+  });
+
+  it('offers Try again when spots could not load', async () => {
+    const backend = server();
+    backend.intercept = (query) =>
+      query.table === 'spots_api'
+        ? Promise.resolve({ data: null, error: { message: 'Network request failed' } })
+        : undefined;
+    await renderApp('/checkin/alex-spot');
+    expect(await screen.findByText("Couldn't load this spot")).toBeTruthy();
+    expect(screen.getByText("You're offline or the server can't be reached.")).toBeTruthy();
+    backend.intercept = null;
+    fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Camping closed here now')).toBeTruthy();
   });
 
   it('asks for an account first', async () => {

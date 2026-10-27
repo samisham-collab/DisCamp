@@ -2,7 +2,7 @@
 // accessibility (roles, states, labels) so screens can't forget it.
 
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useEffect, useEffectEvent, type ComponentProps, type ReactNode } from 'react';
+import { useEffect, useEffectEvent, useRef, type ComponentProps, type ReactNode } from 'react';
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -33,8 +33,9 @@ export function SectionTitle({ children }: { children: ReactNode }) {
 }
 
 export function Row({ label, value, tone }: { label: string; value: string; tone?: 'warn' }) {
+  // Read as one item ("Clearance: 8 inches"), not two stops per row.
   return (
-    <View style={styles.row}>
+    <View style={styles.row} accessible accessibilityLabel={`${label}: ${value}`}>
       <Text style={styles.rowLabel}>{label}</Text>
       <Text style={[styles.rowValue, tone === 'warn' && styles.rowWarn]}>{value}</Text>
     </View>
@@ -77,6 +78,8 @@ export function Pills<T extends string>({ options, mode, isSelected, onPress, ac
             }}
             accessibilityRole={mode === 'single' ? 'radio' : 'checkbox'}
             accessibilityState={{ checked: on }}
+            // The question, so "Yes" isn't read on its own.
+            accessibilityHint={accessibilityLabel}
             style={({ pressed }) => [styles.pill, on && styles.pillOn, pressed && styles.pressed]}
           >
             <Text style={[styles.pillText, on && styles.pillTextOn]}>{o.label}</Text>
@@ -113,6 +116,7 @@ export function Segmented<T extends string>({
             accessibilityRole="radio"
             accessibilityState={{ checked: on }}
             accessibilityLabel={o.label}
+            accessibilityHint={accessibilityLabel}
             style={[styles.segment, on && styles.segmentOn]}
           >
             {o.icon && (
@@ -134,7 +138,13 @@ export function Segmented<T extends string>({
 
 const formatNumber = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
-/** − value + control. Screen readers treat it as one adjustable value. */
+/** How fast a held − or + repeats. */
+const REPEAT_MS = 110;
+
+/**
+ * − value + control. Screen readers treat it as one adjustable value. Hold −
+ * or + to keep going (trailer 25 → 40 ft without 15 taps).
+ */
 export function Stepper({
   value,
   onChange,
@@ -155,12 +165,32 @@ export function Stepper({
   unitSpoken: string;
   label: string;
 }) {
+  // The newest value, for a held button (its timer outlives a render).
+  const latest = useRef(value);
+  useEffect(() => {
+    latest.current = value;
+  }, [value]);
+  const repeat = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopRepeat = () => {
+    if (repeat.current) clearInterval(repeat.current);
+    repeat.current = null;
+  };
+  useEffect(() => stopRepeat, []);
   const set = (v: number) => {
     const next = Math.min(max, Math.max(min, Math.round(v * 100) / 100));
-    if (next !== value) {
+    if (next !== latest.current) {
+      latest.current = next;
       selectionFeedback();
       onChange(next);
     }
+  };
+  const hold = (direction: 1 | -1) => {
+    stopRepeat();
+    repeat.current = setInterval(() => {
+      const before = latest.current;
+      set(before + direction * step);
+      if (latest.current === before) stopRepeat();
+    }, REPEAT_MS);
   };
   const onAction = (e: AccessibilityActionEvent) => {
     if (e.nativeEvent.actionName === 'increment') set(value + step);
@@ -178,8 +208,11 @@ export function Stepper({
     >
       <Pressable
         onPress={() => set(value - step)}
+        onLongPress={() => hold(-1)}
+        onPressOut={stopRepeat}
         disabled={value <= min}
         style={({ pressed }) => [styles.stepBtn, value <= min && styles.disabled, pressed && styles.pressed]}
+        accessibilityRole="button"
         accessibilityLabel={`Decrease ${label}`}
         testID={`${label}-decrease`}
       >
@@ -196,8 +229,11 @@ export function Stepper({
       </Text>
       <Pressable
         onPress={() => set(value + step)}
+        onLongPress={() => hold(1)}
+        onPressOut={stopRepeat}
         disabled={value >= max}
         style={({ pressed }) => [styles.stepBtn, value >= max && styles.disabled, pressed && styles.pressed]}
+        accessibilityRole="button"
         accessibilityLabel={`Increase ${label}`}
         testID={`${label}-increase`}
       >
@@ -309,7 +345,7 @@ export function ActionButton({ icon, label, onPress }: { icon: IconName; label: 
           color={colors.pine}
         />
       </View>
-      <Text style={styles.actionText} numberOfLines={1}>
+      <Text style={styles.actionText} numberOfLines={2}>
         {label}
       </Text>
     </Pressable>
@@ -324,6 +360,7 @@ export function Banner({
   onAction,
   actionBusy = false,
   announceKey,
+  silent = false,
 }: {
   tone: 'info' | 'warning' | 'error';
   message: string;
@@ -336,15 +373,18 @@ export function Banner({
    * Set to read the message aloud to screen-reader users when the banner
    * appears and whenever this key changes. Use what the message is about
    * (say, the error), not the text itself, which may include a changing
-   * "5 min ago".
+   * "5 min ago". Errors are read aloud anyway (keyed by their message).
    */
   announceKey?: string;
+  /** Never read aloud by itself: the screen announces it another way. */
+  silent?: boolean;
 }) {
   const palette = BANNER_TONES[tone];
+  const key = silent ? undefined : (announceKey ?? (tone === 'error' ? message : undefined));
   const announce = useEffectEvent(() => AccessibilityInfo.announceForAccessibility(message));
   useEffect(() => {
-    if (announceKey !== undefined) announce();
-  }, [announceKey]);
+    if (key !== undefined) announce();
+  }, [key]);
   return (
     <View style={[styles.banner, { backgroundColor: palette.bg }]}>
       <Ionicons
@@ -362,6 +402,7 @@ export function Banner({
           onPress={onAction}
           disabled={actionBusy}
           accessibilityRole="button"
+          accessibilityLabel={actionLabel}
           accessibilityState={{ busy: actionBusy }}
           hitSlop={8}
           style={({ pressed }) => [styles.bannerAction, pressed && styles.pressed]}
@@ -462,17 +503,22 @@ const styles = StyleSheet.create({
     borderColor: colors.lineStrong,
     overflow: 'hidden',
     alignSelf: 'flex-start',
+    maxWidth: '100%',
   },
   segment: {
     minHeight: TOUCH_TARGET,
     paddingHorizontal: 16,
+    paddingVertical: 6,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
+    flexShrink: 1,
     backgroundColor: colors.card,
   },
   segmentOn: { backgroundColor: colors.pine },
-  segmentText: { fontSize: 14, fontWeight: '600', color: colors.ink },
+  // Wraps at large text sizes instead of being cut off.
+  segmentText: { fontSize: 14, fontWeight: '600', color: colors.ink, flexShrink: 1, textAlign: 'center' },
   segmentTextOn: { color: '#FFFFFF' },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   stepBtn: {
@@ -518,7 +564,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionText: { fontSize: 13, fontWeight: '600', color: colors.ink },
+  actionText: { fontSize: 13, fontWeight: '600', color: colors.ink, textAlign: 'center' },
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -540,6 +586,7 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 17, fontWeight: '700', color: colors.ink, textAlign: 'center' },
   emptyText: { fontSize: 15, color: colors.body, textAlign: 'center' },
-  disabled: { opacity: 0.4 },
+  // Still readable for low vision, and clearly not available.
+  disabled: { opacity: 0.5 },
   pressed: { opacity: 0.75 },
 });

@@ -133,8 +133,22 @@ describe('Reporting', () => {
 
   it('handles a link to something it can’t report', async () => {
     server();
-    await renderApp('/report/other/x');
+    const app = await renderApp('/report/other/x');
     expect(await screen.findByText('Nothing to report')).toBeTruthy();
+    fireEvent.press(screen.getByText('Back'));
+    await waitFor(() => expect(app.getPathname()).toBe('/'));
+  });
+
+  it('asks before throwing away a report with words in it', async () => {
+    server();
+    const alerts = spyOnAlerts();
+    const app = await renderApp('/spot/alex-spot');
+    act(() => router.push('/report/spot/alex-spot'));
+    fireEvent.changeText(await screen.findByLabelText('Anything else we should know?'), 'Gate is locked and posted');
+    act(() => router.back());
+    expect(alerts.lastTitle()).toBe('Discard this report?');
+    act(() => alerts.press('Discard'));
+    await waitFor(() => expect(app.getPathname()).toBe('/spot/alex-spot'));
   });
 
   it('offers reporting on others’ spots only, and blocking only for campers', async () => {

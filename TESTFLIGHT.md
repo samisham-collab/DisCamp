@@ -75,10 +75,11 @@ Run it on the TestFlight build, top to bottom, the first time. Note anything off
 - [ ] Pins show across the US. Tap one: a summary card appears and the pin stays in view. Tap the card: the spot's page opens.
 - [ ] On a spot's page: **Directions** opens Apple Maps, **Share** opens the share sheet, **Copy GPS** copies.
 - [ ] **Route** on a spot's page: the route appears in blue, with any unpaved stretch in orange, plus miles and drive time. Change your rig to the Sedan preset and open it again: the note says it stays on paved roads. **Open in Apple Maps** opens the drive.
-- [ ] **Drive mode** (best with someone else driving): on a route preview, tap **Start**. The header goes, the screen stays on, and DisCamp says the first step. Drive toward the turn: half a mile out it says "In half a mile, turn …", and again just before the turn. Pan the map: **Re-center** appears and brings the map back to you. Tap the speaker to mute, then turn the voice back on. Take a wrong turn on purpose: "Off route" shows and is said once; **Reroute** works out a new route from there. Try it with the Ring/Silent switch on silent and with music playing, and note whether you hear the voice. **End** (or **Done** on arrival) goes back to the route preview.
+- [ ] **Drive mode** (best with someone else driving): on a route preview, tap **Start**. The header goes, the screen stays on, and DisCamp says the first step. Drive toward the turn: half a mile out it says "In half a mile, turn …", and again just before the turn. Pan the map: **Re-center** appears and brings the map back to you. Tap the speaker to mute, then turn the voice back on. Take a wrong turn on purpose: "Off route" shows and is said once; **Reroute** works out a new route from there. Try it with the Ring/Silent switch on silent and with music playing, and note whether you hear the voice. **End** (or **Done** on arrival) goes back to the route preview. Swipe back during Drive mode: it asks "End Drive mode?" first. On the preview, **Show turn by turn** lists every step.
 - [ ] **List**: sorted best fit first. Tap **Sort by distance**: iPhone asks for location "while using the app" only. Allow: the list is nearest first, and on the map **Show my location** centres on you with the nearest spots in view.
 - [ ] **My Rig**: change the preset; the fit colors change. Turn on **Fits my rig**. Close DisCamp fully (swipe it away) and reopen: the rig, the filter and map/list are remembered.
 - [ ] Airplane mode on, close and reopen: the last spots show with an offline banner. Airplane mode off, tap **Retry**.
+- [ ] Signed in, Airplane mode on, and DisCamp closed for over an hour: reopen. Account still shows you signed in, and **Sign out** works. Turn Airplane mode off: sign in again and post as usual.
 - [ ] **Account**: the support email, privacy policy, terms and support page open; the tip jar shows.
 
 ### Signing in
@@ -122,7 +123,9 @@ Run it on the TestFlight build, top to bottom, the first time. Note anything off
 
 ### Accessibility and looks
 
-- [ ] VoiceOver on: move through the map, list, a spot's page and Add spot. Every button says what it does; no icon is read on its own.
+- [ ] VoiceOver on: move through the map, list, a spot's page and Add spot. Every button says what it does; no icon is read on its own. Explore offers the list view. Tap a pin: VoiceOver moves to the spot card.
+- [ ] **Reduce Motion** on (**Settings > Accessibility > Motion**): **Show my location** and picking a spot jump the map instead of gliding; Drive mode's map stays flat.
+- [ ] Take a cleanup photo, then swipe the sheet down: it asks "Discard this cleanup?" first. Same on a check-in after picking what changed.
 - [ ] Largest text size (**Settings > Accessibility > Display & Text Size > Larger Text**): nothing is cut off or overlapping.
 - [ ] Dark mode: everything readable.
 

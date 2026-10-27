@@ -5,9 +5,10 @@ import { Stack, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { HeaderClose } from '@/components/HeaderClose';
 import { PushBridge } from '@/components/PushBridge';
 import { Button } from '@/components/ui';
 import { CleanupsProvider } from '@/data/cleanupsStore';
@@ -58,6 +59,15 @@ const SCREEN_OPTIONS = {
   contentStyle: { backgroundColor: colors.bg },
 };
 
+/**
+ * Screens that slide up. On iPhone they get a "Close" button (Android has its
+ * back arrow and back button).
+ */
+const MODAL = {
+  presentation: 'modal' as const,
+  ...(Platform.OS === 'ios' ? { headerLeft: () => <HeaderClose /> } : {}),
+};
+
 function AppStack() {
   const { ready: rigReady } = useRig();
   const { ready: prefsReady } = usePrefs();
@@ -78,13 +88,13 @@ function AppStack() {
         <Stack.Screen name="spot/new" options={{ title: 'Add a spot', headerBackTitle: 'Back' }} />
         <Stack.Screen name="spot/edit/[id]" options={{ title: 'Edit spot', headerBackTitle: 'Back' }} />
         <Stack.Screen name="route/[id]" options={{ title: 'Route preview', headerBackTitle: 'Back' }} />
-        <Stack.Screen name="sign-in" options={{ title: 'Sign in', presentation: 'modal' }} />
-        <Stack.Screen name="report/[kind]/[id]" options={{ title: 'Report', presentation: 'modal' }} />
-        <Stack.Screen name="checkin/[id]" options={{ title: 'Report a change', presentation: 'modal' }} />
-        <Stack.Screen name="rules" options={{ title: 'Community rules', presentation: 'modal' }} />
+        <Stack.Screen name="sign-in" options={{ title: 'Sign in', ...MODAL }} />
+        <Stack.Screen name="report/[kind]/[id]" options={{ title: 'Report', ...MODAL }} />
+        <Stack.Screen name="checkin/[id]" options={{ title: 'Report a change', ...MODAL }} />
+        <Stack.Screen name="rules" options={{ title: 'Community rules', ...MODAL }} />
         <Stack.Screen name="cleanup/[id]" options={{ title: 'Cleanup', headerBackTitle: 'Back' }} />
-        <Stack.Screen name="cleanup/new" options={{ title: 'Post a cleanup', presentation: 'modal' }} />
-        <Stack.Screen name="cleanup/send/[id]" options={{ title: 'Send your cleanup', presentation: 'modal' }} />
+        <Stack.Screen name="cleanup/new" options={{ title: 'Post a cleanup', ...MODAL }} />
+        <Stack.Screen name="cleanup/send/[id]" options={{ title: 'Send your cleanup', ...MODAL }} />
         <Stack.Screen name="review" options={{ title: 'Review cleanups', headerBackTitle: 'Back' }} />
         <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" options={{ title: 'Not found' }} />

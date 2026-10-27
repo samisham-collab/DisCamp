@@ -121,6 +121,8 @@ export function CleanupPhoto({ url, label, height = 220 }: { url: string; label:
             source={{ uri: url }}
             style={styles.viewerImage}
             contentFit="contain"
+            accessible
+            accessibilityRole="image"
             accessibilityLabel={label}
             testID="photo-full-size"
           />

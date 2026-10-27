@@ -78,6 +78,12 @@ describe('after sign-in', () => {
     expect(safeNext(['/account', '/x'])).toBe('/account');
     expect(safeNext('/spot/edit/camper-spot-1')).toBe('/spot/edit/camper-spot-1');
     expect(safeNext('/spot/smoky-gardens')).toBe('/spot/smoky-gardens');
+    // Back to a cleanup form after signing in again, photos and all.
+    expect(safeNext('/cleanup/new')).toBe('/cleanup/new');
+    expect(safeNext('/cleanup/send/00000000-0000-4000-8000-0000000c1ea0')).toBe(
+      '/cleanup/send/00000000-0000-4000-8000-0000000c1ea0',
+    );
+    expect(safeNext('/cleanup/send/../account')).toBeNull();
     const task = '00000000-0000-4000-8000-0000000c1e01';
     for (const next of ['/cleanups', `/cleanup/${task}`, `/report/task/${task}`]) expect(safeNext(next)).toBe(next);
     expect(safeNext('/cleanup/not-an-id')).toBeNull();

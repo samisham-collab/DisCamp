@@ -12,6 +12,8 @@ jest.mock('@/lib/kvStore', () => jest.requireActual('@/lib/__mocks__/kvStore'));
 jest.mock('@/lib/supabase', () => ({
   isSupabaseConfigured: jest.fn(() => false),
   getSupabase: jest.fn(() => null),
+  readSavedSession: jest.fn(async () => null),
+  forgetSavedSession: jest.fn(async () => false),
 }));
 
 jest.mock('react-native-maps', () => jest.requireActual('./test/mocks/reactNativeMaps'));

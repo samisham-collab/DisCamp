@@ -159,8 +159,10 @@ describe('Explore screen', () => {
   it('sorts the list by distance once the camper is found', async () => {
     await renderApp('/', { prefs: { view: 'list' } });
     fireEvent.press(screen.getByRole('button', { name: 'Sort by distance' }));
-    expect(await screen.findByText(/best fit and nearest first/)).toBeTruthy();
+    expect(await screen.findByText(/nearest first/)).toBeTruthy();
     expect(screen.queryByText('Sort by distance')).toBeNull();
+    // Moved on since: distances can be worked out again from here.
+    expect(screen.getByRole('button', { name: 'Update my location' })).toBeTruthy();
     expect(screen.getByText(/^11 mi S · /)).toBeTruthy();
   });
 
@@ -200,7 +202,7 @@ describe('Explore screen', () => {
     expect(line('Explore').backgroundColor).toBe('transparent');
     // The tab's own label (the screen's title says "Cleanups" too).
     const labels = screen.getAllByText('Cleanups').map((t) => StyleSheet.flatten(t.props.style));
-    expect(labels).toContainEqual(expect.objectContaining({ color: colors.tabOn, fontWeight: '800', fontSize: 10 }));
+    expect(labels).toContainEqual(expect.objectContaining({ color: colors.tabOn, fontWeight: '800', fontSize: 11 }));
   });
 
   it('opens My Rig from the rig chip', async () => {

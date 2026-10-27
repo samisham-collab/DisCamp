@@ -26,8 +26,10 @@ import { useSpots } from '../data/spots';
 import { useAuth } from '../lib/auth';
 import { formatDay, timeAgo } from '../lib/time';
 import { usePostingGate } from '../lib/usePostingGate';
+import { PausedNotice } from './PausedNotice';
+import { useOnce } from '../lib/useOnce';
 import type { Spot } from '../types';
-import { colors } from '../theme';
+import { colors, TOUCH_TARGET } from '../theme';
 import { Button, Card, SectionTitle } from './ui';
 
 /** "Confirmed 3 days ago", or that nobody has yet. */
@@ -97,7 +99,9 @@ export function SpotCheckins({ spot }: { spot: Spot }) {
   const { saveLocal } = useSpots();
   const canPost = usePostingGate();
   const [checkins, setCheckins] = useState<Checkin[] | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [sending, setSending] = useState(false);
+  const once = useOnce();
   const { mine, set: setMine, reload: reloadMine } = useMyConfirmation(spot);
 
   const load = useCallback(() => {
@@ -106,10 +110,14 @@ export function SpotCheckins({ spot }: { spot: Spot }) {
     // Shown when it loads; without signal, the confirmed date above still shows.
     listCheckins(client, spot.id).then(
       (list) => {
-        if (active) setCheckins(list);
+        if (!active) return;
+        setCheckins(list);
+        setLoadFailed(false);
       },
       () => {
-        if (active) setCheckins([]);
+        if (!active) return;
+        setCheckins([]);
+        setLoadFailed(true);
       },
     );
     return () => {
@@ -158,6 +166,7 @@ export function SpotCheckins({ spot }: { spot: Spot }) {
           ? 'You added this spot, so other campers confirm it. You can still tell them what changed.'
           : 'Tell other campers how it is now.'}
       </Text>
+      <PausedNotice what="posting" />
       <View style={styles.buttons}>
         {ownSpot ? null : mine && again && !mine.withdrawn ? (
           <View style={styles.done}>
@@ -182,7 +191,7 @@ export function SpotCheckins({ spot }: { spot: Spot }) {
             label="Still good"
             icon="checkmark-circle-outline"
             loading={sending}
-            onPress={() => void stillGood()}
+            onPress={() => once(stillGood)}
           />
         )}
         <Button
@@ -196,6 +205,23 @@ export function SpotCheckins({ spot }: { spot: Spot }) {
         />
       </View>
       {checkins == null ? <ActivityIndicator color={colors.pine} accessibilityLabel="Loading check-ins" /> : null}
+      {loadFailed ? (
+        <View style={styles.failed}>
+          <Text style={styles.meta}>Couldn&apos;t load what campers said.</Text>
+          <Pressable
+            onPress={() => {
+              setCheckins(null);
+              load();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Try loading check-ins again"
+            hitSlop={8}
+            style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
+          >
+            <Text style={styles.retryText}>Try again</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {recent.length > 0 ? (
         <View style={styles.list} accessibilityLabel="Recent check-ins">
           {recent.map((c) => (
@@ -255,6 +281,9 @@ export function SpotCheckins({ spot }: { spot: Spot }) {
 
 const styles = StyleSheet.create({
   body: { fontSize: 15, color: colors.body, lineHeight: 21 },
+  failed: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 12 },
+  retry: { minHeight: TOUCH_TARGET, justifyContent: 'center' },
+  retryText: { fontSize: 15, fontWeight: '600', color: colors.pine, textDecorationLine: 'underline' },
   buttons: { gap: 8 },
   done: {
     flexDirection: 'row',

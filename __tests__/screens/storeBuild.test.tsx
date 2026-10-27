@@ -7,6 +7,7 @@ import Constants from 'expo-constants';
 import { act, fireEvent, screen, waitFor } from 'expo-router/testing-library';
 import { AppState, Linking } from 'react-native';
 
+import { TIP_PATIENCE_MS } from '@/data/tipsStore';
 import { inExpoGo } from '@/lib/expoGo';
 import { resetPushForTests } from '@/lib/push';
 
@@ -211,6 +212,29 @@ describe('Tip jar', () => {
     store.state.next = 'refused';
     await tip();
     expect(await screen.findByText("The store couldn't start the tip. Please try again.")).toBeTruthy();
+
+    // The store doesn't say how it went: no endless spinner.
+    store.state.next = 'unknown';
+    await tip();
+    expect(await screen.findByText(/The store hasn't confirmed your tip yet/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Coffee at camp · $2.99' }).props.accessibilityState).toMatchObject({
+      busy: false,
+    });
+  });
+
+  it('gives the tip buttons back if the store never answers', async () => {
+    server();
+    await renderApp('/account');
+    store.state.next = 'silent';
+    await act(async () => fireEvent.press(await screen.findByText('Coffee at camp · $2.99')));
+    const coffee = () => screen.getByRole('button', { name: 'Coffee at camp · $2.99' });
+    expect(coffee().props.accessibilityState).toMatchObject({ busy: true });
+    await act(async () => jest.advanceTimersByTime(TIP_PATIENCE_MS));
+    expect(coffee().props.accessibilityState).toMatchObject({ busy: false });
+    expect(await screen.findByText(/The store hasn't confirmed your tip yet/)).toBeTruthy();
+    store.state.next = 'purchased';
+    await act(async () => fireEvent.press(screen.getByText('Coffee at camp · $2.99')));
+    expect(await screen.findByText(/Thank you!/)).toBeTruthy();
   });
 
   it('stays calm when the store can’t finish a tip', async () => {

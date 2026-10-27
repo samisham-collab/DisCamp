@@ -22,7 +22,8 @@ import { SpotPhotos } from '@/components/SpotPhotos';
 import { CostMeter } from '@/components/CostMeter';
 import { FitBanner } from '@/components/Fit';
 import { siteTypeLabel } from '@/components/SpotSummary';
-import { ActionButton, Banner, Button, Card, Chip, EmptyState, Row, SectionTitle } from '@/components/ui';
+import { SpotMissing } from '@/components/SpotMissing';
+import { ActionButton, Banner, Button, Card, Chip, Row, SectionTitle } from '@/components/ui';
 import { ROUTING_URL } from '@/config';
 import { useSpot, useSpots } from '@/data/spots';
 import { CHANGE_LABELS } from '@/data/community';
@@ -120,23 +121,10 @@ export default function SpotScreen() {
 
   if (!spot) {
     return (
-      <View style={styles.center}>
-        <Stack.Screen options={{ title: loading ? 'Loading' : 'Not found' }} />
-        {loading ? (
-          <>
-            <ActivityIndicator size="large" color={colors.pine} />
-            <Text style={styles.body}>Loading spot…</Text>
-          </>
-        ) : (
-          <EmptyState
-            icon="compass-outline"
-            title="Spot not found"
-            message="It may have been removed, or the link is wrong."
-            actionLabel="Back to the map"
-            onAction={() => (router.canGoBack() ? router.back() : router.replace('/'))}
-          />
-        )}
-      </View>
+      <>
+        <Stack.Screen options={{ title: loading ? 'Loading' : 'Spot details' }} />
+        <SpotMissing loading={loading} />
+      </>
     );
   }
 
@@ -253,6 +241,7 @@ export default function SpotScreen() {
             onPress={onDelete}
             disabled={deleting}
             accessibilityRole="button"
+            accessibilityLabel="Delete spot"
             accessibilityState={{ busy: deleting, disabled: deleting }}
             style={styles.deleteButton}
           >
@@ -353,7 +342,9 @@ export default function SpotScreen() {
 
       {spot.sources.length > 0 && (
         <View style={styles.sources}>
-          <Text style={styles.sourcesTitle}>Sources</Text>
+          <Text style={styles.sourcesTitle} accessibilityRole="header">
+            Sources
+          </Text>
           {spot.sources.map((s, i) => (
             <Pressable
               key={`${i}-${s.url}`}
@@ -402,10 +393,14 @@ export default function SpotScreen() {
               </Pressable>
               <Pressable
                 onPress={() =>
-                  block({ id: spot.createdBy ?? '', name: spot.addedBy ?? null }, `/spot/${spot.id}`, leave)
+                  // Their spot is gone for this camper now: back, unless they already left.
+                  block({ id: spot.createdBy ?? '', name: spot.addedBy ?? null }, `/spot/${spot.id}`, () => {
+                    if (stillHere()) leave();
+                  })
                 }
                 disabled={blocking}
                 accessibilityRole="button"
+                accessibilityLabel={`Block ${camperName}`}
                 accessibilityHint="Hides every spot this camper adds, for you only"
                 accessibilityState={{ busy: blocking, disabled: blocking }}
                 style={({ pressed }) => [styles.textButton, pressed && styles.pressed]}
@@ -441,7 +436,6 @@ const styles = StyleSheet.create({
   deleteButton: { minHeight: TOUCH_TARGET, alignItems: 'center', justifyContent: 'center' },
   deleteText: { fontSize: 15, fontWeight: '700', color: colors.red, textDecorationLine: 'underline' },
   content: { padding: 16, gap: 14, paddingBottom: 40 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   titleBlock: { gap: 4 },
   name: { fontSize: 30, fontWeight: '800', color: colors.ink },
   meta: { fontSize: 14, color: colors.muted },

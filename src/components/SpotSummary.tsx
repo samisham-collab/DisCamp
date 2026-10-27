@@ -1,11 +1,13 @@
 // The card that pops up when a pin is tapped, and the row used in list view.
 
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { AccessibilityInfo, Pressable, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 
 import { CHANGE_LABELS } from '../data/community';
 import { formatFee } from '../lib/cost';
 import { COMPASS_WORDS, formatDistance, formatDistanceSpoken } from '../lib/geo';
+import { openDirections } from '../lib/links';
 import type { SpotRow } from '../lib/spotRows';
 import { timeAgo } from '../lib/time';
 import { colors, radius, shadow, TOUCH_TARGET } from '../theme';
@@ -119,52 +121,85 @@ function CheckinFlag({ spot }: { spot: Spot }) {
   );
 }
 
+/** Wait for the card to be on screen before moving screen-reader focus to it. */
+const FOCUS_DELAY_MS = 300;
+
 export function SpotSummaryCard({
   row,
   onOpen,
   onClose,
   onLayout,
+  maxHeight,
 }: {
   row: SpotRow;
   onOpen: () => void;
   onClose: () => void;
   onLayout?: (e: LayoutChangeEvent) => void;
+  /** The card scrolls past this (large text on a small phone). */
+  maxHeight?: number;
 }) {
+  // A pin was tapped: VoiceOver and TalkBack move to the card, so a camper
+  // hears which spot it is without hunting for it.
+  const title = useRef<Text>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (title.current) AccessibilityInfo.sendAccessibilityEvent?.(title.current, 'focus');
+    }, FOCUS_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [row.spot.id]);
+
   return (
-    <View style={styles.sheet} onLayout={onLayout} testID="spot-summary">
-      <View style={styles.sheetHeader}>
-        <View style={styles.sheetTitleBlock}>
-          <Text style={styles.sheetTitle} accessibilityRole="header" numberOfLines={2}>
-            {row.spot.name}
-          </Text>
-          <Text style={styles.meta} numberOfLines={2}>
-            {metaLine(row)}
-          </Text>
+    <View
+      style={[styles.sheet, maxHeight != null && maxHeight > 0 ? { maxHeight } : null]}
+      onLayout={onLayout}
+      testID="spot-summary"
+    >
+      <ScrollView contentContainerStyle={styles.sheetBody} bounces={false} style={styles.sheetScroll}>
+        <View style={styles.sheetHeader}>
+          <View style={styles.sheetTitleBlock}>
+            <Text ref={title} style={styles.sheetTitle} accessibilityRole="header">
+              {row.spot.name}
+            </Text>
+            <Text style={styles.meta}>{metaLine(row)}</Text>
+          </View>
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            hitSlop={8}
+            style={styles.close}
+          >
+            <Ionicons
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+              name="close"
+              size={22}
+              color={colors.muted}
+            />
+          </Pressable>
         </View>
-        <Pressable
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-          hitSlop={8}
-          style={styles.close}
-        >
-          <Ionicons
-            accessibilityElementsHidden
-            importantForAccessibility="no"
-            name="close"
-            size={22}
-            color={colors.muted}
-          />
-        </Pressable>
-      </View>
-      <FitBadge fit={row.fit} />
-      <CheckinFlag spot={row.spot} />
-      <WetRoadFlag spot={row.spot} />
-      <View style={styles.costBlock}>
-        <Text style={styles.costLabel}>Cost for your rig: {formatFee(row.cost.feeUsd)}</Text>
-        <CostMeter level={row.cost.level} size="sm" />
-      </View>
-      <Button label="View spot" icon="arrow-forward" onPress={onOpen} />
+        <FitBadge fit={row.fit} />
+        <CheckinFlag spot={row.spot} />
+        <WetRoadFlag spot={row.spot} />
+        <View style={styles.costBlock}>
+          <Text style={styles.costLabel}>Cost for your rig: {formatFee(row.cost.feeUsd)}</Text>
+          <CostMeter level={row.cost.level} size="sm" />
+        </View>
+        <View style={styles.cardActions}>
+          <View style={styles.cardAction}>
+            <Button label="View spot" icon="arrow-forward" onPress={onOpen} />
+          </View>
+          <View style={styles.cardAction}>
+            <Button
+              label="Directions"
+              icon="navigate-outline"
+              kind="secondary"
+              accessibilityHint="Opens the drive in your maps app"
+              onPress={() => void openDirections(row.spot)}
+            />
+          </View>
+        </View>
+      </ScrollView>
     </View>
   );
 }
@@ -208,12 +243,14 @@ const styles = StyleSheet.create({
     left: 12,
     right: 12,
     bottom: 12,
-    padding: 16,
-    gap: 10,
     borderRadius: radius.lg,
     backgroundColor: colors.card,
     ...shadow,
   },
+  sheetScroll: { flexGrow: 0 },
+  sheetBody: { padding: 16, gap: 10 },
+  cardActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  cardAction: { flexGrow: 1, flexBasis: 140 },
   sheetHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   sheetTitleBlock: { flex: 1, gap: 2 },
   sheetTitle: { fontSize: 22, fontWeight: '800', color: colors.ink },

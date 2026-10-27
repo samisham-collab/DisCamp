@@ -10,6 +10,7 @@ import { AccessibilityInfo, ActivityIndicator, ScrollView, StyleSheet, Text, Vie
 
 import { LEGAL_URLS, MINIMUM_AGE } from '../config';
 import { useAuth } from '../lib/auth';
+import { useOnce } from '../lib/useOnce';
 import { colors } from '../theme';
 import { LinkRow } from './HelpCard';
 import { Banner, Button, Card } from './ui';
@@ -27,6 +28,7 @@ export const COMMUNITY_RULES: readonly string[] = [
 export function TermsGate() {
   const { termsAccepted, acceptTerms } = useAuth();
   const [saving, setSaving] = useState(false);
+  const once = useOnce();
   const [error, setError] = useState<string | null>(null);
 
   if (termsAccepted === true) return null;
@@ -78,7 +80,7 @@ export function TermsGate() {
 
       {error ? <Banner tone="error" message={error} announceKey={error} /> : null}
 
-      <Button label="I agree" icon="checkmark" loading={saving} onPress={() => void agree()} />
+      <Button label="I agree" icon="checkmark" loading={saving} onPress={() => once(agree)} />
       <Button
         label="Not now"
         kind="secondary"

@@ -9,6 +9,7 @@ import MapView, { type Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DEFAULT_REGION } from '../config';
+import { useReducedMotion } from '../lib/accessibility';
 import { formatCoordinates } from '../lib/geo';
 import { useLocation } from '../lib/location';
 import type { Coordinates } from '../types';
@@ -31,8 +32,14 @@ function startRegion(start: Coordinates | null): Region {
 }
 
 export function LocationPicker({ visible, start, onCancel, onPick }: LocationPickerProps) {
+  const reducedMotion = useReducedMotion();
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onCancel}>
+    <Modal
+      visible={visible}
+      animationType={reducedMotion ? 'fade' : 'slide'}
+      presentationStyle="fullScreen"
+      onRequestClose={onCancel}
+    >
       {/* Mounted fresh each time it opens, so it starts from the latest pin. */}
       {visible ? <PickerBody start={start} onCancel={onCancel} onPick={onPick} /> : null}
     </Modal>
@@ -48,6 +55,7 @@ function PickerBody({ start, onCancel, onPick }: Omit<LocationPickerProps, 'visi
   const [satellite, setSatellite] = useState(true);
   const mapRef = useRef<MapView>(null);
   const { locate, locating } = useLocation();
+  const reducedMotion = useReducedMotion();
 
   const goToMe = async () => {
     const found = await locate();
@@ -59,7 +67,7 @@ function PickerBody({ start, onCancel, onPick }: Omit<LocationPickerProps, 'visi
         latitudeDelta: AROUND_ME_DELTA,
         longitudeDelta: AROUND_ME_DELTA,
       },
-      400,
+      reducedMotion ? 0 : 400,
     );
   };
 

@@ -6,6 +6,7 @@ import { memo, useCallback, useEffect, useImperativeHandle, useRef, useState, ty
 import { StyleSheet } from 'react-native';
 import MapView, { Marker, type MapPressEvent, type Region as MapRegion } from 'react-native-maps';
 
+import { useReducedMotion } from '../lib/accessibility';
 import { MIN_DELTA, nearestCoordinates, regionForCoordinates, type Region } from '../lib/geo';
 import type { SpotRow } from '../lib/spotRows';
 import { colors } from '../theme';
@@ -91,6 +92,9 @@ export function SpotMap({
   onOpenCleanup,
 }: SpotMapProps) {
   const mapRef = useRef<MapView>(null);
+  const reducedMotion = useReducedMotion();
+  // With Reduce Motion on, the map jumps instead of gliding.
+  const glideMs = reducedMotion ? 0 : 400;
   const lastMarkerTap = useRef(0);
   const region = useRef<Region | null>(null);
 
@@ -104,16 +108,16 @@ export function SpotMap({
         // would zoom all the way in, so show the area around them instead.
         const around = regionForCoordinates(coords, initialRegion);
         if (coords.length === 1 || (around.latitudeDelta <= MIN_DELTA && around.longitudeDelta <= MIN_DELTA)) {
-          mapRef.current?.animateToRegion(around, 400);
+          mapRef.current?.animateToRegion(around, glideMs);
           return;
         }
         mapRef.current?.fitToCoordinates(coords, {
           edgePadding: { top: 80, right: 72, bottom: bottomInset + 72, left: 72 },
-          animated: true,
+          animated: !reducedMotion,
         });
       },
       centerOn: (at) => {
-        mapRef.current?.animateToRegion({ ...at, latitudeDelta: CENTER_DELTA, longitudeDelta: CENTER_DELTA }, 400);
+        mapRef.current?.animateToRegion({ ...at, latitudeDelta: CENTER_DELTA, longitudeDelta: CENTER_DELTA }, glideMs);
       },
       showAround: (at) => {
         const here = { latitude: at.latitude, longitude: at.longitude };
@@ -125,17 +129,20 @@ export function SpotMap({
         const around = regionForCoordinates([here, ...near], initialRegion);
         // Spots close by: the usual view around the camper already shows them.
         if (near.length === 0 || (around.latitudeDelta <= CENTER_DELTA && around.longitudeDelta <= CENTER_DELTA)) {
-          mapRef.current?.animateToRegion({ ...here, latitudeDelta: CENTER_DELTA, longitudeDelta: CENTER_DELTA }, 400);
+          mapRef.current?.animateToRegion(
+            { ...here, latitudeDelta: CENTER_DELTA, longitudeDelta: CENTER_DELTA },
+            glideMs,
+          );
           return;
         }
         mapRef.current?.fitToCoordinates([here, ...near], {
           edgePadding: { top: 80, right: 72, bottom: bottomInset + 72, left: 72 },
-          animated: true,
+          animated: !reducedMotion,
         });
       },
       currentRegion: () => region.current,
     }),
-    [rows, initialRegion, bottomInset],
+    [rows, initialRegion, bottomInset, glideMs, reducedMotion],
   );
 
   // Once the summary card is up (bottomInset > 0), glide the selected pin to
@@ -148,11 +155,11 @@ export function SpotMap({
     const timer = setTimeout(() => {
       mapRef.current?.animateCamera(
         { center: { latitude: selectedLatitude, longitude: selectedLongitude } },
-        { duration: CAMERA_MS },
+        { duration: reducedMotion ? 0 : CAMERA_MS },
       );
     }, CENTER_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [selectedId, selectedLatitude, selectedLongitude, bottomInset]);
+  }, [selectedId, selectedLatitude, selectedLongitude, bottomInset, reducedMotion]);
 
   const onMarkerPress = useCallback(
     (id: string) => {

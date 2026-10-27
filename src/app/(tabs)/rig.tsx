@@ -1,14 +1,15 @@
 // My Rig: pick a preset or set your own clearance, drivetrain, setup and
 // length. Saved on the phone automatically.
 
+import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { Card, Pills, SectionTitle, Stepper } from '@/components/ui';
+import { Banner, Card, Pills, SectionTitle, Stepper } from '@/components/ui';
 import { MAX_RIG_NAME_LENGTH } from '@/config';
 import { RIG_DRIVETRAINS, RIG_SETUPS, isTowing, maxTierFor, tierInfo } from '@/lib/fit';
 import { RIG_PRESETS, useRig } from '@/lib/rig';
 import { CLEARANCE_RANGE, LENGTH_RANGE, matchingPreset, rigDisplayName, rigSummary } from '@/lib/rigModel';
-import type { ClearanceTier, RigDrivetrain, RigSetup } from '@/types';
+import type { ClearanceTier, Rig, RigDrivetrain, RigSetup } from '@/types';
 import { colors, radius } from '@/theme';
 
 const DRIVETRAIN_OPTIONS = (Object.keys(RIG_DRIVETRAINS) as RigDrivetrain[]).map((value) => ({
@@ -26,6 +27,10 @@ const PRESET_OPTIONS = RIG_PRESETS.map((p) => ({ value: p.name, label: p.name })
 export default function RigScreen() {
   const { rig, setRig, updateRig } = useRig();
   const preset = matchingPreset(rig);
+  // The custom rig a preset just replaced, for Undo. Offered while the
+  // preset is still picked (a change after that keeps the new one).
+  const [replaced, setReplaced] = useState<{ rig: Rig; by: string } | null>(null);
+  const undo = replaced && preset?.name === replaced.by ? replaced : null;
   const maxTier = maxTierFor(rig.clearanceIn);
   const tierText =
     maxTier === 0
@@ -73,11 +78,26 @@ export default function RigScreen() {
           isSelected={(name) => preset?.name === name}
           onPress={(name) => {
             const next = RIG_PRESETS.find((p) => p.name === name);
-            if (next) setRig(next);
+            if (!next) return;
+            setReplaced(preset ? null : { rig, by: next.name });
+            setRig(next);
           }}
           accessibilityLabel="Rig presets"
         />
         {!preset && <Text style={styles.hint}>Custom rig: your changes are saved.</Text>}
+        {undo ? (
+          <Banner
+            tone="info"
+            icon="arrow-undo-outline"
+            message={`Switched to ${undo.by}. Your own rig (${rigSummary(undo.rig)}) was replaced.`}
+            announceKey={`preset-${undo.by}`}
+            actionLabel="Undo"
+            onAction={() => {
+              setRig(undo.rig);
+              setReplaced(null);
+            }}
+          />
+        ) : null}
       </Card>
 
       <Card>

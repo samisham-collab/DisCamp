@@ -3,7 +3,7 @@
 
 import * as Location from 'expo-location';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Alert, Linking } from 'react-native';
+import { Alert, AppState, Linking } from 'react-native';
 
 import type { Coordinates, Fix } from '../types';
 import { isValidCoordinate } from './geo';
@@ -21,6 +21,17 @@ interface LocationContextValue {
    * can get (for cleanup photos), with how sure it is.
    */
   locate: (options?: { fresh?: boolean }) => Promise<Fix | null>;
+  /**
+   * True when the camper allowed only an approximate location (Precise
+   * Location off on iPhone, "Approximate" on Android).
+   */
+  approximate: boolean;
+  /**
+   * Keeps listening to GPS for up to `maxMs` and answers with the first fix
+   * within `targetM` meters, or the best one heard (null if none). For a
+   * weak first fix under trees. `onFix` hears each one, for "±80 m so far".
+   */
+  refine: (targetM: number, maxMs: number, onFix?: (fix: Fix) => void) => Promise<Fix | null>;
 }
 
 const LocationContext = createContext<LocationContextValue | null>(null);
@@ -33,6 +44,13 @@ const LAST_KNOWN_MAX_AGE_MS = 5 * 60_000;
 /** For a fresh fix (cleanup photos): this recent, and this sure (meters). */
 const FRESH_MAX_AGE_MS = 30_000;
 const FRESH_ACCURACY_M = 50;
+/** Back in the app after this long, distances are worked out from a new fix. */
+const STALE_FIX_MS = 5 * 60_000;
+
+/** Precise Location off (iPhone) or approximate only (Android). */
+function isApproximate(permission: Location.LocationPermissionResponse): boolean {
+  return permission.ios?.accuracy === 'reduced' || permission.android?.accuracy === 'coarse';
+}
 
 /**
  * Resolves to `fallback` if `promise` hasn't settled within `ms`, so a native
@@ -122,8 +140,23 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<LocationStatus>('checking');
   const [coords, setCoords] = useState<Coordinates | null>(null);
   const [locating, setLocating] = useState(false);
+  const [approximate, setApproximateState] = useState(false);
+  // The same, for refine() in the middle of its work.
+  const approximateNow = useRef(false);
+  const setApproximate = useCallback((value: boolean) => {
+    approximateNow.current = value;
+    setApproximateState(value);
+  }, []);
   // One request at a time of each kind (a fresh one can't share a looser one).
   const busy = useRef<Partial<Record<'any' | 'fresh', Promise<Fix | null>>>>({});
+  // When the last fix came, and whether location is allowed (for the
+  // quiet refresh when the camper comes back to the app).
+  const fixedAt = useRef(0);
+  const granted = useRef(false);
+  const update = useCallback((found: Fix) => {
+    fixedAt.current = Date.now();
+    setCoords(found);
+  }, []);
 
   // On launch, use location only if the camper already allowed it. No prompt,
   // and no alerts: a quiet failure here just means no distances yet.
@@ -144,10 +177,12 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         return;
       }
       setStatus('granted');
+      setApproximate(isApproximate(permission));
+      granted.current = true;
       try {
         const found = await currentPosition();
         // A fix from "Locate me" may have arrived first; it's fresher, so keep it.
-        if (active && found) setCoords((prev) => prev ?? found);
+        if (active && found && fixedAt.current === 0) update(found);
       } catch (error) {
         // Usually Location Services are off. "Locate me" explains that if tapped.
         log.warn('Could not find location on launch', { error: describeError(error) });
@@ -156,63 +191,143 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [update, setApproximate]);
 
-  const locate = useCallback((options?: { fresh?: boolean }): Promise<Fix | null> => {
-    const fresh = options?.fresh === true;
-    const kind = fresh ? 'fresh' : 'any';
-    const pending = busy.current[kind];
-    if (pending) return pending;
-    const run = (async () => {
+  // Back in the app after a while (driven 200 miles, say): distances and
+  // "nearest first" come from a new fix, quietly. Never asks, never alerts.
+  useEffect(() => {
+    let refreshing = false;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active' || refreshing || !granted.current || fixedAt.current === 0) return;
+      if (Date.now() - fixedAt.current < STALE_FIX_MS) return;
+      refreshing = true;
+      void currentPosition()
+        .then((found) => {
+          if (found) update(found);
+        })
+        .catch((error: unknown) => log.info('Could not refresh location', { error: describeError(error) }))
+        .finally(() => {
+          refreshing = false;
+        });
+    });
+    return () => subscription.remove();
+  }, [update]);
+
+  const locate = useCallback(
+    (options?: { fresh?: boolean }): Promise<Fix | null> => {
+      const fresh = options?.fresh === true;
+      const kind = fresh ? 'fresh' : 'any';
+      const pending = busy.current[kind];
+      if (pending) return pending;
+      const run = (async () => {
+        setLocating(true);
+        try {
+          let permission = await checkPermission();
+          let prompted = false;
+          if (permission.status !== 'granted' && permission.canAskAgain) {
+            // No timeout here: the camper may take a while to answer the system prompt.
+            permission = await Location.requestForegroundPermissionsAsync();
+            prompted = true;
+          }
+          if (permission.status !== 'granted') {
+            setStatus('denied');
+            granted.current = false;
+            // The camper just said no in the system prompt: respect that. Only
+            // point to Settings when tapping again can't bring the prompt back.
+            if (!prompted && !permission.canAskAgain) {
+              // With Location Services off for the whole phone, iPhone reports
+              // DisCamp as denied too; DisCamp's own settings can't fix that.
+              const servicesOn = await orAfter(Location.hasServicesEnabledAsync(), CHECK_TIMEOUT_MS, true);
+              if (servicesOn) explainDenied();
+              else servicesOff();
+            }
+            return null;
+          }
+          setStatus('granted');
+          setApproximate(isApproximate(permission));
+          granted.current = true;
+          const servicesOn = await orAfter(Location.hasServicesEnabledAsync(), CHECK_TIMEOUT_MS, true);
+          if (!servicesOn) {
+            servicesOff();
+            return null;
+          }
+          const found = await currentPosition(fresh);
+          if (!found) {
+            Alert.alert("Couldn't find your location", 'Try again in a moment, ideally with a clear view of the sky.');
+            return null;
+          }
+          update(found);
+          return found;
+        } catch (error) {
+          log.error('Locating failed', error);
+          Alert.alert("Couldn't find your location", 'Try again in a moment.');
+          return null;
+        } finally {
+          setLocating(false);
+          delete busy.current[kind];
+        }
+      })();
+      busy.current[kind] = run;
+      return run;
+    },
+    [update, setApproximate],
+  );
+
+  const refine = useCallback(
+    async (targetM: number, maxMs: number, onFix?: (fix: Fix) => void): Promise<Fix | null> => {
+      // Permission, services and a first fix, the usual way (with its alerts).
+      const first = await locate({ fresh: true });
+      if (!first) return null;
+      onFix?.(first);
+      // Approximate location never gets closer: Settings is the way out.
+      if (first.accuracy == null || first.accuracy <= targetM || approximateNow.current) return first;
+      let best = first;
       setLocating(true);
       try {
-        let permission = await checkPermission();
-        let prompted = false;
-        if (permission.status !== 'granted' && permission.canAskAgain) {
-          // No timeout here: the camper may take a while to answer the system prompt.
-          permission = await Location.requestForegroundPermissionsAsync();
-          prompted = true;
-        }
-        if (permission.status !== 'granted') {
-          setStatus('denied');
-          // The camper just said no in the system prompt: respect that. Only
-          // point to Settings when tapping again can't bring the prompt back.
-          if (!prompted && !permission.canAskAgain) {
-            // With Location Services off for the whole phone, iPhone reports
-            // DisCamp as denied too; DisCamp's own settings can't fix that.
-            const servicesOn = await orAfter(Location.hasServicesEnabledAsync(), CHECK_TIMEOUT_MS, true);
-            if (servicesOn) explainDenied();
-            else servicesOff();
-          }
-          return null;
-        }
-        setStatus('granted');
-        const servicesOn = await orAfter(Location.hasServicesEnabledAsync(), CHECK_TIMEOUT_MS, true);
-        if (!servicesOn) {
-          servicesOff();
-          return null;
-        }
-        const found = await currentPosition(fresh);
-        if (!found) {
-          Alert.alert("Couldn't find your location", 'Try again in a moment, ideally with a clear view of the sky.');
-          return null;
-        }
-        setCoords(found);
-        return found;
-      } catch (error) {
-        log.error('Locating failed', error);
-        Alert.alert("Couldn't find your location", 'Try again in a moment.');
-        return null;
+        return await new Promise<Fix>((resolve) => {
+          let subscription: Location.LocationSubscription | null = null;
+          let done = false;
+          const finish = () => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            subscription?.remove();
+            resolve(best);
+          };
+          const timer = setTimeout(finish, maxMs);
+          Location.watchPositionAsync(
+            { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1000, distanceInterval: 0 },
+            (position) => {
+              const fix = toCoords(position);
+              if (!fix || done) return;
+              if ((fix.accuracy ?? Infinity) < (best.accuracy ?? Infinity)) best = fix;
+              onFix?.(fix);
+              if (fix.accuracy != null && fix.accuracy <= targetM) finish();
+            },
+            (reason) => log.info('No location fix (refining)', { reason }),
+          ).then(
+            (sub) => {
+              if (done) sub.remove();
+              else subscription = sub;
+            },
+            (error: unknown) => {
+              log.info('Could not keep listening to GPS', { error: describeError(error) });
+              finish();
+            },
+          );
+        });
       } finally {
+        update(best);
         setLocating(false);
-        delete busy.current[kind];
       }
-    })();
-    busy.current[kind] = run;
-    return run;
-  }, []);
+    },
+    [locate, update],
+  );
 
-  const value = useMemo(() => ({ status, coords, locating, locate }), [status, coords, locating, locate]);
+  const value = useMemo(
+    () => ({ status, coords, locating, locate, approximate, refine }),
+    [status, coords, locating, locate, approximate, refine],
+  );
   return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>;
 }
 

@@ -4,6 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useReducedMotion } from '../lib/accessibility';
 import { COST_LEVELS, type CostLevel } from '../lib/cost';
 import { FIT_HEADLINES, type FitStatus } from '../lib/fit';
 import { colors, radius } from '../theme';
@@ -20,8 +21,9 @@ const STATUSES: readonly { status: FitStatus; detail: string }[] = [
 const LEVELS: readonly CostLevel[] = [0, 1, 2, 3];
 
 export function LegendModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const reducedMotion = useReducedMotion();
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType={reducedMotion ? 'fade' : 'slide'} transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={styles.dismiss} onPress={onClose} accessibilityLabel="Close" accessibilityRole="button" />
         <SafeAreaView edges={['bottom']} style={styles.sheet}>

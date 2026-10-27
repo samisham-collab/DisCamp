@@ -310,6 +310,8 @@ function PhotoViewer({
           source={{ uri: photo.url }}
           style={styles.full}
           contentFit="contain"
+          accessible
+          accessibilityRole="image"
           accessibilityLabel={`Photo of ${spot.name}, added by ${by}`}
         />
         <View style={styles.viewerBar}>

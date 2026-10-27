@@ -37,6 +37,7 @@ import { CommunityError } from '@/data/community';
 import { useAuth } from '@/lib/auth';
 import { CLEANUP_EMBERS } from '@/lib/embers';
 import { formatDay, timeAgo } from '@/lib/time';
+import { useOnce } from '@/lib/useOnce';
 import { colors } from '@/theme';
 
 const SIZE_OPTIONS: readonly { value: CleanupSize; label: string }[] = (['small', 'medium', 'large'] as const).map(
@@ -71,6 +72,7 @@ function ReviewCard({ item, onDone }: { item: ReviewItem; onDone: (id: string) =
   const [reason, setReason] = useState<SendBackReason | null>(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
+  const once = useOnce();
   const [error, setError] = useState<string | null>(null);
 
   const finish = async (action: 'approve' | 'reject') => {
@@ -162,6 +164,7 @@ function ReviewCard({ item, onDone }: { item: ReviewItem; onDone: (id: string) =
             value={reason}
             onChange={setReason}
             allowNotSure={false}
+            required
           />
           <TextField
             label={reason === 'other' ? 'What to fix' : 'More for the camper'}
@@ -176,7 +179,7 @@ function ReviewCard({ item, onDone }: { item: ReviewItem; onDone: (id: string) =
             icon="arrow-undo-outline"
             loading={busy === 'reject'}
             disabled={busy !== null}
-            onPress={() => void finish('reject')}
+            onPress={() => once(() => finish('reject'))}
           />
           <Button label="Cancel" kind="secondary" disabled={busy !== null} onPress={() => setSendingBack(false)} />
         </>
@@ -187,7 +190,7 @@ function ReviewCard({ item, onDone }: { item: ReviewItem; onDone: (id: string) =
             icon="checkmark-circle-outline"
             loading={busy === 'approve'}
             disabled={busy !== null}
-            onPress={() => void finish('approve')}
+            onPress={() => once(() => finish('approve'))}
           />
           <Button
             label="Send back"

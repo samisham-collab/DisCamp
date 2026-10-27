@@ -35,6 +35,7 @@ import { appleRemovalSteps, providerLabel } from '@/lib/authProviders';
 import { DEFAULT_DISPLAY_NAME, MAX_DISPLAY_NAME } from '@/lib/displayName';
 import { openWebLink } from '@/lib/links';
 import { formatDay } from '@/lib/time';
+import { useOnce } from '@/lib/useOnce';
 import { colors, radius, TOUCH_TARGET } from '@/theme';
 import { KeyboardSafe } from '@/components/KeyboardSafe';
 
@@ -134,6 +135,7 @@ export default function AccountScreen() {
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [savingName, setSavingName] = useState(false);
+  const once = useOnce();
   const [busy, setBusy] = useState<'sign-out' | 'delete' | null>(null);
   // Set after deleting an account that used Sign in with Apple; cleared when
   // anyone signs in again.
@@ -330,7 +332,7 @@ export default function AccountScreen() {
             kind="secondary"
             disabled={!nameChanged}
             loading={savingName}
-            onPress={() => void saveName()}
+            onPress={() => once(saveName)}
           />
         </Card>
 
@@ -388,6 +390,7 @@ export default function AccountScreen() {
             onPress={deleteAccount}
             disabled={busy !== null}
             accessibilityRole="button"
+            accessibilityLabel="Delete account"
             accessibilityState={{ busy: busy === 'delete', disabled: busy !== null }}
             style={styles.deleteButton}
           >

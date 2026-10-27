@@ -17,6 +17,8 @@ interface CleanupsContextValue {
   /** What went wrong with the latest load, if it did. */
   error: string | null;
   refresh: () => Promise<void>;
+  /** Loads again only if the list is older than `maxAgeMs` (or failed): for screens coming into view. */
+  freshen: (maxAgeMs: number) => void;
   /** Shows a cleanup this phone just posted or changed, without a reload. */
   upsert: (task: CleanupTask) => void;
   remove: (id: string) => void;
@@ -75,6 +77,13 @@ export function CleanupsProvider({ children }: { children: ReactNode }) {
     return () => subscription.remove();
   }, [client, load]);
 
+  const freshen = useCallback(
+    (maxAgeMs: number) => {
+      if (loadedAt.current === 0 || Date.now() - loadedAt.current > maxAgeMs) void load();
+    },
+    [load],
+  );
+
   const upsert = useCallback((task: CleanupTask) => {
     // In place if it's listed (so lists don't jump around), else first.
     setCleanups((list) =>
@@ -87,8 +96,8 @@ export function CleanupsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ cleanups, loading, error, refresh: load, upsert, remove }),
-    [cleanups, loading, error, load, upsert, remove],
+    () => ({ cleanups, loading, error, refresh: load, freshen, upsert, remove }),
+    [cleanups, loading, error, load, freshen, upsert, remove],
   );
   return <CleanupsContext.Provider value={value}>{children}</CleanupsContext.Provider>;
 }

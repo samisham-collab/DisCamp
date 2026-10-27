@@ -11,7 +11,7 @@ import {
 import { SERVER_ROW_LIMIT, STORAGE_KEYS } from '@/config';
 import { kvStore } from '@/lib/kvStore';
 
-import { fakeClient, retries } from '../test/fakeSupabase';
+import { fakeBackend, fakeClient, retries } from '../test/fakeSupabase';
 import { makeRow } from '../test/fixtures';
 
 describe('parseSpotRows', () => {
@@ -51,13 +51,41 @@ describe('fetchRemoteSpots', () => {
     expect(retries.at(-1)).toBe(false);
   });
 
-  it('warns when the server may have cut the list short', async () => {
+  it('reads a long list in pages', async () => {
+    const rows = Array.from({ length: SERVER_ROW_LIMIT + 500 }, (_, i) =>
+      makeRow({ id: `spot-${i}`, name: `Spot ${String(i).padStart(4, '0')}` }),
+    );
+    const backend = fakeBackend(rows);
+    const result = await fetchRemoteSpots(backend.client, 5_000);
+    expect(result.spots).toHaveLength(SERVER_ROW_LIMIT + 500);
+    expect(new Set(result.spots.map((s) => s.id)).size).toBe(SERVER_ROW_LIMIT + 500);
+    expect(result.skipped).toBe(0);
+    expect(backend.queries.filter((q) => q.table === 'spots_api')).toHaveLength(2);
+  });
+
+  it('stops at the page limit, and says so', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const rows = Array.from({ length: SERVER_ROW_LIMIT }, (_, i) => makeRow({ id: `spot-${i}` }));
-    const client = fakeClient(async () => ({ data: rows, error: null }));
-    const result = await fetchRemoteSpots(client, 5_000);
-    expect(result.spots).toHaveLength(SERVER_ROW_LIMIT);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('maximum number of spots'), { rows: SERVER_ROW_LIMIT });
+    let page = 0;
+    const client = fakeClient(async () => {
+      page += 1;
+      const rows = Array.from({ length: SERVER_ROW_LIMIT }, (_, i) => makeRow({ id: `p${page}-${i}` }));
+      return { data: rows, error: null };
+    });
+    const result = await fetchRemoteSpots(client, 30_000);
+    expect(page).toBe(20);
+    expect(result.spots).toHaveLength(20 * SERVER_ROW_LIMIT);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('page limit'), { rows: 20 * SERVER_ROW_LIMIT });
+    // 20,000 rows to check: slower than most tests.
+  }, 60_000);
+
+  it('fails as a whole when a later page fails', async () => {
+    let page = 0;
+    const client = fakeClient(async () => {
+      page += 1;
+      if (page === 2) return { data: null, error: { message: 'Network request failed' } };
+      return { data: Array.from({ length: SERVER_ROW_LIMIT }, (_, i) => makeRow({ id: `s-${i}` })), error: null };
+    });
+    await expect(fetchRemoteSpots(client, 5_000)).rejects.toMatchObject({ kind: 'offline' });
   });
 
   it('treats a missing data array as no spots', async () => {

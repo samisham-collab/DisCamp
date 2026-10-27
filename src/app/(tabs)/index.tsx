@@ -25,6 +25,7 @@ import { DEFAULT_REGION } from '@/config';
 import { cleanupTitle } from '@/components/Cleanups';
 import { useCleanups } from '@/data/cleanupsStore';
 import { useSpots } from '@/data/spots';
+import { useScreenReader } from '@/lib/accessibility';
 import { useAuth } from '@/lib/auth';
 import { regionForCoordinates, type Region } from '@/lib/geo';
 import { selectionFeedback } from '@/lib/haptics';
@@ -66,6 +67,7 @@ export default function ExploreScreen() {
   const fitRig = useFitRig();
   const { prefs, toggleFilter, clearFilters, setView, setMapType } = usePrefs();
   const { coords, status: locationStatus, locating, locate } = useLocation();
+  const screenReader = useScreenReader();
   const { status: authStatus } = useAuth();
   const { cleanups } = useCleanups();
   // Cleanups still to do show as orange pins; tapping one opens it.
@@ -243,10 +245,10 @@ export default function ExploreScreen() {
             color={colors.pine}
           />
           <View style={styles.rigText}>
-            <Text style={styles.rigLabel} numberOfLines={1}>
+            <Text style={styles.rigLabel} numberOfLines={2}>
               Showing fit for <Text style={styles.rigName}>{rigDisplayName(rig)}</Text>
             </Text>
-            <Text style={styles.rigSummary} numberOfLines={1}>
+            <Text style={styles.rigSummary} numberOfLines={2}>
               {rigSummary(rig)}
             </Text>
           </View>
@@ -298,6 +300,25 @@ export default function ExploreScreen() {
         </View>
       )}
 
+      {prefs.view === 'map' && screenReader ? (
+        // Pins are hard to find one by one with VoiceOver or TalkBack; the
+        // list has every spot with the same details.
+        <View style={styles.bannerWrap}>
+          <Banner
+            tone="info"
+            icon="list-outline"
+            message="With a screen reader, the list is the easiest way to go through spots. It has the same details as the map."
+            actionLabel="Show list"
+            onAction={() => {
+              setSelectedId(null);
+              setReturnRegion(mapRef.current?.currentRegion() ?? null);
+              setMapReady(false);
+              setView('list');
+            }}
+          />
+        </View>
+      ) : null}
+
       {prefs.view === 'map' ? (
         <View
           style={styles.mapWrap}
@@ -322,8 +343,11 @@ export default function ExploreScreen() {
           />
 
           {showCount && (
-            <View style={styles.countPill}>
-              <Text style={styles.countText}>{countLabel(rows.length, filtered)}</Text>
+            // Kept clear of the map buttons on the right, even with large text.
+            <View style={styles.countArea} pointerEvents="none">
+              <View style={styles.countPill}>
+                <Text style={styles.countText}>{countLabel(rows.length, filtered)}</Text>
+              </View>
             </View>
           )}
 
@@ -352,6 +376,7 @@ export default function ExploreScreen() {
               onOpen={() => openSpot(selectedRow.spot.id)}
               onClose={() => setSelectedId(null)}
               onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}
+              maxHeight={mapHeight > 0 ? mapHeight - CARD_MARGIN * 2 : undefined}
             />
           )}
         </View>
@@ -366,22 +391,21 @@ export default function ExploreScreen() {
             rows.length > 0 ? (
               <View style={styles.listHeader}>
                 <Text style={styles.listCount}>
-                  {countLabel(rows.length, filtered)} · best fit {coords ? 'and nearest ' : ''}first
+                  {countLabel(rows.length, filtered)} · {coords ? 'nearest first' : 'best fit first'}
                 </Text>
-                {!coords && (
-                  <Pressable
-                    onPress={() => void locate()}
-                    disabled={locating}
-                    accessibilityRole="button"
-                    accessibilityState={{ busy: locating, disabled: locating }}
-                    hitSlop={8}
-                    style={styles.linkButton}
-                  >
-                    <Text style={[styles.linkText, locating && styles.linkBusy]}>
-                      {locating ? 'Finding you…' : 'Sort by distance'}
-                    </Text>
-                  </Pressable>
-                )}
+                <Pressable
+                  onPress={() => void locate()}
+                  disabled={locating}
+                  accessibilityRole="button"
+                  accessibilityState={{ busy: locating, disabled: locating }}
+                  accessibilityHint={coords ? 'Works out distances from where you are now' : undefined}
+                  hitSlop={8}
+                  style={styles.linkButton}
+                >
+                  <Text style={[styles.linkText, locating && styles.linkBusy]}>
+                    {locating ? 'Finding you…' : coords ? 'Update my location' : 'Sort by distance'}
+                  </Text>
+                </Pressable>
               </View>
             ) : null
           }
@@ -448,10 +472,8 @@ const styles = StyleSheet.create({
   },
   bannerWrap: { paddingHorizontal: 12, paddingTop: 10 },
   mapWrap: { flex: 1, backgroundColor: colors.map },
+  countArea: { position: 'absolute', top: 12, left: 12, right: 76, alignItems: 'flex-start' },
   countPill: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: radius.pill,

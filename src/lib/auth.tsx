@@ -2,7 +2,7 @@
 // account; signing in lets a camper add spots and fix the ones they added.
 // Without a server (no Supabase settings) sign-in is switched off: "disabled".
 
-import type { Session, SupabaseClient } from '@supabase/supabase-js';
+import { isAuthRetryableFetchError, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 
@@ -15,6 +15,15 @@ import { checkDisplayName } from './displayName';
 import { describeError, log } from './log';
 import { clearPushRegistration, forgetThisPhone, turnOnPush } from './push';
 import { useServerClient } from './server';
+import { forgetSavedSession, readSavedSession } from './supabase';
+
+/** The sign-in saved on this phone, read and forgotten without the server. */
+export interface SavedSessionStore {
+  read: () => Promise<Session | null>;
+  forget: () => Promise<boolean>;
+}
+
+const SAVED_SESSION: SavedSessionStore = { read: readSavedSession, forget: forgetSavedSession };
 
 export type AuthStatus = 'disabled' | 'loading' | 'signed-out' | 'signed-in';
 
@@ -105,11 +114,14 @@ interface Props {
   /** For tests. Defaults to the configured Supabase client, if any. */
   client?: SupabaseClient | null;
   providers?: AuthProviderId[];
+  /** For tests. Defaults to the configured client's storage. */
+  savedSession?: SavedSessionStore;
 }
 
-export function AuthProvider({ children, client: clientProp, providers: providersProp }: Props) {
+export function AuthProvider({ children, client: clientProp, providers: providersProp, savedSession }: Props) {
   const client = useServerClient(clientProp);
   const [providers] = useState(() => providersProp ?? enabledProviders());
+  const [saved] = useState(() => savedSession ?? SAVED_SESSION);
   const [status, setStatus] = useState<AuthStatus>(client ? 'loading' : 'disabled');
   const [user, setUser] = useState<AuthUser | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -121,9 +133,11 @@ export function AuthProvider({ children, client: clientProp, providers: provider
   // this listener, so the profile loads in its own effect below.
   useEffect(() => {
     if (!client) return undefined;
-    const {
-      data: { subscription },
-    } = client.auth.onAuthStateChange((_event, session) => {
+    let active = true;
+    // Counts what Supabase has said, so a slower read of the saved sign-in
+    // never overrides something newer.
+    let said = 0;
+    const show = (session: Session | null) => {
       const next = toUser(session);
       // Keep the same object while it's the same person, so screens don't
       // re-render on every token refresh.
@@ -138,7 +152,31 @@ export function AuthProvider({ children, client: clientProp, providers: provider
           : next,
       );
       setStatus(next ? 'signed-in' : 'signed-out');
+    };
+    const showSaved = (asOf: number, orSignedOut: boolean) => {
+      saved.read().then(
+        (session) => {
+          if (!active || said !== asOf) return;
+          if (session || orSignedOut) show(session);
+        },
+        () => {
+          if (active && said === asOf && orSignedOut) show(null);
+        },
+      );
+    };
+
+    const {
+      data: { subscription },
+    } = client.auth.onAuthStateChange((event, session) => {
+      said += 1;
+      // Offline with an expired token, Supabase can't renew it and says
+      // "nobody" after about 30 seconds, but keeps the sign-in to renew when
+      // the signal's back. Still signed in, then, if it's still saved.
+      if (event === 'INITIAL_SESSION' && !session) showSaved(said, true);
+      else show(session);
     });
+    // Meanwhile, the saved sign-in shows at once instead of a wait.
+    showSaved(0, false);
 
     // Refresh tokens only while the app is open (Supabase's advice for phones).
     // iPhone can report "unknown" at launch, which counts as open.
@@ -150,11 +188,12 @@ export function AuthProvider({ children, client: clientProp, providers: provider
     const appState = AppState.addEventListener('change', sync);
 
     return () => {
+      active = false;
       subscription.unsubscribe();
       appState.remove();
       void client.auth.stopAutoRefresh();
     };
-  }, [client]);
+  }, [client, saved]);
 
   const userId = user?.id ?? null;
   const mine = profile && profile.userId === userId ? profile : null;
@@ -220,13 +259,20 @@ export function AuthProvider({ children, client: clientProp, providers: provider
       // Offline, Supabase can't tell the server, but it still forgets the
       // session on this phone: that's signed out, as far as the camper goes.
       if (!(await signedInHere(client))) return { ok: true };
+      // With an expired token it can't even do that offline, so DisCamp
+      // forgets the sign-in itself: signing out never needs signal.
+      if (isAuthRetryableFetchError(error) && (await saved.forget())) {
+        setUser(null);
+        setStatus('signed-out');
+        return { ok: true };
+      }
       void turnOnPush(client, { ask: false }); // still signed in: keep their notifications
       return failure('Signing out', error);
     } catch (error) {
       void turnOnPush(client, { ask: false });
       return failure('Signing out', error);
     }
-  }, [client]);
+  }, [client, saved]);
 
   const deleteAccount = useCallback(async (): Promise<ActionResult> => {
     if (!client) return { ok: false, message: 'Deleting an account needs the DisCamp server.' };

@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
+import type * as SecureStorageExports from '@/lib/secureStorage';
 import type * as SupabaseExports from '@/lib/supabase';
 
 jest.unmock('@/lib/supabase');
@@ -50,6 +51,41 @@ describe('getSupabase', () => {
       EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
     });
     expect(mod.getSupabase()).toBeNull();
+  });
+
+  it('reads and forgets the sign-in saved on this phone', async () => {
+    const saved = { ...process.env };
+    process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://abcd1234.supabase.co';
+    process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_test';
+    let mod: SupabaseModule | undefined;
+    let storage: (typeof SecureStorageExports)['secureSessionStorage'] | undefined;
+    jest.isolateModules(() => {
+      mod = jest.requireActual<SupabaseModule>('@/lib/supabase');
+      storage = jest.requireActual<typeof SecureStorageExports>('@/lib/secureStorage').secureSessionStorage;
+    });
+    process.env = saved;
+    if (!mod || !storage) throw new Error('module did not load');
+    const key = 'sb-abcd1234-auth-token';
+
+    expect(await mod.readSavedSession()).toBeNull();
+    const session = { access_token: 'a', refresh_token: 'r', user: { id: 'u1', email: 'sam@example.com' } };
+    await storage.setItem(key, JSON.stringify(session));
+    expect(await mod.readSavedSession()).toEqual(session);
+    // Anything else there isn't a sign-in.
+    await storage.setItem(key, JSON.stringify({ refresh_token: 'r' }));
+    expect(await mod.readSavedSession()).toBeNull();
+    jest.spyOn(console, 'info').mockImplementation(() => undefined);
+    await storage.setItem(key, '{not json');
+    expect(await mod.readSavedSession()).toBeNull();
+
+    expect(await mod.forgetSavedSession()).toBe(true);
+    expect(await storage.getItem(key)).toBeNull();
+  });
+
+  it('has no saved sign-in without a server', async () => {
+    const mod = loadWith({ EXPO_PUBLIC_SUPABASE_URL: undefined, EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: undefined });
+    expect(await mod.readSavedSession()).toBeNull();
+    expect(await mod.forgetSavedSession()).toBe(false);
   });
 
   it('gives photo uploads longer than other requests', () => {

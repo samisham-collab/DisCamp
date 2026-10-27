@@ -23,6 +23,8 @@ import { colors } from '@/theme';
 const RECENT_DAYS = 30;
 const RECENT_SHOWN = 10;
 const DAY_MS = 86_400_000;
+/** Coming back to the tab loads the list again once it's this old. */
+const FOCUS_REFRESH_MS = 2 * 60_000;
 
 /** Nearest first when the camper's location is known, otherwise newest first. */
 function byDistance(list: CleanupTask[], from: Coordinates | null): CleanupTask[] {
@@ -47,16 +49,18 @@ function sections(cleanups: CleanupTask[], from: Coordinates | null, now = Date.
 
 export default function CleanupsScreen() {
   const { status } = useAuth();
-  const { cleanups, loading, error, refresh } = useCleanups();
+  const { cleanups, loading, error, refresh, freshen } = useCleanups();
   const { coords } = useLocation();
   const canPost = usePostingGate();
   const [refreshing, setRefreshing] = useState(false);
 
   // Fresh each time the tab comes into view: other campers post and clean up.
+  // Fresh when it comes into view, but not on every tab switch: the list
+  // costs data, and the free plan's transfer is limited.
   useFocusEffect(
     useCallback(() => {
-      void refresh();
-    }, [refresh]),
+      freshen(FOCUS_REFRESH_MS);
+    }, [freshen]),
   );
 
   const { open, review, done } = useMemo(() => sections(cleanups, coords), [cleanups, coords]);

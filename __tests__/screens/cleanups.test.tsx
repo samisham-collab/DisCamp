@@ -17,6 +17,7 @@ import * as Links from '@/lib/links';
 import { ALEX, fakeBackend, NEWBIE, SAM, type FakeBackend, type FakeUser } from '../../test/fakeSupabase';
 import { makeRow } from '../../test/fixtures';
 import { connectServer, resetServer, spyOnAlerts } from '../../test/helpers';
+import { activeWatches, emitFix } from '../../test/mocks/expoLocation';
 import { renderApp } from '../../test/renderApp';
 
 // Pinned to Smoky Gardens only: see test/mocks/seedSpots.ts.
@@ -66,11 +67,13 @@ function cleanupBy(backend: FakeBackend, by: FakeUser, n: number, extra: Record<
 }
 
 /** Where the phone says the camper is, for the next location requests. */
-function standAt(at: { latitude: number; longitude: number }, accuracy = 8) {
+function standAt(at: { latitude: number; longitude: number }, accuracy = 8, { approximate = false } = {}) {
   jest.mocked(Location.getForegroundPermissionsAsync).mockResolvedValue({
     status: 'granted',
     canAskAgain: true,
     granted: true,
+    // Precise Location off: the phone only knows the town.
+    ...(approximate ? { ios: { scope: 'whenInUse', accuracy: 'reduced' } } : {}),
   } as never);
   jest.mocked(Location.getCurrentPositionAsync).mockResolvedValue({ coords: { ...at, accuracy } } as never);
 }
@@ -154,6 +157,24 @@ describe('Cleanups tab', () => {
     expect(await screen.findByText('Litter · medium')).toBeTruthy();
   });
 
+  it('loads again on coming back to the tab only once the list is a few minutes old', async () => {
+    const backend = server();
+    await renderApp('/cleanups');
+    expect(await screen.findByText('No cleanups yet')).toBeTruthy();
+    const loads = () => backend.queries.filter((q) => q.table === 'cleanup_tasks_api').length;
+    const before = loads();
+    cleanupBy(backend, ALEX, 1);
+    act(() => router.navigate('/'));
+    act(() => router.navigate('/cleanups'));
+    expect(await screen.findByText('No cleanups yet')).toBeTruthy();
+    expect(loads()).toBe(before);
+
+    jest.setSystemTime(Date.now() + 3 * 60_000);
+    act(() => router.navigate('/'));
+    act(() => router.navigate('/cleanups'));
+    expect(await screen.findByText('Litter · medium')).toBeTruthy();
+  });
+
   it('is turned off without a server', async () => {
     resetServer();
     await renderApp('/cleanups');
@@ -195,28 +216,78 @@ describe('Posting a cleanup', () => {
     expect(screen.getByText(/Cleaned it up yourself\?/)).toBeTruthy();
   });
 
-  it('won’t pin a cleanup to an approximate location', async () => {
+  it('asks before throwing away a photo that wasn’t posted', async () => {
+    server();
+    standAt(NEAR_ROW_SPOT, 12);
+    const alerts = spyOnAlerts();
+    const app = await renderApp('/cleanups');
+    act(() => router.push('/cleanup/new'));
+    fireEvent.press(await screen.findByText('Take the before photo'));
+    expect(await screen.findByText(/Pinned where you are/)).toBeTruthy();
+    fireEvent.press(screen.getByText('Cancel'));
+    expect(alerts.lastTitle()).toBe('Discard this cleanup?');
+    act(() => alerts.press('Keep editing'));
+    expect(screen.getByText(/Pinned where you are/)).toBeTruthy();
+    fireEvent.press(screen.getByText('Cancel'));
+    act(() => alerts.press('Discard'));
+    await waitFor(() => expect(app.getPathname()).toBe('/cleanups'));
+  });
+
+  it('won’t pin a cleanup to an approximate location, and points to Precise Location', async () => {
     const backend = server();
     const settings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
-    // Precise Location off: the phone only knows the town.
-    standAt(NEAR_ROW_SPOT, 2600);
+    standAt(NEAR_ROW_SPOT, 2600, { approximate: true });
     await renderApp('/cleanup/new');
     fireEvent.press(await screen.findByText('Take the before photo'));
     expect(
       await screen.findByText(
-        'Your phone only shared an approximate location (within about 1.6 mi). Turn on Precise Location for DisCamp in Settings, then retake the photo.',
+        'Your phone shares only an approximate location with DisCamp (within about 1.6 mi). Turn on Precise Location for DisCamp in Settings, then tap Try again.',
       ),
     ).toBeTruthy();
+    // No point listening for a better fix: it can't come.
+    expect(activeWatches()).toBe(0);
     fireEvent.press(screen.getByText('Settings'));
     expect(settings).toHaveBeenCalled();
     fireEvent.press(screen.getByText('Post the cleanup'));
     expect(backend.cleanups.size).toBe(0);
 
-    standAt(NEAR_ROW_SPOT, 300);
-    fireEvent.press(screen.getByText('Retake the photo'));
-    expect(await screen.findByText(/approximate location \(within about 300 m\)/)).toBeTruthy();
+    // Precise Location on in Settings: Try again, no new photo needed.
     standAt(NEAR_ROW_SPOT, 20);
-    fireEvent.press(screen.getByText('Retake the photo'));
+    fireEvent.press(screen.getByText('Try again'));
+    expect(await screen.findByText('Pinned where you are (within about 20 m). Near Row spot.')).toBeTruthy();
+  });
+
+  it('keeps listening when the first fix is weak, and pins the first good one', async () => {
+    const backend = server();
+    standAt(NEAR_ROW_SPOT, 300);
+    await renderApp('/cleanup/new');
+    fireEvent.press(await screen.findByText('Take the before photo'));
+    expect(await screen.findByText('Finding your location (within about 300 m so far)…')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Post the cleanup' }).props.accessibilityHint).toBe(
+      'Waiting for your location.',
+    );
+    await waitFor(() => expect(activeWatches()).toBe(1));
+    act(() => emitFix({ ...NEAR_ROW_SPOT, accuracy: 120 }));
+    expect(screen.getByText('Finding your location (within about 120 m so far)…')).toBeTruthy();
+    act(() => emitFix({ ...NEAR_ROW_SPOT, accuracy: 30 }));
+    expect(await screen.findByText('Pinned where you are (within about 30 m). Near Row spot.')).toBeTruthy();
+    expect(activeWatches()).toBe(0);
+    fireEvent.press(screen.getByText('Post the cleanup'));
+    await waitFor(() => expect(backend.cleanups.size).toBe(1));
+  });
+
+  it('says when GPS stays weak, and tries again without a new photo', async () => {
+    server();
+    jest.spyOn(console, 'info').mockImplementation(() => undefined);
+    standAt(NEAR_ROW_SPOT, 300);
+    jest.mocked(Location.watchPositionAsync).mockRejectedValueOnce(new Error('No GPS'));
+    await renderApp('/cleanup/new');
+    fireEvent.press(await screen.findByText('Take the before photo'));
+    expect(
+      await screen.findByText(/^GPS is weak here: DisCamp got within about 300 m and needs 75 m to pin the cleanup\./),
+    ).toBeTruthy();
+    standAt(NEAR_ROW_SPOT, 20);
+    fireEvent.press(screen.getByText('Try again'));
     expect(await screen.findByText('Pinned where you are (within about 20 m). Near Row spot.')).toBeTruthy();
   });
 
@@ -270,12 +341,12 @@ describe('Posting a cleanup', () => {
     fireEvent.press(await screen.findByText('Take the before photo'));
     expect(
       await screen.findByText(
-        'DisCamp needs your location to pin the cleanup. Turn location on, then retake the photo.',
+        "DisCamp couldn't find your location, and needs it to pin the cleanup. Check that location is on for DisCamp, then tap Try again.",
       ),
     ).toBeTruthy();
     expect(alerts.lastTitle()).toBe("Couldn't find your location");
     standAt(AT_ROW_SPOT);
-    fireEvent.press(screen.getByText('Retake the photo'));
+    fireEvent.press(screen.getByText('Try again'));
     expect(await screen.findByText(/Pinned where you are/)).toBeTruthy();
 
     jest
@@ -394,15 +465,18 @@ describe('Cleaning one up', () => {
 
   it('won’t check an after photo against an approximate location, and gives close calls in meters', async () => {
     const backend = server();
-    standAt(AT_ROW_SPOT, 2600);
+    standAt(AT_ROW_SPOT, 2600, { approximate: true });
     const id = cleanupBy(backend, ALEX, 1);
     await renderApp(`/cleanup/send/${id}`);
     fireEvent.press(await screen.findByText('Take the after photo'));
-    expect(await screen.findByText(/then retake the after photo\.$/)).toBeTruthy();
+    expect(await screen.findByText(/approximate location with DisCamp \(within about 1\.6 mi\)/)).toBeTruthy();
     fireEvent.press(screen.getByText('Take the haul shot'));
     expect(await screen.findByText('Retake the haul shot')).toBeTruthy();
     fireEvent.press(screen.getByText('Send for review'));
     expect(backend.completions).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Send for review' }).props.accessibilityHint).toBe(
+      'Needs your location within 75 m.',
+    );
 
     // Precise, but just outside 150 m.
     standAt({ latitude: AT_ROW_SPOT.latitude + 0.0015, longitude: AT_ROW_SPOT.longitude }, 8);
@@ -435,6 +509,20 @@ describe('Cleaning one up', () => {
     expect(await screen.findByText('Cleanup not found')).toBeTruthy();
   });
 
+  it('tries again when cleanups couldn’t load, instead of a dead end', async () => {
+    const backend = server();
+    const id = cleanupBy(backend, ALEX, 1);
+    backend.intercept = (query) =>
+      query.table === 'cleanup_tasks_api'
+        ? Promise.resolve({ data: null, error: { message: 'Network request failed' } })
+        : undefined;
+    await renderApp(`/cleanup/send/${id}`);
+    expect(await screen.findByText("Couldn't load the cleanup")).toBeTruthy();
+    backend.intercept = null;
+    fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('You cleaned it up')).toBeTruthy();
+  });
+
   it('asks for location for the after photo, and explains a camera that fails', async () => {
     const backend = server();
     const alerts = spyOnAlerts();
@@ -450,11 +538,11 @@ describe('Cleaning one up', () => {
     fireEvent.press(await screen.findByText('Take the after photo'));
     expect(
       await screen.findByText(
-        "DisCamp needs your location to check you're at the cleanup. Turn location on, then retake the after photo.",
+        "DisCamp couldn't find your location, and needs it to check you're at the cleanup. Check that location is on for DisCamp, then tap Try again.",
       ),
     ).toBeTruthy();
     standAt(AT_ROW_SPOT);
-    fireEvent.press(screen.getByText('Retake the after photo'));
+    fireEvent.press(screen.getByText('Try again'));
     expect(await screen.findByText("You're about 0 m from the pin. Good.")).toBeTruthy();
 
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -599,8 +687,13 @@ describe('Cleaning one up', () => {
       query.table === 'cleanup_tasks_api'
         ? Promise.resolve({ data: null, error: { message: 'Network request failed' } })
         : undefined;
+    cleanupBy(backend, ALEX, 2);
     await renderApp(`/cleanup/${taskId(2)}`);
     expect(await screen.findByText("Couldn't load the cleanup")).toBeTruthy();
+    // Back in signal: Try again loads it.
+    backend.intercept = null;
+    fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('I cleaned it up')).toBeTruthy();
   });
 
   it('says when a cleanup isn’t there', async () => {

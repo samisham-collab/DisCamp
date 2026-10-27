@@ -4,10 +4,11 @@
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 
 import { AccountGate } from '@/components/AccountGate';
 import { SpotForm } from '@/components/SpotForm';
+import { SpotMissing } from '@/components/SpotMissing';
 import { TermsGate } from '@/components/TermsGate';
 import { EmptyState } from '@/components/ui';
 import { useSpot, useSpots } from '@/data/spots';
@@ -71,20 +72,7 @@ export default function EditSpotScreen() {
   if (status !== 'signed-in') return gate;
   if (termsAccepted !== true) return <TermsGate />;
 
-  if (!spot && loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.pine} accessibilityLabel="Loading spot" />
-      </View>
-    );
-  }
-  if (!spot || !draft) {
-    return (
-      <View style={styles.center}>
-        <EmptyState icon="compass-outline" title="Spot not found" message="It may have been removed." />
-      </View>
-    );
-  }
+  if (!spot || !draft) return <SpotMissing loading={loading} />;
   if (spot.createdBy !== user?.id) {
     return (
       <View style={styles.center}>

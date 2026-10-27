@@ -2,7 +2,7 @@
 // only after the first try to save (then live as fields are fixed), and
 // sending it to the server.
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo } from 'react-native';
 
 import { SpotWriteError } from '../data/spotWrites';
@@ -31,6 +31,8 @@ export function useSpotEditor(
   const [serverError, setServerError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [failedTries, setFailedTries] = useState(0);
+  // A second tap before the screen updates must not send it twice.
+  const busy = useRef(false);
   const check = useMemo(() => checkDraft(draft), [draft]);
 
   const errors = tried ? check.errors : {};
@@ -41,6 +43,7 @@ export function useSpotEditor(
   const edited = useCallback(() => setServerError(null), []);
 
   const submit = useCallback(async (): Promise<Spot | null> => {
+    if (busy.current) return null;
     setTried(true);
     setServerError(null);
     if (!check.input) {
@@ -49,6 +52,7 @@ export function useSpotEditor(
       AccessibilityInfo.announceForAccessibility(`${n} ${n === 1 ? 'field needs' : 'fields need'} fixing.`);
       return null;
     }
+    busy.current = true;
     setSaving(true);
     try {
       return await save(check.input);
@@ -59,6 +63,7 @@ export function useSpotEditor(
       AccessibilityInfo.announceForAccessibility(message);
       return null;
     } finally {
+      busy.current = false;
       setSaving(false);
     }
   }, [check, save, onTermsRequired]);

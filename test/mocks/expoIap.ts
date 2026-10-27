@@ -32,7 +32,7 @@ export const state = {
   connectFails: false,
   /** Unfinished purchases the store still holds. */
   left: [] as Purchase[],
-  next: 'purchased' as 'purchased' | 'pending' | 'cancelled' | 'failed' | 'offline' | 'refused',
+  next: 'purchased' as 'purchased' | 'pending' | 'unknown' | 'silent' | 'cancelled' | 'failed' | 'offline' | 'refused',
   updated: new Set<(p: Purchase) => void>(),
   failed: new Set<(e: PurchaseError) => void>(),
 };
@@ -85,7 +85,9 @@ export const requestPurchase = jest.fn(
     const sku = request.apple?.sku ?? request.google?.skus[0] ?? '';
     if (state.next === 'refused') throw new Error('The store is not ready');
     await Promise.resolve();
-    if (state.next === 'purchased' || state.next === 'pending') {
+    // "silent": the store never answers.
+    if (state.next === 'silent') return;
+    if (state.next === 'purchased' || state.next === 'pending' || state.next === 'unknown') {
       emitPurchase({ id: `txn-${sku}`, productId: sku, purchaseState: state.next });
     } else if (state.next === 'cancelled') {
       emitError({ code: 'user-cancelled', message: 'Cancelled' });

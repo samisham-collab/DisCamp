@@ -39,6 +39,11 @@ const TipsContext = createContext<TipsValue | null>(null);
 type Iap = NonNullable<ReturnType<typeof iapModule>>;
 type Purchase = Parameters<Iap['finishTransaction']>[0]['purchase'];
 
+const UNCONFIRMED =
+  "The store hasn't confirmed your tip yet. If it went through, DisCamp finishes it the next time it opens.";
+/** Longest a tip button spins without word from the store. */
+export const TIP_PATIENCE_MS = 5 * 60_000;
+
 export function TipsProvider({ children }: { children: ReactNode }) {
   const [iap] = useState(iapModule);
   const [phase, setPhase] = useState<TipsPhase>(iap ? 'loading' : 'off');
@@ -53,6 +58,7 @@ export function TipsProvider({ children }: { children: ReactNode }) {
   // to the front never finish the same one twice.
   const finishing = useRef(new Set<string>());
   const mounted = useRef(true);
+  const patience = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   /** Finishes a paid tip once. Resolves true when this call finished it. */
   const finish = useCallback(
@@ -120,7 +126,15 @@ export function TipsProvider({ children }: { children: ReactNode }) {
         setNotice('Your tip is waiting for payment. Thank you! It goes through once it’s paid.');
         return;
       }
-      if (purchase.purchaseState !== 'purchased') return;
+      if (purchase.purchaseState !== 'purchased') {
+        // "unknown": the store didn't say. Not spinning forever: a tip that
+        // went through is finished the next time DisCamp checks.
+        if (!asked) return;
+        buyingRef.current = null;
+        setBuying(null);
+        setNotice(UNCONFIRMED);
+        return;
+      }
       if (asked) buyingRef.current = null;
       void finish(purchase).then((done) => {
         if (!mounted.current || !asked) return;
@@ -157,6 +171,7 @@ export function TipsProvider({ children }: { children: ReactNode }) {
 
     return () => {
       mounted.current = false;
+      clearTimeout(patience.current);
       updated.remove();
       failed.remove();
       appState.remove();
@@ -173,6 +188,14 @@ export function TipsProvider({ children }: { children: ReactNode }) {
       setBuying(id);
       setThanks(false);
       setNotice(null);
+      // If the store never answers, the button comes back instead of spinning.
+      clearTimeout(patience.current);
+      patience.current = setTimeout(() => {
+        if (buyingRef.current !== id || !mounted.current) return;
+        buyingRef.current = null;
+        setBuying(null);
+        setNotice(UNCONFIRMED);
+      }, TIP_PATIENCE_MS);
       iap
         .requestPurchase({ request: { apple: { sku: id }, google: { skus: [id] } }, type: 'in-app' })
         .catch((error: unknown) => {

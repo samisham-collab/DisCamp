@@ -17,8 +17,10 @@ const ARRIVED_M = 40;
 const ALERT_M = M_PER_MI;
 /** ...but not if it's already this close (the "now" call covers it). */
 const ALERT_MIN_M = 400;
-/** Say "turn now" this close to the turn. */
+/** Say "turn now" this close to the turn... */
 const PRE_M = 120;
+/** ...or this many seconds before it at speed (60 mph: about 215 m). */
+const PRE_SECONDS = 8;
 /** Warn this far ahead of unpaved roads... */
 const ROUGH_WARN_M = M_PER_MI / 2;
 /** ...and mapped gates. */
@@ -68,7 +70,8 @@ export function positionOnRoute(
     y: (p.latitude - at.latitude) * mPerLat,
   });
 
-  let best: RoutePosition = { along: 0, offRouteMeters: Infinity, segment: 0 };
+  // The nearest point on each segment.
+  const candidates: RoutePosition[] = [];
   for (let i = 0; i + 1 < path.length; i += 1) {
     const pa = path[i];
     const pb = path[i + 1];
@@ -79,17 +82,27 @@ export function positionOnRoute(
     const dy = b.y - a.y;
     const lengthSq = dx * dx + dy * dy;
     const t = lengthSq === 0 ? 0 : Math.min(1, Math.max(0, -(a.x * dx + a.y * dy) / lengthSq));
-    const px = a.x + t * dx;
-    const py = a.y + t * dy;
-    const off = Math.hypot(px, py);
     const start = track.cumulative[i] ?? 0;
     const end = track.cumulative[i + 1] ?? start;
-    const along = start + t * (end - start);
-    const closer = off < best.offRouteMeters - 15;
-    const asClose = Math.abs(off - best.offRouteMeters) <= 15;
-    const nearerPrevious =
-      previousAlong != null && Math.abs(along - previousAlong) < Math.abs(best.along - previousAlong);
-    if (closer || (asClose && nearerPrevious)) best = { along, offRouteMeters: off, segment: i };
+    candidates.push({
+      along: start + t * (end - start),
+      offRouteMeters: Math.hypot(a.x + t * dx, a.y + t * dy),
+      segment: i,
+    });
+  }
+  let best: RoutePosition = { along: 0, offRouteMeters: Infinity, segment: 0 };
+  for (const c of candidates) if (c.offRouteMeters < best.offRouteMeters) best = c;
+  // Where the road passes close to itself, of the points within 15 m of the
+  // nearest, the one nearest where the camper was.
+  if (previousAlong != null) {
+    for (const c of candidates) {
+      if (
+        c.offRouteMeters <= best.offRouteMeters + 15 &&
+        Math.abs(c.along - previousAlong) < Math.abs(best.along - previousAlong)
+      ) {
+        best = c;
+      }
+    }
   }
   return best;
 }
@@ -108,15 +121,24 @@ export interface Guidance {
   onRough: boolean;
   /** Meters to the next unpaved or rough stretch, if one is within half a mile. */
   roughAheadMeters: number | null;
+  /** Which step it starts at (so its warning is said once, however many turns come first). */
+  roughAheadStep: number | null;
   /** Meters to a mapped gate, if one is within 400 m. */
   gateAheadMeters: number | null;
+  gateAheadStep: number | null;
+  /** How close to the turn "turn now" is said: farther at speed. */
+  preMeters: number;
 }
 
 export function guidanceAt(
   plan: RoutePlan,
   track: RouteTrack,
   at: Coordinates,
-  { accuracy = null, previousAlong = null }: { accuracy?: number | null; previousAlong?: number | null } = {},
+  {
+    accuracy = null,
+    previousAlong = null,
+    speed = null,
+  }: { accuracy?: number | null; previousAlong?: number | null; speed?: number | null } = {},
 ): Guidance {
   const position = positionOnRoute(plan.path, track, at, previousAlong);
   const { along } = position;
@@ -141,15 +163,24 @@ export function guidanceAt(
   const current = steps[stepIndex] ?? null;
   const onRough = current?.rough === true;
   let roughAheadMeters: number | null = null;
+  let roughAheadStep: number | null = null;
   let gateAheadMeters: number | null = null;
+  let gateAheadStep: number | null = null;
   for (let i = stepIndex + 1; i < steps.length; i += 1) {
     const step = steps[i];
     if (!step) continue;
     const ahead = at_(step.begin) - along;
-    if (roughAheadMeters == null && !onRough && step.rough && ahead <= ROUGH_WARN_M) roughAheadMeters = ahead;
-    if (gateAheadMeters == null && step.gate && ahead <= GATE_WARN_M) gateAheadMeters = ahead;
+    if (roughAheadMeters == null && !onRough && step.rough && ahead <= ROUGH_WARN_M) {
+      roughAheadMeters = ahead;
+      roughAheadStep = i;
+    }
+    if (gateAheadMeters == null && step.gate && ahead <= GATE_WARN_M) {
+      gateAheadMeters = ahead;
+      gateAheadStep = i;
+    }
     if (ahead > ROUGH_WARN_M) break;
   }
+  const preMeters = Math.max(PRE_M, (speed != null && speed > 0 ? speed : 0) * PRE_SECONDS);
 
   return {
     along,
@@ -163,7 +194,10 @@ export function guidanceAt(
     arrived,
     onRough,
     roughAheadMeters,
+    roughAheadStep,
     gateAheadMeters,
+    gateAheadStep,
+    preMeters,
   };
 }
 
@@ -188,7 +222,7 @@ export function announcementFor(
   if (g.offRoute) return null;
 
   // Arriving is said once, at the end ("You've arrived at…"), not as a turn.
-  if (next && !next.arrive && g.metersToNext <= PRE_M) {
+  if (next && !next.arrive && g.metersToNext <= g.preMeters) {
     candidates.push({ key: `pre:${nextIndex}`, text: next.pre ?? next.instruction });
   }
   // The first step ("Drive northwest on Main Avenue."), once, when Drive mode
@@ -197,14 +231,16 @@ export function announcementFor(
     const first = [g.current.pre ?? g.current.instruction, g.current.post].filter(Boolean).join(' ');
     if (first) candidates.push({ key: 'start', text: first });
   }
-  if (next && g.metersToNext <= ALERT_M && g.metersToNext > ALERT_MIN_M) {
+  if (next && g.metersToNext <= ALERT_M && g.metersToNext > Math.max(ALERT_MIN_M, g.preMeters)) {
     const what = next.arrive ? `you'll reach ${destinationName}.` : lowerFirst(next.alert ?? next.instruction);
     candidates.push({ key: `alert:${nextIndex}`, text: `In ${spokenDistance(g.metersToNext)}, ${what}` });
   }
-  if (g.gateAheadMeters != null) candidates.push({ key: `gate:${nextIndex}`, text: 'Mapped gate ahead.' });
+  if (g.gateAheadMeters != null) {
+    candidates.push({ key: `gate:${g.gateAheadStep ?? nextIndex}`, text: 'Mapped gate ahead.' });
+  }
   if (g.roughAheadMeters != null) {
-    const where = g.roughAheadMeters <= PRE_M ? 'ahead' : `in ${spokenDistance(g.roughAheadMeters)}`;
-    candidates.push({ key: `rough:${nextIndex}`, text: `Unpaved road ${where}.` });
+    const where = g.roughAheadMeters <= g.preMeters ? 'ahead' : `in ${spokenDistance(g.roughAheadMeters)}`;
+    candidates.push({ key: `rough:${g.roughAheadStep ?? nextIndex}`, text: `Unpaved road ${where}.` });
   }
   for (const c of candidates) {
     const said = fresh(c);

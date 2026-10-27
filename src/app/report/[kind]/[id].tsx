@@ -15,6 +15,8 @@ import { REPORT_REASONS, sendReport, type ReportReason, type ReportTarget } from
 import { useSpots } from '@/data/spots';
 import { useAuth } from '@/lib/auth';
 import { useBlockCamper } from '@/lib/useBlockCamper';
+import { useDiscardGuard } from '@/lib/useDiscardGuard';
+import { useOnce } from '@/lib/useOnce';
 import { colors } from '@/theme';
 import { KeyboardSafe } from '@/components/KeyboardSafe';
 
@@ -57,12 +59,19 @@ export default function ReportScreen() {
   const [details, setDetails] = useState('');
   const [tried, setTried] = useState(false);
   const [sending, setSending] = useState(false);
+  const once = useOnce();
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<'sent' | 'already' | null>(null);
   // Who added it, remembered when the report goes: once blocked, their spots
   // (and so their name) are gone from the list.
   const [camper, setCamper] = useState<{ id: string; name: string | null } | null>(null);
   const [blocked, setBlocked] = useState(false);
+
+  useDiscardGuard(
+    done == null && !sending && details.trim() !== '',
+    'Discard this report?',
+    "What you wrote hasn't been sent.",
+  );
 
   const target = reportTarget(kind, id);
   if (!target) {
@@ -72,6 +81,8 @@ export default function ReportScreen() {
           icon="flag-outline"
           title="Nothing to report"
           message="This link doesn't point to a spot, photo, check-in, cleanup or camper."
+          actionLabel="Back"
+          onAction={close}
         />
       </View>
     );
@@ -204,6 +215,7 @@ export default function ReportScreen() {
           value={reason}
           onChange={(value) => setReason(value)}
           allowNotSure={false}
+          required
           error={reasonError}
         />
         <TextField
@@ -221,7 +233,7 @@ export default function ReportScreen() {
 
         {error ? <Banner tone="error" message={error} announceKey={error} /> : null}
 
-        <Button label="Send report" icon="flag-outline" loading={sending} onPress={() => void send()} />
+        <Button label="Send report" icon="flag-outline" loading={sending} onPress={() => once(send)} />
         <Button label="Cancel" kind="secondary" disabled={sending} onPress={close} />
       </ScrollView>
     </KeyboardSafe>

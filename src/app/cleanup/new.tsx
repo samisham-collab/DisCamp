@@ -5,13 +5,14 @@
 import * as Crypto from 'expo-crypto';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { AccessibilityInfo, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { AccessibilityInfo, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AccountGate } from '@/components/AccountGate';
 import { ChoiceField, TextField } from '@/components/form';
 import { KeyboardSafe } from '@/components/KeyboardSafe';
 import { PausedNotice } from '@/components/PausedNotice';
+import { PhotoFixStatus, usePhotoFix } from '@/components/PhotoFix';
 import { TermsGate } from '@/components/TermsGate';
 import { Banner, Button, Card, SectionTitle } from '@/components/ui';
 import {
@@ -24,14 +25,14 @@ import {
   type CleanupSize,
 } from '@/data/cleanups';
 import { useCleanups } from '@/data/cleanupsStore';
-import { isRoughFix, roughFixMessage } from '@/data/community';
 import { useSpots } from '@/data/spots';
 import { useAuth } from '@/lib/auth';
 import { takeCameraPhoto } from '@/lib/camera';
 import { CLEANUP_EMBERS } from '@/lib/embers';
 import { distanceMeters, distanceMiles, formatDistance, nearestWithin } from '@/lib/geo';
-import { useLocation } from '@/lib/location';
 import { readPhotoBytes, type PreparedPhoto } from '@/lib/photoPicker';
+import { useDiscardGuard } from '@/lib/useDiscardGuard';
+import { useOnce } from '@/lib/useOnce';
 import { useStillHere } from '@/lib/useStillHere';
 import { hasBlockedWords } from '@/lib/wordFilter';
 import type { Fix } from '@/types';
@@ -54,21 +55,34 @@ export default function NewCleanupScreen() {
   const { status, client, user, termsAccepted } = useAuth();
   const { spots } = useSpots();
   const { upsert } = useCleanups();
-  const { locate, locating } = useLocation();
+  const location = usePhotoFix();
+  const { fix, rough } = location;
   const stillHere = useStillHere();
   // Picked once per photo, so trying again after a lost answer never posts
   // it twice (and a new photo is never mistaken for an old upload).
   const [id, setId] = useState(() => Crypto.randomUUID());
   const [photo, setPhoto] = useState<PreparedPhoto | null>(null);
-  const [fix, setFix] = useState<Fix | null>(null);
   const [kind, setKind] = useState<CleanupKind>('litter');
   const [size, setSize] = useState<CleanupSize>('small');
   const [note, setNote] = useState('');
   const [posting, setPosting] = useState(false);
+  const once = useOnce();
   const [error, setError] = useState<string | null>(null);
+  // The posted cleanup's id, once it's posted: then on to its page.
+  const [postedId, setPostedId] = useState<string | null>(null);
+
+  useDiscardGuard(
+    postedId == null && !posting && (photo != null || note.trim() !== ''),
+    'Discard this cleanup?',
+    "Your photo and details haven't been posted.",
+  );
+  useEffect(() => {
+    if (postedId && stillHere()) router.replace({ pathname: '/cleanup/[id]', params: { id: postedId } });
+  }, [postedId, stillHere]);
 
   if (status !== 'signed-in' || !user || !client) {
-    return <AccountGate status={status} next="/cleanups" action="Posting a cleanup" />;
+    // Back here after signing in, with the photo and location still there.
+    return <AccountGate status={status} next="/cleanup/new" action="Posting a cleanup" />;
   }
   if (termsAccepted !== true) return <TermsGate />;
 
@@ -82,7 +96,6 @@ export default function NewCleanupScreen() {
       : nearestWithin(visible, fix, SPOT_LINK_RADIUS_M)
     : (askedSpot ?? null);
   const farFromAsked = fix && askedSpot && linked !== askedSpot ? askedSpot : null;
-  const rough = isRoughFix(fix);
   const noteError = hasBlockedWords(note) ? "Some words aren't allowed on DisCamp." : null;
 
   const takeBefore = async () => {
@@ -93,14 +106,21 @@ export default function NewCleanupScreen() {
     setError(null);
     // Where the photo was taken pins the cleanup: a fix from right now, never
     // an earlier one.
-    setFix(null);
-    const found = await locate({ fresh: true });
-    if (found) setFix(found);
+    await location.find();
   };
 
+  // Why "Post" isn't available yet, said to screen-reader users on the button.
+  const waitingFor = !photo
+    ? 'Take the before photo first.'
+    : location.finding
+      ? 'Waiting for your location.'
+      : !fix || rough
+        ? 'Needs your location within 75 m.'
+        : null;
+
   const post = async () => {
-    if (!photo || !fix || rough || noteError) {
-      AccessibilityInfo.announceForAccessibility(noteError ?? 'Take the before photo first.');
+    if (!photo || !fix || rough || location.finding || noteError) {
+      AccessibilityInfo.announceForAccessibility(noteError ?? waitingFor ?? 'Take the before photo first.');
       return;
     }
     setPosting(true);
@@ -122,7 +142,7 @@ export default function NewCleanupScreen() {
       );
       upsert(posted);
       AccessibilityInfo.announceForAccessibility('Cleanup posted');
-      if (stillHere()) router.replace({ pathname: '/cleanup/[id]', params: { id: posted.id } });
+      setPostedId(posted.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't post the cleanup. Please try again.");
     } finally {
@@ -156,6 +176,8 @@ export default function NewCleanupScreen() {
               source={{ uri: photo.uri }}
               style={styles.preview}
               contentFit="cover"
+              accessible
+              accessibilityRole="image"
               accessibilityLabel="Your before photo"
             />
           ) : null}
@@ -166,15 +188,8 @@ export default function NewCleanupScreen() {
             disabled={posting}
             onPress={() => void takeBefore()}
           />
-          {photo && fix && rough ? (
-            <Banner
-              tone="warning"
-              icon="location-outline"
-              message={roughFixMessage(fix, 'retake the photo')}
-              actionLabel="Settings"
-              onAction={() => void Linking.openSettings()}
-            />
-          ) : photo && fix ? (
+          {photo ? <PhotoFixStatus state={location} purpose="pin the cleanup" /> : null}
+          {photo && fix && !rough && !location.finding ? (
             <Text style={styles.body}>
               Pinned where you are{plusMinus(fix)}.{linked ? ` Near ${linked.name}.` : ''}
             </Text>
@@ -184,13 +199,6 @@ export default function NewCleanupScreen() {
               You&apos;re {formatDistance(distanceMiles(farFromAsked, fix as Fix))} from {farFromAsked.name}, so this
               cleanup won&apos;t be linked to it.
             </Text>
-          ) : null}
-          {photo && !fix && !locating ? (
-            <Banner
-              tone="warning"
-              icon="location-outline"
-              message="DisCamp needs your location to pin the cleanup. Turn location on, then retake the photo."
-            />
           ) : null}
         </Card>
 
@@ -224,8 +232,9 @@ export default function NewCleanupScreen() {
           label="Post the cleanup"
           icon="send-outline"
           loading={posting}
-          disabled={!photo || !fix || rough}
-          onPress={() => void post()}
+          disabled={waitingFor != null}
+          accessibilityHint={waitingFor ?? undefined}
+          onPress={() => once(post)}
         />
         <Button label="Cancel" kind="secondary" disabled={posting} onPress={close} />
       </ScrollView>

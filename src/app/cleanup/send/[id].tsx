@@ -5,28 +5,29 @@
 import * as Crypto from 'expo-crypto';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { AccessibilityInfo, Alert, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { AccessibilityInfo, ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AccountGate } from '@/components/AccountGate';
 import { cleanupEmbers, cleanupTitle } from '@/components/Cleanups';
 import { TextField } from '@/components/form';
 import { KeyboardSafe } from '@/components/KeyboardSafe';
 import { PausedNotice } from '@/components/PausedNotice';
+import { PhotoFixStatus, usePhotoFix } from '@/components/PhotoFix';
 import { TermsGate } from '@/components/TermsGate';
 import { Banner, Button, Card, EmptyState, SectionTitle } from '@/components/ui';
 import { MAX_CLEANUP_NOTE, sendCleanup } from '@/data/cleanups';
 import { useCleanups } from '@/data/cleanupsStore';
-import { CLEANUP_RADIUS_M, isRoughFix, roughFixMessage } from '@/data/community';
+import { CLEANUP_RADIUS_M } from '@/data/community';
 import { useAuth } from '@/lib/auth';
 import { takeCameraPhoto } from '@/lib/camera';
 import { distanceMeters, distanceMiles, formatDistance } from '@/lib/geo';
-import { useLocation } from '@/lib/location';
 import { readPhotoBytes, type PreparedPhoto } from '@/lib/photoPicker';
 import { pushPermission, turnOnPush } from '@/lib/push';
+import { useDiscardGuard } from '@/lib/useDiscardGuard';
+import { useOnce } from '@/lib/useOnce';
 import { useStillHere } from '@/lib/useStillHere';
 import { hasBlockedWords } from '@/lib/wordFilter';
-import type { Fix } from '@/types';
 import { colors, radius } from '@/theme';
 
 const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
@@ -57,7 +58,14 @@ function PhotoStep({
       <SectionTitle>{title}</SectionTitle>
       <Text style={styles.body}>{help}</Text>
       {photo ? (
-        <Image source={{ uri: photo.uri }} style={styles.preview} contentFit="cover" accessibilityLabel={label} />
+        <Image
+          source={{ uri: photo.uri }}
+          style={styles.preview}
+          contentFit="cover"
+          accessible
+          accessibilityRole="image"
+          accessibilityLabel={label}
+        />
       ) : null}
       <Button
         label={`${photo ? 'Retake' : 'Take'} the ${label.toLowerCase()}`}
@@ -74,8 +82,9 @@ export default function SendCleanupScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const id = first(params.id) ?? '';
   const { status, client, user, termsAccepted } = useAuth();
-  const { cleanups, upsert } = useCleanups();
-  const { locate, locating } = useLocation();
+  const { cleanups, upsert, loading, error: loadError, refresh } = useCleanups();
+  const location = usePhotoFix();
+  const { fix, rough } = location;
   const stillHere = useStillHere();
   // Picked once per photo: a retry after a lost answer never sends it twice,
   // and a retaken photo is never mistaken for an earlier upload.
@@ -83,29 +92,79 @@ export default function SendCleanupScreen() {
   const [haulId, setHaulId] = useState(() => Crypto.randomUUID());
   const [after, setAfter] = useState<PreparedPhoto | null>(null);
   const [haul, setHaul] = useState<PreparedPhoto | null>(null);
-  const [fix, setFix] = useState<Fix | null>(null);
   const [note, setNote] = useState('');
   const [sending, setSending] = useState(false);
+  const once = useOnce();
   const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+
+  useDiscardGuard(
+    !sent && !sending && (after != null || haul != null || note.trim() !== ''),
+    'Discard this cleanup?',
+    "Your photos haven't been sent.",
+  );
+  // Back once it's sent (not if the camper already left).
+  useEffect(() => {
+    if (sent && stillHere()) close();
+  }, [sent, stillHere]);
 
   if (status !== 'signed-in' || !user || !client) {
-    return <AccountGate status={status} next={`/cleanup/${id}`} action="Sending a cleanup" />;
+    // Back here after signing in, with the photos still there.
+    return <AccountGate status={status} next={`/cleanup/send/${id}`} action="Sending a cleanup" />;
   }
   if (termsAccepted !== true) return <TermsGate />;
   const task = cleanups.find((t) => t.id === id);
   if (!task) {
     return (
       <View style={styles.center}>
-        <EmptyState icon="leaf-outline" title="Cleanup not found" message="It may have been removed." />
+        {loading ? (
+          <ActivityIndicator size="large" color={colors.pine} accessibilityLabel="Loading the cleanup" />
+        ) : (
+          <>
+            <EmptyState
+              icon={loadError ? 'cloud-offline-outline' : 'leaf-outline'}
+              title={loadError ? "Couldn't load the cleanup" : 'Cleanup not found'}
+              message={loadError ?? 'It may have been removed.'}
+            />
+            {loadError ? (
+              <Button
+                label="Try again"
+                icon="refresh"
+                loading={retrying}
+                onPress={() => {
+                  setRetrying(true);
+                  void refresh().finally(() => setRetrying(false));
+                }}
+              />
+            ) : null}
+            <Button
+              label="Back to Cleanups"
+              kind={loadError ? 'secondary' : 'primary'}
+              onPress={() => router.replace('/cleanups')}
+            />
+          </>
+        )}
       </View>
     );
   }
 
-  const rough = isRoughFix(fix);
   const meters = fix && !rough ? distanceMeters(task, fix) : null;
   const tooFar = meters != null && meters > CLEANUP_RADIUS_M;
   const noteError = hasBlockedWords(note) ? "Some words aren't allowed on DisCamp." : null;
-  const ready = after != null && haul != null && fix != null && !rough && !tooFar && !noteError;
+  const ready = after != null && haul != null && fix != null && !rough && !location.finding && !tooFar && !noteError;
+  // Why "Send" isn't available yet, said to screen-reader users on the button.
+  const waitingFor = !after
+    ? 'Take the after photo first.'
+    : location.finding
+      ? 'Waiting for your location.'
+      : !fix || rough
+        ? 'Needs your location within 75 m.'
+        : tooFar
+          ? `Go within ${CLEANUP_RADIUS_M} m of the pin and retake the after photo.`
+          : !haul
+            ? 'Take the haul shot.'
+            : noteError;
 
   const takeAfter = async () => {
     const taken = await takeCameraPhoto('take photos of cleanups');
@@ -115,9 +174,7 @@ export default function SendCleanupScreen() {
     setError(null);
     // Where the after photo was taken is what's checked against the pin: a
     // fix from right now, never an earlier one.
-    setFix(null);
-    const found = await locate({ fresh: true });
-    if (found) setFix(found);
+    await location.find();
   };
 
   const takeHaul = async () => {
@@ -153,7 +210,7 @@ export default function SendCleanupScreen() {
             ]
           : undefined,
       );
-      if (stillHere()) close();
+      setSent(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't send your cleanup. Please try again.");
     } finally {
@@ -188,31 +245,18 @@ export default function SendCleanupScreen() {
           busy={sending}
           onTake={() => void takeAfter()}
         />
-        {after && fix && rough ? (
-          <Banner
-            tone="warning"
-            icon="location-outline"
-            message={roughFixMessage(fix, 'retake the after photo')}
-            actionLabel="Settings"
-            onAction={() => void Linking.openSettings()}
-          />
-        ) : after && fix ? (
+        {after ? <PhotoFixStatus state={location} purpose="check you're at the cleanup" /> : null}
+        {after && fix && !rough && !location.finding ? (
           tooFar ? (
             <Banner
               tone="error"
               icon="location-outline"
               message={`You're ${(meters ?? 0) < 1000 ? `${Math.round(meters ?? 0)} m` : formatDistance(distanceMiles(task, fix))} from the cleanup's pin. Go to it and retake the after photo (within ${CLEANUP_RADIUS_M} m).`}
+              announceKey="too-far"
             />
           ) : (
             <Text style={styles.body}>You&apos;re about {Math.round(meters ?? 0)} m from the pin. Good.</Text>
           )
-        ) : null}
-        {after && !fix && !locating ? (
-          <Banner
-            tone="warning"
-            icon="location-outline"
-            message="DisCamp needs your location to check you're at the cleanup. Turn location on, then retake the after photo."
-          />
         ) : null}
 
         <PhotoStep
@@ -240,7 +284,8 @@ export default function SendCleanupScreen() {
           icon="send-outline"
           loading={sending}
           disabled={!ready}
-          onPress={() => void send()}
+          accessibilityHint={waitingFor ?? undefined}
+          onPress={() => once(send)}
         />
         <Button label="Cancel" kind="secondary" disabled={sending} onPress={close} />
       </ScrollView>
@@ -249,7 +294,7 @@ export default function SendCleanupScreen() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, padding: 20, justifyContent: 'center', backgroundColor: colors.bg },
+  center: { flex: 1, padding: 20, gap: 12, justifyContent: 'center', backgroundColor: colors.bg },
   content: { padding: 16, gap: 16, paddingBottom: 40 },
   intro: { gap: 6 },
   title: { fontSize: 24, fontWeight: '800', color: colors.ink },

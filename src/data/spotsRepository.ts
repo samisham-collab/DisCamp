@@ -54,25 +54,42 @@ function isNetworkError(message: string): boolean {
   return /network request failed|failed to fetch|network error|load failed/i.test(message);
 }
 
+/** Pages of spots read at most (20,000 spots), so a misbehaving server can't loop forever. */
+const MAX_SPOT_PAGES = 20;
+
 export async function fetchRemoteSpots(client: SupabaseClient, timeoutMs: number): Promise<ParsedSpots> {
   try {
     // One attempt, bounded by our own timeout. The library's automatic retries
     // (1 s, 2 s, 4 s apart) would keep campers waiting ~7 s just to learn
     // they're offline; Retry and pull-to-refresh try again on request.
-    const { data, error } = await withDeadline(
-      async (signal) => client.from('spots_api').select('*').order('name').retry(false).abortSignal(signal),
-      timeoutMs,
-    );
+    // The server sends at most SERVER_ROW_LIMIT rows per request, so a long
+    // list comes in pages, all within the one time limit.
+    const { rows, error } = await withDeadline(async (signal) => {
+      const all: unknown[] = [];
+      for (let page = 0; page < MAX_SPOT_PAGES; page += 1) {
+        const from = page * SERVER_ROW_LIMIT;
+        const { data, error: failed } = await client
+          .from('spots_api')
+          .select('*')
+          .order('name')
+          .order('id')
+          .range(from, from + SERVER_ROW_LIMIT - 1)
+          .retry(false)
+          .abortSignal(signal);
+        if (failed) return { rows: all, error: failed };
+        const got: unknown[] = Array.isArray(data) ? data : [];
+        all.push(...got);
+        if (got.length < SERVER_ROW_LIMIT) return { rows: all, error: null };
+      }
+      log.warn('Stopped loading spots at the page limit; some may be missing', { rows: all.length });
+      return { rows: all, error: null };
+    }, timeoutMs);
     if (error) {
       if (isNetworkError(error.message)) {
         throw new SpotsLoadError("You're offline or the server can't be reached.", 'offline');
       }
       log.warn('Supabase returned an error', { message: error.message, code: error.code });
       throw new SpotsLoadError("The server couldn't send spots right now.", 'server');
-    }
-    const rows: unknown[] = Array.isArray(data) ? data : [];
-    if (rows.length >= SERVER_ROW_LIMIT) {
-      log.warn('The server sent its maximum number of spots; some may be missing', { rows: rows.length });
     }
     return parseSpotRows(rows);
   } catch (error) {

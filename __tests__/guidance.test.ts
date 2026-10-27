@@ -15,7 +15,7 @@ import {
   trackFor,
   type Guidance,
 } from '@/lib/guidance';
-import { parseRoute, type RoutePlan } from '@/lib/routing';
+import { parseRoute, type RoutePlan, type RouteStep } from '@/lib/routing';
 import type { Coordinates } from '@/types';
 
 import { routeAnswer } from '../test/routeFixture';
@@ -217,6 +217,68 @@ describe('what Drive mode says', () => {
     ]);
     expect(sayAll(guidanceAt(plain, plainTrack, before(1, 50)), new Set(['start']))).toEqual(['US 24 West.']);
     expect(sayAll(guidanceAt(plain, plainTrack, p(0)))).toEqual(['Drive north.']);
+  });
+});
+
+describe('what Drive mode says, on short back roads', () => {
+  // Three short legs north: a turn 222 m in, then a gate 444 m in.
+  const north = (m: number) => ({ latitude: 39 + m / 111_320, longitude: -101 });
+  const step = (instruction: string, begin: number, extra: Partial<RouteStep> = {}): RouteStep => ({
+    instruction,
+    alert: null,
+    pre: null,
+    post: null,
+    begin,
+    end: begin + 1,
+    miles: 0.14,
+    minutes: 1,
+    rough: false,
+    gate: false,
+    arrive: false,
+    ...extra,
+  });
+  const short: RoutePlan = {
+    ...plan,
+    path: [north(0), north(222), north(444), north(666)],
+    steps: [
+      step('Drive north.', 0),
+      step('Turn right onto Forest Road 12.', 1),
+      step('Bear left onto Forest Road 12A.', 2, { gate: true }),
+      step('You have arrived at your destination.', 3, { arrive: true }),
+    ],
+  };
+  const shortTrack = trackFor(short.path);
+
+  it('warns about a gate once, even with a turn before it', () => {
+    const spoken = new Set(['start']);
+    expect(sayAll(guidanceAt(short, shortTrack, north(100)), spoken)).toContain('Mapped gate ahead.');
+    // Past the turn, the same gate is still ahead: not said again.
+    expect(sayAll(guidanceAt(short, shortTrack, north(300)), spoken)).not.toContain('Mapped gate ahead.');
+  });
+
+  it('calls the turn earlier at highway speed', () => {
+    const plain = parseRoute(
+      routeAnswer({
+        maneuvers: [
+          { type: 1, instruction: 'Drive north.', begin_shape_index: 0, end_shape_index: 2 },
+          { type: 10, instruction: 'US 24 West.', begin_shape_index: 2, end_shape_index: 4 },
+        ],
+      }),
+    );
+    const plainTrack = trackFor(plain.path);
+    const at = before(1, 200);
+    // 200 m out at a crawl: too early for "now", too late for "in a quarter mile".
+    expect(sayAll(guidanceAt(plain, plainTrack, at, { speed: 5 }), new Set(['start']))).toEqual([]);
+    // At 60 mph (27 m/s) that's 7 seconds away: say it now.
+    const fast = guidanceAt(plain, plainTrack, at, { speed: 27 });
+    expect(fast.preMeters).toBeCloseTo(216, 0);
+    expect(sayAll(fast, new Set(['start']))).toEqual(['US 24 West.']);
+  });
+
+  it('puts the camper where they are along a straight road', () => {
+    const position = positionOnRoute(short.path, shortTrack, north(105), 100);
+    expect(position.along).toBeCloseTo(105, 0);
+    expect(position.offRouteMeters).toBeLessThan(1);
   });
 });
 

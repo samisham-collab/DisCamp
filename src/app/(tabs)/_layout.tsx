@@ -66,7 +66,7 @@ export default function TabsLayout() {
 
 const styles = StyleSheet.create({
   label: { alignItems: 'center', gap: 2 },
-  text: { fontSize: 10, fontWeight: '500' },
+  text: { fontSize: 11, fontWeight: '500' },
   textOn: { fontWeight: '800' },
   line: { width: 24, height: 3, borderRadius: 2, backgroundColor: 'transparent' },
 });

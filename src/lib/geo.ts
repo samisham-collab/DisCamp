@@ -145,18 +145,40 @@ export function regionForCoordinates(coords: Coordinates[], fallback: Region): R
   }
   let minLat = first.latitude;
   let maxLat = first.latitude;
-  let minLng = first.longitude;
-  let maxLng = first.longitude;
   for (const c of valid) {
     minLat = Math.min(minLat, c.latitude);
     maxLat = Math.max(maxLat, c.latitude);
-    minLng = Math.min(minLng, c.longitude);
-    maxLng = Math.max(maxLng, c.longitude);
   }
+  const { center, span } = longitudeArc(valid.map((c) => c.longitude));
   return {
     latitude: (minLat + maxLat) / 2,
-    longitude: (minLng + maxLng) / 2,
+    longitude: center,
     latitudeDelta: Math.min(180, Math.max(MIN_DELTA, (maxLat - minLat) * PADDING_FACTOR)),
-    longitudeDelta: Math.min(360, Math.max(MIN_DELTA, (maxLng - minLng) * PADDING_FACTOR)),
+    longitudeDelta: Math.min(360, Math.max(MIN_DELTA, span * PADDING_FACTOR)),
   };
+}
+
+/**
+ * The shortest stretch of longitude holding every point, so spots on both
+ * sides of the 180th meridian (the far Aleutians) frame a few degrees, not
+ * the whole world.
+ */
+export function longitudeArc(longitudes: number[]): { center: number; span: number } {
+  const sorted = [...longitudes].sort((a, b) => a - b);
+  const lowest = sorted[0] ?? 0;
+  const highest = sorted[sorted.length - 1] ?? 0;
+  // The widest empty stretch is what's left off; the arc starts after it.
+  let gap = lowest + 360 - highest;
+  let start = lowest;
+  for (let i = 1; i < sorted.length; i += 1) {
+    const here = sorted[i] ?? 0;
+    const before = sorted[i - 1] ?? 0;
+    if (here - before > gap) {
+      gap = here - before;
+      start = here;
+    }
+  }
+  const span = 360 - gap;
+  const center = start + span / 2;
+  return { center: center > 180 ? center - 360 : center, span };
 }

@@ -5,7 +5,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { StyleSheet, Text, View } from 'react-native';
 
 import type { FitResult, FitStatus } from '../lib/fit';
-import { colors, fitColors } from '../theme';
+import { colors, fitColors, TOUCH_TARGET } from '../theme';
 import type { IconName } from './ui';
 
 export function FitIcon({ status, size = 16 }: { status: FitStatus; size?: number }) {
@@ -22,9 +22,20 @@ export function FitIcon({ status, size = 16 }: { status: FitStatus; size?: numbe
 }
 
 export function SpotPin({ status, selected }: { status: FitStatus; selected: boolean }) {
+  // Inside a 44 pt square, so the pin is as easy to tap as any button.
   return (
-    <View style={[styles.pin, { backgroundColor: fitColors[status].fill }, selected && styles.pinSelected]}>
-      <FitIcon status={status} size={selected ? 20 : 18} />
+    <View style={styles.pinTarget}>
+      <View
+        style={[
+          styles.pin,
+          { backgroundColor: fitColors[status].fill },
+          // Yellow on a light map needs a dark edge to stand out.
+          status === 'tight' && styles.pinTight,
+          selected && styles.pinSelected,
+        ]}
+      >
+        <FitIcon status={status} size={selected ? 20 : 18} />
+      </View>
     </View>
   );
 }
@@ -69,6 +80,7 @@ export function FitBanner({ fit, rigName }: { fit: FitResult; rigName: string })
 }
 
 const styles = StyleSheet.create({
+  pinTarget: { width: TOUCH_TARGET, height: TOUCH_TARGET, alignItems: 'center', justifyContent: 'center' },
   pin: {
     width: 34,
     height: 34,
@@ -78,6 +90,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  pinTight: { borderColor: '#7A5300' },
   pinSelected: { width: 42, height: 42, borderRadius: 21, borderColor: colors.ink, borderWidth: 3 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dot: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },

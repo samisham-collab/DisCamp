@@ -73,7 +73,7 @@ function readPoint(text: unknown): { latitude: number; longitude: number } | nul
 /** Embers for an approved cleanup, by size (migration 0008). */
 const CLEANUP_EMBERS: Record<string, number> = { small: 50, medium: 100, large: 150 };
 
-function sessionFor(user: FakeUser): Session {
+export function sessionFor(user: FakeUser): Session {
   return {
     access_token: `token-${user.id}`,
     refresh_token: 'refresh',
@@ -99,6 +99,8 @@ class FakeQuery implements PromiseLike<QueryResult> {
   filters: [string, unknown][] = [];
   mode: 'many' | 'single' | 'maybeSingle' = 'many';
   signal: AbortSignal | undefined;
+  /** Rows asked for with .range(from, to), inclusive. */
+  range_: [number, number] | null = null;
 
   constructor(
     private readonly backend: FakeBackend,
@@ -132,6 +134,10 @@ class FakeQuery implements PromiseLike<QueryResult> {
     return this;
   }
   limit() {
+    return this;
+  }
+  range(from: number, to: number) {
+    this.range_ = [from, to];
     return this;
   }
   retry(enabled: boolean) {
@@ -383,7 +389,9 @@ export class FakeBackend {
   }
 
   private shape(rows: Row[], query: FakeQuery): QueryResult {
-    if (query.mode === 'many') return { data: rows, error: null };
+    if (query.mode === 'many') {
+      return { data: query.range_ ? rows.slice(query.range_[0], query.range_[1] + 1) : rows, error: null };
+    }
     if (rows.length === 1) return { data: rows[0], error: null };
     if (rows.length === 0 && query.mode === 'maybeSingle') return { data: null, error: null };
     return { data: null, error: NOT_FOUND };

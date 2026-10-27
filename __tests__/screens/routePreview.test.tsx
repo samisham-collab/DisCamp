@@ -3,16 +3,18 @@
 // to the phone's maps app.
 
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { act, fireEvent, screen } from 'expo-router/testing-library';
+import { act, fireEvent, screen, waitFor } from 'expo-router/testing-library';
 import { useKeepAwake } from 'expo-keep-awake';
+import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Speech from 'expo-speech';
-import { Alert, Linking } from 'react-native';
+import { AccessibilityInfo, Alert, Linking } from 'react-native';
 
 import { ROUTE_ERROR_MESSAGES, clearRouteCache, type FetchLike } from '@/lib/routing';
 
 import type { Coordinates } from '@/types';
 
+import { spyOnAlerts } from '../../test/helpers';
 import { activeWatches, emitFix, emitWatchError } from '../../test/mocks/expoLocation';
 import { mapMethods } from '../../test/mocks/reactNativeMaps';
 import { renderApp } from '../../test/renderApp';
@@ -46,7 +48,7 @@ describe('Route preview', () => {
 
     expect(await screen.findByText('44 mi · 51 min')).toBeTruthy();
     expect(screen.getByText('Smoky Gardens')).toBeTruthy();
-    expect(screen.getByText('About 3.8 mi unpaved or rough (orange on the map)')).toBeTruthy();
+    expect(screen.getByText('About 3.8 mi unpaved or rough (orange dashes on the map)')).toBeTruthy();
     expect(screen.getByText('The route passes a mapped gate. Gates on back roads can be locked.')).toBeTruthy();
     expect(screen.getByText(/^Routed for .+\. 4WD with high clearance/)).toBeTruthy();
     expect(screen.getByText('Route by Valhalla · Road data © OpenStreetMap contributors')).toBeTruthy();
@@ -105,6 +107,9 @@ describe('Route preview', () => {
     expect(await screen.findByText('DisCamp needs your location to work out a route.')).toBeTruthy();
     expect(screen.getByText('Directions in Apple Maps')).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
+    // Location turned on in Settings: Try again works out the route.
+    fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('44 mi · 51 min')).toBeTruthy();
   });
 
   it('says so when the spot is gone', async () => {
@@ -291,5 +296,52 @@ describe('Drive mode', () => {
     expect(
       await screen.findByText("DisCamp couldn't follow your location. Check that location is on for DisCamp."),
     ).toBeTruthy();
+  });
+});
+describe('Route preview, for everyone', () => {
+  it('lists every turn in words, with rough stretches and gates said, not just shown', async () => {
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility');
+    await renderApp('/route/smoky-gardens');
+    expect(await screen.findByText('44 mi · 51 min')).toBeTruthy();
+    expect(announce).toHaveBeenCalledWith('Route ready: 44 mi · 51 min');
+    const toggle = screen.getByRole('button', { name: 'Show turn by turn (3 steps)' });
+    expect(toggle.props.accessibilityState).toMatchObject({ expanded: false });
+    fireEvent.press(toggle);
+    expect(screen.getByText('Drive northwest on Main Avenue.')).toBeTruthy();
+    expect(
+      screen.getByLabelText('2. Turn left onto County Road 242. 2.5 mi. Unpaved or rough. Mapped gate.'),
+    ).toBeTruthy();
+    expect(screen.getByText('2.5 mi · unpaved or rough · mapped gate')).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Hide turn by turn (3 steps)' }));
+    expect(screen.queryByText('Drive northwest on Main Avenue.')).toBeNull();
+  });
+
+  it('says when there is no route, out loud', async () => {
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility');
+    fetchMock.mockImplementationOnce(async () =>
+      answer({ error_code: 442, error: 'No path could be found for input', status_code: 400 }, 400),
+    );
+    await renderApp('/route/smoky-gardens');
+    expect(await screen.findByText(ROUTE_ERROR_MESSAGES['no-route'])).toBeTruthy();
+    expect(announce).toHaveBeenCalledWith(ROUTE_ERROR_MESSAGES['no-route']);
+  });
+});
+
+describe('Drive mode, safely', () => {
+  it('asks before back or a swipe ends the drive', async () => {
+    const alerts = spyOnAlerts();
+    // From the spot's page, so there's somewhere to go back to.
+    await renderApp('/spot/smoky-gardens');
+    fireEvent.press(screen.getByLabelText('Route'));
+    fireEvent.press(await screen.findByText('Start'));
+    expect(await screen.findByText('Waiting for GPS…')).toBeTruthy();
+    expect(activeWatches()).toBe(1);
+    act(() => router.back());
+    expect(alerts.lastTitle()).toBe('End Drive mode?');
+    act(() => alerts.press('Keep driving'));
+    expect(activeWatches()).toBe(1);
+    act(() => router.back());
+    act(() => alerts.press('End'));
+    await waitFor(() => expect(activeWatches()).toBe(0));
   });
 });

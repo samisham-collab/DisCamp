@@ -12,12 +12,36 @@ All notable changes to DisCamp. Dates are when the version was finished.
 - **Photo previews.** Each photo now uploads with a 480-pixel preview (about 30 KB) beside it, which photo strips and cleanup lists show, so they no longer download the full photo; older photos without one show in full. Photo files are cached for a year (they're never overwritten), so phones and Supabase's CDN don't download them again.
 - **Backups.** `scripts/backup-database.sh` saves the database (accounts and everything DisCamp keeps) into Documents/DisCamp backups on your Mac, keeping the newest 10, and copies each photo once. `scripts/restore-database.sh` puts a backup back into a fresh project. The free plan has no backups of its own. A database test backs up and restores into an empty database and checks every table matches, row for row.
 - **DisCamp's website.** `docs/` is now a full site for GitHub Pages: a home page (what DisCamp does, how fit and the cost meter work, cleanups and Embers, privacy, donations only) and the support, privacy and terms pages in the same design, with light and dark modes and a phone layout. The pages name Samuel Isham as the owner and discamphelp@yahoo.com as the support email (also in the app). The App Store Connect notes list the home page as the Marketing URL.
+- **Undo for rig presets.** Picking a preset over a rig you set up yourself shows "Switched to … Your own rig was replaced." with **Undo**.
+- **Turn-by-turn list.** The route preview lists every step with its distance, rough stretches and gates (**Show turn by turn**), which screen readers can read step by step.
+- **A Directions button** on the map's spot card, next to **View spot**.
+- **Close on iPhone's sheets.** Sign-in, reports, check-ins, the rules and the cleanup screens open as sheets with a **Close** button in the corner, not only a swipe.
+- **An accessibility test** goes through every screen and fails if anything tappable has no role or name, or a labelled photo can't be reached.
 
 ### Changed
 
 - **Photos are 1280 pixels** on their longest side (were 1600): about a third smaller, still sharp on a phone, so about 4,000 fit in the free plan's 1 GB.
 - **Database grants written out (migration `0010_explicit_grants.sql`).** From October 30, 2026, Supabase stops giving the API roles access to new tables in `public` automatically, including on new projects, preview branches and `supabase db reset`. The app's own access was already granted explicitly; the service role (which the report-alert Edge Function uses to read reports, spots, photos, check-ins and cleanups) relied on the old default. 0010 grants it the same access it has on the existing project, so a new project works the same. Nothing changes on the existing project. The database tests now start from Supabase's new rule and fail if a table or view in `public` is missing its grants.
 - **Bundle ID `com.samuelisham.discamp`.** The iPhone bundle ID and the Android package name replace the placeholder `org.discamp.app`, and the `apple-revoke` function now assumes it, so `APPLE_CLIENT_ID` is no longer needed. The app is also linked to the Expo project `@discamp/discamp`.
+- **Accessibility pass.** Screen readers: each row on a spot's page is read as one "label: value"; form fields read their label once, with the error and hint after it; required choices say "(required)"; busy buttons keep their names; photos are announced as images; "Sources" is a heading; the map's spot card is focused when it opens. With VoiceOver or TalkBack on, Explore offers the list view. Reduce Motion (Remove animations on Android) makes maps jump instead of glide and sheets fade. Field, chip and toggle outlines are darker (3:1 contrast), map pins are 44-point targets, "tight fit" pins have a dark edge, rough stretches on a route are dashed (not orange alone), tab names are a little larger, and segmented controls and buttons wrap at large text sizes instead of cutting words off. Hold **+** or **–** on a stepper to keep changing it.
+- **Better GPS for cleanups and new spots.** Under trees or by a canyon wall, DisCamp keeps listening (up to 30 seconds for a cleanup photo, 15 for **Use my location**) and shows how close it has got ("within about 40 m so far"). If it can't get close enough it says why (approximate location, weak GPS, or none) with **Try again**, instead of starting over. The **Post** and **Send** buttons say what they're waiting for. Coming back to DisCamp after 5 minutes updates your location quietly.
+- **Coordinates as people write them.** The GPS field also takes "46.653° N, 121.614° W" and "N46.653 W121.614". A longitude east of 0 (a missing minus sign in the US) gets a warning.
+- **Drive mode** calls turns earlier at highway speed, says each rough-road and gate warning once per stretch, keeps its place on routes that loop back on themselves, says out loud when the route is ready or why it isn't, and explains when GPS hasn't answered for 30 seconds. Back or a swipe during Drive mode asks "End Drive mode?" first.
+- **The list says how it's sorted** ("nearest first" or "best fit first") with a link to update your location or sort by distance.
+- **Cleanups reload less.** Coming back to the Cleanups tab loads the list again only once it's 2 minutes old, which saves data on the free plan.
+- **Spots load in pages** of 1,000, so the map shows every spot once there are more than Supabase sends at once.
+
+### Fixed
+
+- **No dead ends.** A spot, cleanup or check-in list that couldn't load (no signal) now says so with **Try again** instead of "not found", and shows a spinner while it's still loading; "not found" always has a way back.
+- **Signed in without signal.** Opening DisCamp offline after an hour or more no longer shows you as signed out (the session can't be renewed until there's signal, but it's still there), and **Sign out** works offline.
+- **Nothing is sent twice.** A quick double tap on **Add spot** could add the spot twice; it adds it once. Sends on the check-in, report, cleanup, review, name and rules screens take one tap at a time.
+- **Leaving asks first.** Back, a swipe or **Cancel** on a check-in, a report you've written in, or a cleanup with photos asks "Discard …?" before throwing it away.
+- **Signing in from a cleanup** comes back to the cleanup, with the photos still there.
+- **Tips never spin forever.** If the store doesn't say how a tip went (or doesn't answer within 5 minutes), the buttons come back with a note; a tip that went through is finished the next time DisCamp opens.
+- **Blocking from a spot's page** goes back only if you're still on that page.
+- **Spots on both sides of the 180th meridian** (the far Aleutians) are framed across it, not around the world.
+- The check-in list shows **Try again** when it can't load, and **Still good** says when posting is paused.
 
 ## 1.7.1 (2026-10-19)
 

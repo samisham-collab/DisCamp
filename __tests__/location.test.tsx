@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import * as Location from 'expo-location';
 import type { ReactNode } from 'react';
-import { Alert, Linking } from 'react-native';
+import { Alert, AppState, Linking, type AppStateStatus } from 'react-native';
 
 import { LocationProvider, useLocation } from '@/lib/location';
 
-import { GOODLAND } from '../test/mocks/expoLocation';
+import { activeWatches, emitFix, emitWatchError, GOODLAND } from '../test/mocks/expoLocation';
 
 type Permission = Awaited<ReturnType<typeof Location.getForegroundPermissionsAsync>>;
 const permission = (status: 'granted' | 'denied' | 'undetermined', canAskAgain = true) =>
@@ -268,5 +268,110 @@ describe('location', () => {
       await Promise.resolve();
     });
     expect(result.current.coords).toEqual(fresh);
+  });
+  it('notices when the camper allowed only an approximate location', async () => {
+    jest.mocked(Location.getForegroundPermissionsAsync).mockResolvedValueOnce({
+      ...permission('granted'),
+      android: { accuracy: 'coarse' },
+    } as Permission);
+    const { result } = await setup();
+    await waitFor(() => expect(result.current.approximate).toBe(true));
+  });
+
+  it('works distances out again when the camper comes back after a while', async () => {
+    let onChange: (state: AppStateStatus) => void = () => undefined;
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, listener) => {
+      onChange = listener as (state: AppStateStatus) => void;
+      return { remove: jest.fn() } as unknown as ReturnType<typeof AppState.addEventListener>;
+    });
+    jest.mocked(Location.getForegroundPermissionsAsync).mockResolvedValueOnce(permission('granted'));
+    jest.mocked(Location.getLastKnownPositionAsync).mockResolvedValueOnce({ coords: GOODLAND } as never);
+    const { result } = await setup();
+    await waitFor(() => expect(result.current.coords).toEqual(GOODLAND));
+
+    // Back within 5 minutes: nothing to do.
+    await act(async () => onChange('active'));
+    expect(Location.getLastKnownPositionAsync).toHaveBeenCalledTimes(1);
+
+    // Back after a 200-mile drive.
+    const away = { latitude: 41.1, longitude: -104.8 };
+    jest.mocked(Location.getLastKnownPositionAsync).mockResolvedValueOnce({ coords: away } as never);
+    jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 6 * 60_000);
+    await act(async () => onChange('background'));
+    await act(async () => onChange('active'));
+    await waitFor(() => expect(result.current.coords).toEqual(away));
+  });
+
+  it('listens for a better fix, and settles for the best one after the wait', async () => {
+    const { result } = await setup();
+    jest
+      .mocked(Location.getCurrentPositionAsync)
+      .mockResolvedValue({ coords: { ...GOODLAND, accuracy: 300 } } as never);
+    const heard: (number | null | undefined)[] = [];
+    let found: Promise<unknown> = Promise.resolve(null);
+    jest.useFakeTimers();
+    await act(async () => {
+      found = result.current.refine(75, 30_000, (fix) => heard.push(fix.accuracy));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(activeWatches()).toBe(1));
+    act(() => emitFix({ ...GOODLAND, accuracy: 120 }));
+    act(() => emitFix({ ...GOODLAND, accuracy: 140 }));
+    await act(async () => {
+      jest.advanceTimersByTime(30_000);
+      await found;
+    });
+    expect(await found).toEqual({ ...GOODLAND, accuracy: 120 });
+    expect(heard).toEqual([300, 120, 140]);
+    expect(activeWatches()).toBe(0);
+    expect(result.current.locating).toBe(false);
+    expect(result.current.coords).toEqual({ ...GOODLAND, accuracy: 120 });
+  });
+
+  it('answers at once when the first fix is good, or when location is off', async () => {
+    const { result } = await setup();
+    jest
+      .mocked(Location.getCurrentPositionAsync)
+      .mockResolvedValueOnce({ coords: { ...GOODLAND, accuracy: 10 } } as never);
+    let found: unknown;
+    await act(async () => {
+      found = await result.current.refine(75, 30_000);
+    });
+    expect(found).toEqual({ ...GOODLAND, accuracy: 10 });
+    expect(Location.watchPositionAsync).not.toHaveBeenCalled();
+
+    jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    jest.mocked(Location.getForegroundPermissionsAsync).mockResolvedValueOnce(permission('denied', true));
+    jest.mocked(Location.requestForegroundPermissionsAsync).mockResolvedValueOnce(permission('denied', false) as never);
+    await act(async () => {
+      found = await result.current.refine(75, 30_000);
+    });
+    expect(found).toBeNull();
+  });
+
+  it('stops at the first good fix, riding out GPS hiccups, and settles when it can’t listen', async () => {
+    const { result } = await setup();
+    jest
+      .mocked(Location.getCurrentPositionAsync)
+      .mockResolvedValue({ coords: { ...GOODLAND, accuracy: 300 } } as never);
+    let found: Promise<unknown> = Promise.resolve(null);
+    await act(async () => {
+      found = result.current.refine(75, 30_000);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(activeWatches()).toBe(1));
+    // A hiccup is noted, not an error.
+    act(() => emitWatchError('kCLErrorLocationUnknown'));
+    act(() => emitFix({ ...GOODLAND, accuracy: 30 }));
+    expect(await act(async () => found)).toEqual({ ...GOODLAND, accuracy: 30 });
+    expect(activeWatches()).toBe(0);
+
+    // The phone won't let DisCamp keep listening: the first fix it had.
+    jest.mocked(Location.watchPositionAsync).mockRejectedValueOnce(new Error('not allowed'));
+    let second: unknown;
+    await act(async () => {
+      second = await result.current.refine(75, 30_000);
+    });
+    expect(second).toEqual({ ...GOODLAND, accuracy: 300 });
   });
 });
