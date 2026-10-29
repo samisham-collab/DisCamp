@@ -111,7 +111,7 @@ update public.spots set verified = true where id = 'smoky-gardens';
    bash scripts/setup-database.sh
    ```
 
-   It installs `psql` if needed (with Homebrew), asks for the **Session pooler** connection string (Supabase > **Connect**) and the database password, then runs each file below that hasn't run yet, in order, and the seed. Each file runs all-or-nothing, and the database keeps a list of the ones that ran, so run it again after any update that adds a migration. It finishes by listing the tables, the number of starter spots, and whether photo storage is ready.
+   It installs `psql` if needed (with Homebrew), asks for the **Session pooler** connection string (Supabase > **Connect**) and the database password, then runs each file below that hasn't run yet, in order, and the seed. Like the backup and restore scripts, it won't run with a `psql` that's missing PostgreSQL's security fixes (it updates Homebrew's on its own), always encrypts the connection, and says so if your Supabase database itself needs the fixes (see "Keeping PostgreSQL patched" below). Each file runs all-or-nothing, and the database keeps a list of the ones that ran, so run it again after any update that adds a migration. It finishes by listing the tables, the number of starter spots, and whether photo storage is ready.
 
    Or by hand: open **SQL Editor** and run these files in order, each pasted in and run on its own. Check the first and last lines after pasting; long files don't always paste whole, and don't use **Debug with Assistant** on them (it rewrites the SQL).
    1. `supabase/migrations/0001_init.sql` creates the `spots` table.
@@ -130,7 +130,7 @@ update public.spots set verified = true where id = 'smoky-gardens';
    Already ran some for an earlier version? Run only the ones after it (for 1.3: 0004 to 0011; for 1.4.0: 0005 to 0011; for 1.4.1: 0006 to 0011; for 1.5.0: 0007 to 0011; for 1.5.1: 0008 to 0011; for 1.6: 0009 to 0011; for 1.7: 0010 and 0011), then the seed. Never rerun an older file after a newer one: newer files change things the older ones made. To switch a database set up by hand over to the script, tell it the last file that ran, for example `bash scripts/setup-database.sh --after 0005`.
 
 3. Copy your **Project URL** and **publishable key** from the project's API settings.
-   **Keep it awake:** Supabase pauses free projects after a week with no activity. Once DisCamp is on GitHub, `.github/workflows/keep-awake.yml` reads one starter spot every Monday and Thursday to prevent that, and emails you (through GitHub) if a read fails. It needs two repository secrets, `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` (GitHub > your repo > **Settings > Secrets and variables > Actions**), with the same values as in `.env`. Paid Supabase plans are never paused, so you can delete the workflow if you upgrade. In a public repo, GitHub switches scheduled workflows off after 60 days without a commit: if Actions shows that banner, open **Keep Supabase awake** and click **Enable workflow**.
+   **Keep it awake:** Supabase pauses free projects after a week with no activity. Once DisCamp is on GitHub, `.github/workflows/keep-awake.yml` reads one starter spot and records the day's usage in the database (a real write) every day to prevent that, and emails you (through GitHub) if either fails. It needs two repository secrets, `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` (GitHub > your repo > **Settings > Secrets and variables > Actions**), with the same values as in `.env`. Paid Supabase plans are never paused, so you can delete the workflow if you upgrade. In a public repo, GitHub switches scheduled workflows off after 60 days without a commit: if Actions shows that banner, open **Keep Supabase awake** and click **Enable workflow**.
 4. For your phone: `cp .env.example .env`, put both values in `.env`, and restart `npx expo start`.
 5. For builds made on EAS: `.env` isn't uploaded, so add both values on expo.dev (your project > **Environment variables**) for the **preview** and **production** environments. Without them, a build quietly uses the starter spots only.
 
@@ -167,7 +167,7 @@ Each photo is saved at up to 1280 pixels (about 200 KB) with a 480-pixel preview
 DisCamp is built to stay on Supabase's free plan: 500 MB of database, 1 GB of files and 5 GB of downloads a month (plus 5 GB more served from Supabase's cache). Going over doesn't cost money, but Supabase warns, then restricts the project until the next month. So:
 
 - **Near a limit, things pause instead.** At 90% of photo storage, new photos (and cleanups, which need photos) pause; at 90% of the database, new spots, photos and check-ins pause. Posting screens say so. Reports, blocking, sign-ups and edits always work, and nothing is ever deleted to make room. You can also pause by hand. MODERATION.md, "Free plan", has the switches and what to do when it fills up.
-- **You hear about it early.** The Review tab shows how full the plan is, and the twice-weekly "Keep Supabase awake" check on GitHub fails (so GitHub emails you) past 75%.
+- **You hear about it early.** The Review tab shows how full the plan is, and the daily "Keep Supabase awake" check on GitHub fails (so GitHub emails you) past 75%.
 - **Downloads stay small**: previews in lists, long caching, and spots that refresh at most every 15 minutes.
 - **Backups**: the free plan has none, so `scripts/backup-database.sh` saves one on your Mac (below).
 
@@ -182,6 +182,15 @@ bash scripts/backup-database.sh
 It asks for the same connection string and password as `setup-database.sh` and saves the database (accounts, spots, photo details, check-ins, cleanups, Embers, reports, moderation) into **Documents/DisCamp backups**, a dated folder each time, keeping the newest 10. Photos are copied once each into the `photos` folder there. Backups hold campers' email addresses, so they stay on your Mac (only your user can open the folder): never share or upload them. Something deleted from DisCamp leaves the backups within 10 backups (photos at the next one).
 
 To put a backup back (into a fresh Supabase project after a disaster), follow the steps at the top of `scripts/restore-database.sh`. A test restores a backup into an empty database on every CI run, row for row.
+
+### Keeping PostgreSQL patched
+
+PostgreSQL fixes security holes a few times a year, on both sides:
+
+- **The tools on your Mac** (`psql`, `pg_dump`, from Homebrew's `libpq`). In 2025-2026 several fixes were for the tools themselves: a bad server, or a doctored backup, could run code on the Mac that connects to it or restores it. The three database scripts check the version before connecting (`scripts/postgres-client.sh`), run `brew upgrade libpq` when it's behind, and otherwise stop. The restore script also refuses a backup without pg_dump's `\restrict` protection unless you say it's yours (`DISCAMP_RESTORE_UNPROTECTED=yes`). Every connection is encrypted (`PGSSLMODE=require`).
+- **The database itself, on Supabase.** Supabase doesn't apply PostgreSQL's fixes to a running project on its own. When `setup-database.sh` or `backup-database.sh` says the database is missing fixes (or the dashboard's advisor says "security patches available"): back up first, then **Project Settings > General > Upgrade project**. The project is offline for a few minutes. DisCamp uses only the PostGIS extension, so none of the upgrade's extension caveats (ltree, btree_gist, pgcrypto) apply.
+
+When PostgreSQL announces client fixes again, raise the version numbers at the top of `scripts/postgres-client.sh`.
 
 ## Sign-in
 
@@ -376,6 +385,7 @@ scripts/seedSql.ts          The seed generator
 scripts/setup-database.sh   Loads (or updates) the Supabase database from Terminal
 scripts/backup-database.sh  Saves a backup of the database (and photos) on your Mac
 scripts/restore-database.sh Puts a backup back, into a fresh project after a disaster
+scripts/postgres-client.sh  Shared by those three: patched psql/pg_dump only, encrypted connections
 __tests__/                  Tests; screens/ renders the whole app
 test/                       Test helpers and stand-ins for native modules
 ```

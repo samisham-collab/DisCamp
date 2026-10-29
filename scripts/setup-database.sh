@@ -42,16 +42,17 @@ fail() {
   exit 1
 }
 
-# 1. psql, the Postgres command-line tool (Homebrew's libpq package).
-PSQL="$(command -v psql || true)"
+# 1. psql, the Postgres command-line tool (Homebrew's libpq package), with
+# PostgreSQL's security fixes (scripts/postgres-client.sh).
+. scripts/postgres-client.sh
+PSQL="$(pg_tool psql)"
 if [ -z "$PSQL" ]; then
   command -v brew >/dev/null || fail "Homebrew isn't installed. Install it from https://brew.sh, then run this again."
-  if [ ! -x "$(brew --prefix libpq 2>/dev/null)/bin/psql" ]; then
-    say "Installing psql (one time)..."
-    brew install libpq || fail "Couldn't install psql. Run 'brew install libpq' and look at what it says."
-  fi
+  say "Installing psql (one time)..."
+  brew install libpq || fail "Couldn't install psql. Run 'brew install libpq' and look at what it says."
   PSQL="$(brew --prefix libpq)/bin/psql"
 fi
+pg_require_patched "$PSQL"
 
 # 2. Where the database is.
 say "In Supabase, click Connect, choose Session pooler, and copy the connection string."
@@ -77,6 +78,7 @@ say "Connecting..."
 if ! run -c 'select 1' >/dev/null; then
   fail "Couldn't connect. If it says 'password authentication failed', reset the password in Supabase (Project Settings > Database) and run this again. If it timed out, check your internet connection, or try another network."
 fi
+pg_server_warn "$(run -At -c 'show server_version_num' 2>/dev/null)" || true
 
 # 4. Which files have run already.
 run -c 'create schema if not exists supabase_migrations' \

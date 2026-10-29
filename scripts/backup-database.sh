@@ -43,25 +43,20 @@ fail() {
   exit 1
 }
 
-# 1. psql and pg_dump (Homebrew's libpq has both, and stays up to date).
-tool() {
-  local libpq
-  libpq="$(brew --prefix libpq 2>/dev/null || true)"
-  if [ -n "$libpq" ] && [ -x "$libpq/bin/$1" ]; then
-    printf '%s\n' "$libpq/bin/$1"
-  else
-    command -v "$1" || true
-  fi
-}
-PSQL="$(tool psql)"
-PG_DUMP="$(tool pg_dump)"
+# 1. psql and pg_dump (Homebrew's libpq has both, and stays up to date),
+# with PostgreSQL's security fixes (scripts/postgres-client.sh).
+. scripts/postgres-client.sh
+PSQL="$(pg_tool psql)"
+PG_DUMP="$(pg_tool pg_dump)"
 if [ -z "$PSQL" ] || [ -z "$PG_DUMP" ]; then
   command -v brew >/dev/null || fail "Homebrew isn't installed. Install it from https://brew.sh, then run this again."
   say "Installing psql and pg_dump (one time)..."
   brew install libpq || fail "Couldn't install them. Run 'brew install libpq' and look at what it says."
-  PSQL="$(tool psql)"
-  PG_DUMP="$(tool pg_dump)"
+  PSQL="$(pg_tool psql)"
+  PG_DUMP="$(pg_tool pg_dump)"
 fi
+pg_require_patched "$PSQL"
+pg_require_patched "$PG_DUMP"
 
 # 2. Where the database is, and its password.
 DB="${DISCAMP_DB_URL:-}"
@@ -88,6 +83,7 @@ run() { "$PSQL" "$DB" -X -q -v ON_ERROR_STOP=1 -At "$@"; }
 say "Connecting..."
 server="$(run -c 'show server_version_num')" ||
   fail "Couldn't connect. If it says 'password authentication failed', check the password (Project Settings > Database). If it timed out, check your internet connection."
+pg_server_warn "$server" || true
 [ "$(run -c "select to_regclass('public.spots') is not null")" = "t" ] ||
   fail "This database has no DisCamp tables. Check you copied the right project's connection string."
 

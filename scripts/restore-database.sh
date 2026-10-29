@@ -41,17 +41,24 @@ for f in accounts.sql data.sql migrations.txt; do
   [ -f "$BACKUP/$f" ] || fail "$BACKUP doesn't look like a DisCamp backup (it has no $f)."
 done
 
-tool() {
-  local libpq
-  libpq="$(brew --prefix libpq 2>/dev/null || true)"
-  if [ -n "$libpq" ] && [ -x "$libpq/bin/$1" ]; then
-    printf '%s\n' "$libpq/bin/$1"
-  else
-    command -v "$1" || true
-  fi
-}
-PSQL="$(tool psql)"
+# A backup is loaded with psql, so it must have PostgreSQL's security fixes
+# (scripts/postgres-client.sh): an older psql could be made to run commands
+# hidden in a backup.
+. scripts/postgres-client.sh
+PSQL="$(pg_tool psql)"
 [ -n "$PSQL" ] || fail "psql isn't installed. Run bash scripts/setup-database.sh first (it installs it)."
+pg_require_patched "$PSQL"
+
+# A backup made by a pg_dump with the 2025 fix starts with \restrict, which
+# stops psql from running anything but SQL while it loads. One without it
+# came from an older pg_dump (or was edited): load it only if you're sure
+# it's yours, with DISCAMP_RESTORE_UNPROTECTED=yes.
+for f in accounts.sql data.sql; do
+  if ! head -n 20 "$BACKUP/$f" | grep -q '^\\restrict '; then
+    [ "${DISCAMP_RESTORE_UNPROTECTED:-}" = "yes" ] ||
+      fail "$BACKUP/$f wasn't made by an up-to-date pg_dump (it has no \\restrict line), so it isn't protected against commands hidden in it. If you're sure it's your own backup, run this again with DISCAMP_RESTORE_UNPROTECTED=yes in front."
+  fi
+done
 
 DB="${DISCAMP_DB_URL:-}"
 if [ -z "$DB" ]; then

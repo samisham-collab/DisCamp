@@ -215,7 +215,7 @@ eye on both, and near a limit DisCamp pauses instead of letting Supabase
 restrict the project:
 
 - **At 75%** the "Keep Supabase awake" check on GitHub fails, so GitHub emails
-  you (twice a week until it's sorted). The **Review** tab shows the numbers:
+  you (every day until it's sorted). The **Review** tab shows the numbers:
   how full each is, and how much they grew in the last month.
 - **At 90% of photo storage**, new photos pause, and so do new cleanups (they
   need photos). Spots, check-ins, reports, blocking and edits keep working.
@@ -268,6 +268,10 @@ bash scripts/backup-database.sh
 It saves everything into **Documents/DisCamp backups** (the newest 10) and
 copies new photos. Backups hold campers' email addresses: keep them on your
 Mac. `scripts/restore-database.sh` puts one back (the steps are at its top).
+
+If a script says the database is missing PostgreSQL security fixes, back up,
+then upgrade it: Supabase > **Project Settings > General > Upgrade project**
+(a few minutes offline). README, "Keeping PostgreSQL patched", has the rest.
 
 ## Serious cases
 

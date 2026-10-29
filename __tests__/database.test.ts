@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from '@jest/globals';
 import { execFileSync } from 'child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -1851,7 +1851,14 @@ function simulateSupabase(run: (statement: string) => unknown): void {
     const url = new URL(DB_URL ?? '');
     const restoreName = `${url.pathname.slice(1)}_restore`;
     const restoreUrl = Object.assign(new URL(url.href), { pathname: `/${restoreName}` }).href;
-    const env = { ...process.env, DISCAMP_DB_URL: url.href, PGPASSWORD: url.password || 'postgres' };
+    // The scripts insist on an encrypted connection (Supabase always has one);
+    // a test database may not offer it (CI's PostGIS image doesn't).
+    const env = {
+      ...process.env,
+      DISCAMP_DB_URL: url.href,
+      PGPASSWORD: url.password || 'postgres',
+      PGSSLMODE: 'prefer',
+    };
     const script = (file: string, args: string[], extra: Record<string, string>) =>
       execFileSync('bash', [join(ROOT, 'scripts', file), ...args], {
         cwd: ROOT,
@@ -1892,6 +1899,18 @@ function simulateSupabase(run: (statement: string) => unknown): void {
       inRestore('grant usage on schema extensions to anon, authenticated, service_role;');
     }
     fileInRestore('supabase/seed.sql');
+
+    // The backup is protected against commands hidden in it (pg_dump's \restrict).
+    expect(readFileSync(join(backup, 'data.sql'), 'utf8')).toMatch(/^\\restrict /m);
+    // One without that protection isn't loaded unless Sam says it's his.
+    const unprotected = mkdtempSync(join(tmpdir(), 'discamp-unprotected-'));
+    for (const file of ['accounts.sql', 'data.sql', 'files.txt', 'migrations.txt']) {
+      const text = readFileSync(join(backup, file), 'utf8');
+      writeFileSync(join(unprotected, file), text.replace(/^\\(un)?restrict .*$/gm, ''));
+    }
+    expect(errorOf(() => script('restore-database.sh', [unprotected], { DISCAMP_DB_URL: restoreUrl }))).toMatch(
+      /isn't protected against commands hidden in it/,
+    );
 
     // Restoring needs "replace", and the backup folder.
     expect(fails(() => script('restore-database.sh', [backup], { DISCAMP_DB_URL: restoreUrl }))).toBe(true);
