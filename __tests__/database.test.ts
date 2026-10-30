@@ -1912,6 +1912,20 @@ function simulateSupabase(run: (statement: string) => unknown): void {
       /isn't protected against commands hidden in it/,
     );
 
+    // A backup from pg_dump 17 or 18 (as on a Mac with Homebrew's libpq, or
+    // CI's Ubuntu 26) sets transaction_timeout, which PostgreSQL 15 and 16
+    // don't know. The restore leaves it out there, and the backup is untouched.
+    for (const file of ['accounts.sql', 'data.sql']) {
+      const text = readFileSync(join(backup, file), 'utf8');
+      if (!/^SET transaction_timeout = /m.test(text)) {
+        writeFileSync(
+          join(backup, file),
+          text.replace(/^SET idle_in_transaction_session_timeout = 0;$/m, '$&\nSET transaction_timeout = 0;'),
+        );
+      }
+      expect(readFileSync(join(backup, file), 'utf8')).toMatch(/^SET transaction_timeout = 0;$/m);
+    }
+
     // Restoring needs "replace", and the backup folder.
     expect(fails(() => script('restore-database.sh', [backup], { DISCAMP_DB_URL: restoreUrl }))).toBe(true);
     expect(fails(() => script('restore-database.sh', [backups], { DISCAMP_DB_URL: restoreUrl }))).toBe(true);

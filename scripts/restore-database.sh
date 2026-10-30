@@ -113,13 +113,26 @@ fi
 tables="$(run -c "select string_agg(format('%I.%I', schemaname, tablename), ', ' order by schemaname, tablename) from pg_tables where schemaname in ('public', 'moderation')")"
 [ -n "$tables" ] || fail "Couldn't list DisCamp's tables."
 
+# A backup from a newer pg_dump (17 and later) sets transaction_timeout, which
+# PostgreSQL 15 and 16 don't have: into an older database, that one line is
+# left out (it only says "no time limit", which is already the default).
+# Filtered on the way in, so no copy of the backup is written anywhere.
+server="$(run -c 'show server_version_num')"
+load() {
+  if [ "${server:-0}" -lt 170000 ] 2>/dev/null; then
+    sed -E '/^SET transaction_timeout = /d' "$1"
+  else
+    cat "$1"
+  fi
+}
+
 say "Restoring..."
 run -1 \
   -c 'delete from auth.users' \
   -c 'set session_replication_role = replica' \
   -c "truncate table $tables cascade" \
-  -f "$BACKUP/accounts.sql" \
-  -f "$BACKUP/data.sql" \
+  -f <(load "$BACKUP/accounts.sql") \
+  -f <(load "$BACKUP/data.sql") \
   -c 'set session_replication_role = origin' >/dev/null ||
   fail "Stopped: the restore didn't finish (the error is above), so nothing changed."
 run -c "notify pgrst, 'reload schema'" >/dev/null 2>&1 || true
